@@ -47,3 +47,8 @@ Importer une courte vidéo arabe que vous êtes autorisé à traiter. Vérifier 
 - [Sorties structurées OpenAI](https://developers.openai.com/api/docs/guides/structured-outputs)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - [Filtre subtitles/ASS de FFmpeg](https://ffmpeg.org/ffmpeg-filters.html#ass)
+
+
+## Déploiement Railway
+
+Un volume persistant doit être monté sur `/data`. Le démarrage prépare ses droits puis exécute le service avec l’utilisateur non privilégié `bayan` (UID 10001). La sonde `/ready` ne révèle aucune configuration. Toutes les routes métier, y compris `/health`, exigent la clé de connexion. Configurer `BAYAN_TOKEN` et `OPENAI_API_KEY` uniquement dans les variables du service, jamais dans GitHub.

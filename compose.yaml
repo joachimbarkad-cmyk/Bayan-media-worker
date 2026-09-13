@@ -1,0 +1,14 @@
+services:
+  video:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      BAYAN_TOKEN: ${BAYAN_TOKEN:?Set BAYAN_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      TRANSLATION_MODEL: ${TRANSLATION_MODEL:-gpt-4.1}
+    volumes:
+      - bayan-data:/data
+volumes:
+  bayan-data:
