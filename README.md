@@ -1,54 +1,42 @@
-# Service vidéo Bayān
+# Bayān — Service vidéo gratuit par défaut
 
-Ce service complète le studio hébergé : yt-dlp récupère les sous-titres YouTube (arabe manuel avant automatique), Whisper transcrit les fichiers qui en ont besoin, l’API Responses traduit avec contexte et glossaire, FFmpeg incruste les sous-titres dans un MP4 H.264/AAC.
+Service Python/FFmpeg du studio Bayān. Il récupère les sous-titres arabes YouTube, conserve les timecodes et produit des MP4 sous-titrés. L’import se termine **sans appeler une API de traduction**. La traduction gratuite passe par le bouton **Traduire avec ChatGPT** du studio : copier la demande, coller la réponse JSON, appliquer et relire.
 
-## Installation
+## Utilisation du studio
 
-1. Installer Docker et Docker Compose sur un serveur Linux avec une adresse HTTPS. Pour des vidéos longues, prévoir au moins 2 cœurs, 4 Go de RAM et assez de disque pour les originaux et rendus. Les frais de serveur et d’API sont à la charge de l’utilisateur.
-2. Dans ce dossier, copier `.env.example` en `.env`. Générer un jeton aléatoire avec `python -c "import secrets; print(secrets.token_urlsafe(32))"`, puis renseigner `BAYAN_TOKEN` et `OPENAI_API_KEY` dans `.env`. Ne pas publier ce fichier. Le jeton du service doit avoir au moins 24 caractères.
-3. Exécuter `docker compose up -d --build`. Le port 8080 est lié à 127.0.0.1 ; le conteneur tourne sous un utilisateur non privilégié.
-4. Placer un reverse proxy HTTPS devant `127.0.0.1:8080`. Autoriser les envois vidéo jusqu’à 8 Go, désactiver le buffering des requêtes et prévoir un timeout de 10 minutes pour le transfert. Les jobs sont asynchrones : leur calcul continue après la réponse HTTP.
-5. Dans Bayān → Réglages, renseigner l’adresse HTTPS et le `BAYAN_TOKEN`, puis cliquer sur « Enregistrer et tester ». La clé OpenAI reste sur le service vidéo ; elle n’est pas envoyée au navigateur.
+1. Importer une URL YouTube autorisée ou une vidéo de moins de 100 Mo.
+2. Récupérer l’arabe. Si YouTube ne fournit pas de sous-titres exploitables, importer un fichier SRT/VTT (par exemple exporté de Soniox), ou utiliser le moteur local ci-dessous.
+3. Traduire avec ChatGPT par lots. Aucun envoi automatique et aucune clé API ; les limites de votre abonnement ChatGPT restent applicables.
+4. Relire puis exporter SRT, VTT, ASS ou lancer le rendu MP4. Télécharger le MP4 dans les 24 h ; on peut le régénérer depuis le projet.
 
-Exemple de configuration Nginx, à compléter avec la configuration TLS de votre domaine :
+YouTube peut refuser les téléchargements depuis certains hébergements. Importer le fichier original constitue alors le parcours pris en charge. Un essai d’hébergement n’est pas une garantie d’hébergement gratuit permanent.
 
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:8080;
-    proxy_set_header Host $host;
-    proxy_http_version 1.1;
-    proxy_request_buffering off;
-    proxy_buffering off;
-    client_max_body_size 8G;
-    proxy_read_timeout 600s;
-    proxy_send_timeout 600s;
-}
+## Démarrage Docker
+
+Créer `.env` depuis `.env.example`, définir un `BAYAN_TOKEN` aléatoire d’au moins 24 caractères, puis :
+
+```sh
+docker compose up -d --build
 ```
 
-## Fonctionnement et protection
+Le port 8080 est exposé sur la boucle locale uniquement. Pour le studio hébergé, utiliser une adresse HTTPS existante avec un reverse proxy prenant en charge les uploads de 100 Mo et les réponses vidéo longues. Renseigner l’URL et le jeton dans Réglages. Ne jamais publier le jeton. Aucun service payant n’est nécessaire au fonctionnement du code, mais il faut disposer d’une machine et d’un accès réseau adaptés.
 
-- Une file SQLite sur le volume `bayan-data` conserve les tâches et les résultats partiels. Un seul calcul vidéo à la fois limite la pression sur le serveur.
-- Les uploads sont écrits par blocs sur disque ; les vidéos ne sont pas chargées intégralement en mémoire.
-- Une tâche interrompue par un redémarrage devient « Échec » ; elle n’est pas relancée à votre insu avec des frais d’API supplémentaires.
-- L’application présente les nouvelles traductions comme des propositions. Une confirmation protège les corrections humaines et les projets modifiés pendant le traitement.
-- Les sous-titres YouTube récupérés, les réponses de transcription et les rendus sont conservés dans le volume. Sauvegarder ce volume et surveiller son occupation. La suppression d’un projet dans le studio supprime ses données D1/R2 ; les copies du service doivent être supprimées séparément par son administrateur.
-- `TRANSLATION_MODEL` est configurable ; valeur initiale : `gpt-4.1`. Transcription : `whisper-1` avec timestamps de segments et mots. Les audios sont traités par tranches de 8 minutes ; les jonctions méritent une relecture.
-- Il n’y a pas de contournement des vidéos privées ou des contrôles de YouTube. Si YouTube refuse la récupération, importer votre fichier vidéo ou SRT. `YOUTUBE_COOKIES_FILE` peut pointer vers un fichier de cookies de votre compte autorisé sur le service ; ne jamais le fournir dans le studio ni le versionner.
-- L’export conserve la résolution (ou la réduit à 1080p/720p maximum), la cadence et le contenu audio. H.264/AAC impliquent un réencodage. Le poids du rendu est fourni après calcul ; il n’est pas estimé arbitrairement avant.
-- L’aperçu CSS approche le rendu ASS, mais des différences de police ou de disposition peuvent exister. Le MP4 est le résultat de référence.
+## Transcription locale gratuite (option ordinateur)
 
-## Vérification après connexion
+```sh
+docker compose -f compose.local.yaml up -d --build
+```
 
-Importer une courte vidéo arabe que vous êtes autorisé à traiter. Vérifier les étapes de récupération/transcription, la traduction, la correction d’un segment, la sauvegarde après rechargement et les deux exports SRT et MP4. Le test local inclus vérifie un vrai rendu vidéo et les réponses d’erreur ; il ne remplace pas ce test avec les services externes actifs.
+Cette variante installe `faster-whisper`. Prévoir de la mémoire et du disque pour le modèle (quelques Go disponibles conseillés), ainsi que du temps CPU. Le premier traitement télécharge le modèle open source ; les traitements suivants réutilisent le cache `/models`. `BAYAN_WHISPER_MODEL=small` est la valeur par défaut. Aucune API payante n’est appelée. Cette variante n’est pas destinée au volume Railway de 500 Mo. La vitesse et la précision en arabe dépendent de la machine, du modèle et de la qualité audio ; la relecture reste nécessaire.
 
-## Références d’implémentation
+## Stockage et sécurité des coûts
 
-- [Transcription et timestamps OpenAI](https://developers.openai.com/api/docs/guides/speech-to-text)
-- [Sorties structurées OpenAI](https://developers.openai.com/api/docs/guides/structured-outputs)
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-- [Filtre subtitles/ASS de FFmpeg](https://ffmpeg.org/ffmpeg-filters.html#ass)
+- `BAYAN_ALLOW_PAID_AI=0` par défaut. La présence d’une clé OpenAI n’active jamais la facturation. Un appel API historique n’est possible que si le serveur autorise explicitement le payant **et** si le job porte `costPolicy=paid`. Le studio transmet toujours `free` et refuse les anciens appels directs de traduction.
+- Maximum 100 Mo par upload, marge disque de 150 Mo, vérification de capacité avant téléchargement/rendu.
+- Les copies YouTube téléchargées et les fragments audio sont supprimés après traitement. Les MP4 temporaires et les médias inutilisés de plus de 24 h sont supprimés lors des nouvelles tâches ou des nouveaux uploads ; les jobs actifs sont protégés.
+- Les projets et leurs sous-titres restent dans le studio. Les vidéos sont renvoyées au service depuis le studio si nécessaire.
+- SQLite conserve la file et les états réels ; les jobs interrompus ne sont pas relancés silencieusement.
 
+## Endpoints
 
-## Déploiement Railway
-
-Un volume persistant doit être monté sur `/data`. Le démarrage prépare ses droits puis exécute le service avec l’utilisateur non privilégié `bayan` (UID 10001). La sonde `/ready` ne révèle aucune configuration. Toutes les routes métier, y compris `/health`, exigent la clé de connexion. Configurer `BAYAN_TOKEN` et `OPENAI_API_KEY` uniquement dans les variables du service, jamais dans GitHub.
+`GET /ready` vérifie le processus. Tous les autres endpoints exigent `Authorization: Bearer <BAYAN_TOKEN>` : `GET /health`, `POST /jobs`, `GET /jobs/:id`, `GET /jobs/:id/file`, `PUT /assets/:uuid`. `/health` expose les capacités et la limite réelle. Le rendu est H.264/AAC avec FFmpeg ; pas de recadrage vertical automatique.

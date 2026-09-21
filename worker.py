@@ -1,6 +1,6 @@
 """Bayān media service. Durable SQLite jobs; bounded streaming I/O; no simulated results."""
 from __future__ import annotations
-import os, json, re, uuid, time, math, threading, sqlite3, subprocess, shutil, hashlib, hmac, mimetypes
+import os, json, re, uuid, time, math, threading, sqlite3, subprocess, shutil, hashlib, hmac, mimetypes, importlib.util
 from pathlib import Path
 from urllib import request, error, parse
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -10,7 +10,40 @@ ROOT=Path(os.environ.get('BAYAN_DATA','./data')).resolve()
 TOKEN=os.environ.get('BAYAN_TOKEN','')
 OPENAI_KEY=os.environ.get('OPENAI_API_KEY','')
 TRANSLATION_MODEL=os.environ.get('TRANSLATION_MODEL','gpt-4.1')
-MAX_BYTES=8*1024**3
+# Free operation is the default. A stored provider key never opts into billing.
+ALLOW_PAID_AI=os.environ.get('BAYAN_ALLOW_PAID_AI','0')=='1'
+TRANSCRIPTION_BACKEND=os.environ.get('BAYAN_TRANSCRIPTION','manual')
+WHISPER_MODEL=os.environ.get('BAYAN_WHISPER_MODEL','small')
+MAX_BYTES=int(os.environ.get('BAYAN_MAX_UPLOAD_MB','100'))*1024**2
+RESERVE_BYTES=int(os.environ.get('BAYAN_RESERVE_MB','150'))*1024**2
+RETENTION_SECONDS=int(os.environ.get('BAYAN_RETENTION_HOURS','24'))*3600
+STORAGE_LOCK=threading.RLock()
+
+def paid_enabled(payload=None):
+    return bool(ALLOW_PAID_AI and OPENAI_KEY and (payload or {}).get('costPolicy')=='paid')
+
+def local_transcription_available():
+    return TRANSCRIPTION_BACKEND=='local' and importlib.util.find_spec('faster_whisper') is not None
+
+def ensure_space(required):
+    ROOT.mkdir(parents=True,exist_ok=True)
+    if shutil.disk_usage(ROOT).free<required+RESERVE_BYTES:
+        raise ValueError('Espace vidéo insuffisant. Attendez le nettoyage des fichiers temporaires ou importez une vidéo plus courte (100 Mo maximum par défaut).')
+
+def cleanup_expired():
+    with STORAGE_LOCK:
+        cutoff=time.time()-RETENTION_SECONDS
+        with database() as db:
+            rows=db.execute("SELECT id,status,payload,created FROM jobs").fetchall()
+        protected={r['id'] for r in rows if r['status'] in ('queued','running')}
+        assets={str(json.loads(r['payload']).get('asset','')) for r in rows if r['id'] in protected}
+        for r in rows:
+            if r['id'] not in protected and r['created']<cutoff:
+                folder=ROOT/r['id']
+                if folder.is_dir():shutil.rmtree(folder)
+        for asset in (ROOT/'assets').iterdir():
+            if asset.is_file() and asset.name not in assets and asset.stat().st_mtime<cutoff:asset.unlink(missing_ok=True)
+
 class NeedsConfiguration(Exception):pass
 
 @contextmanager
@@ -47,6 +80,7 @@ def new_job(payload):
     if payload.get('kind') not in ('import','translate','improve','export'):raise ValueError('Type de traitement invalide.')
     project=payload.get('project',{})
     if not isinstance(project.get('segments'),list) or len(project['segments'])>5000:raise ValueError('Segments invalides.')
+    cleanup_expired()
     id=str(uuid.uuid4());state={'id':id,'status':'queued','stage':'En attente du service vidéo','progress':None,'result':None}
     with database() as db:db.execute('INSERT INTO jobs VALUES(?,?,?,?,?)',(id,'queued',json.dumps(payload,ensure_ascii=False),json.dumps(state,ensure_ascii=False),time.time()))
     return state
@@ -59,7 +93,9 @@ def run_command(args,timeout=1800):
 def probe(file):
     data=json.loads(run_command(['ffprobe','-v','error','-show_format','-show_streams','-of','json',str(file)]))
     video=next((s for s in data['streams'] if s['codec_type']=='video'),None)
-    if not video:raise ValueError('Le fichier ne contient pas de piste vidéo exploitable.')
+    if not video:
+        if any(s['codec_type']=='audio' for s in data['streams']):return {'duration':float(data['format'].get('duration',0)),'audioOnly':True}
+        raise ValueError('Le fichier ne contient pas de piste audio ou vidéo exploitable.')
     return {'duration':float(data['format'].get('duration',0)),'width':video.get('width',1920),'height':video.get('height',1080),'fps':video.get('avg_frame_rate','25/1')}
 
 def valid_youtube(url):
@@ -129,19 +165,21 @@ def youtube_captions(id,project,folder):
 
 def download_youtube(id,url,folder):
     import yt_dlp
+    ensure_space(MAX_BYTES*2)
     def hook(d):
         if d.get('status')=='downloading':
             total=d.get('total_bytes') or d.get('total_bytes_estimate');downloaded=d.get('downloaded_bytes',0)
-            if downloaded>MAX_BYTES:raise RuntimeError('La vidéo dépasse 8 Go.')
+            if downloaded>MAX_BYTES:raise RuntimeError('La vidéo dépasse la limite de '+str(MAX_BYTES//1024**2)+' Mo.')
+            ensure_space(0)
             update(id,stage='Téléchargement de la vidéo',progress=round(downloaded/total*100,1) if total else None)
-    opts=ydl_options();opts.update({'format':'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b','merge_output_format':'mp4','outtmpl':str(folder/'source.%(ext)s'),'progress_hooks':[hook]})
+    opts=ydl_options();opts.update({'format':'b[ext=mp4][height<=720]/bv*[ext=mp4][height<=720]+ba[ext=m4a]/b[height<=720]','merge_output_format':'mp4','outtmpl':str(folder/'source.%(ext)s'),'progress_hooks':[hook]})
     with yt_dlp.YoutubeDL(opts) as ydl:ydl.extract_info(valid_youtube(url),download=True)
     files=[p for p in folder.glob('source.*') if p.suffix not in ('.part','.ytdl')]
     if not files:raise RuntimeError('Téléchargement absent. YouTube peut exiger une authentification. Vous pouvez importer le fichier original.')
     return max(files,key=lambda p:p.stat().st_size)
 
 def api_request(endpoint,payload=None,raw=None,content_type='application/json'):
-    if not OPENAI_KEY:raise NeedsConfiguration('La clé OpenAI du service vidéo n’est pas configurée. Les transcriptions déjà récupérées sont conservées.')
+    if not ALLOW_PAID_AI or not OPENAI_KEY:raise NeedsConfiguration('API payante désactivée. Utilisez Traduire avec ChatGPT dans le studio.')
     encoded=raw if raw is not None else json.dumps(payload,ensure_ascii=False).encode()
     req=request.Request('https://api.openai.com/v1/'+endpoint,data=encoded,headers={'Authorization':'Bearer '+OPENAI_KEY,'Content-Type':content_type})
     for attempt in range(3):
@@ -177,6 +215,20 @@ def transcribe(id,source,project,folder):
     if not segments:raise RuntimeError('Aucune parole exploitable n’a été détectée.')
     return merge_fragments(segments),{'duration':duration}
 
+def transcribe_local(id,source,project,folder):
+    if not local_transcription_available():raise NeedsConfiguration('Importez un SRT / VTT depuis Soniox, ou activez Whisper local sur votre ordinateur. Aucune clé API payante n’est nécessaire.')
+    from faster_whisper import WhisperModel
+    meta=probe(source)
+    update(id,stage='Chargement du modèle Whisper local (premier téléchargement possible)',progress=None)
+    model=WhisperModel(WHISPER_MODEL,device='cpu',compute_type='int8',cpu_threads=max(1,min(4,os.cpu_count() or 2)),num_workers=1,download_root=os.environ.get('BAYAN_MODEL_CACHE') or None)
+    stream,info=model.transcribe(str(source),language='ar',beam_size=5,vad_filter=True,condition_on_previous_text=True)
+    segments=[]
+    for item in stream:
+        if item.text.strip() and item.end>item.start:segments.append(make_segment(project['id'],item.start,item.end,item.text))
+        update(id,stage='Transcription arabe sur cet ordinateur',progress=min(99,round(item.end/max(1,meta['duration'])*100,1)))
+    if not segments:raise ValueError('Aucune parole arabe détectée. Vérifiez le fichier audio.')
+    return merge_fragments(segments),{'duration':meta['duration']}
+
 def translate(id,segments,project,glossary,instruction='',ids=None):
     targets=[s for s in segments if not ids or s['id'] in ids]
     if not targets:raise ValueError('Aucun segment à traduire.')
@@ -203,7 +255,10 @@ def translate(id,segments,project,glossary,instruction='',ids=None):
 
 def render_video(id,source,ass,quality,folder):
     if not ass.strip().startswith('[Script Info]') or '\x00' in ass:raise ValueError('Sous-titres ASS invalides.')
-    meta=probe(source);sub=folder/'captions.ass';sub.write_text(ass,encoding='utf-8');output=folder/'export.mp4'
+    meta=probe(source)
+    if meta.get('audioOnly'):raise ValueError('Associez une vidéo pour exporter un MP4. Ce projet contient uniquement de l’audio.')
+    ensure_space(max(MAX_BYTES,source.stat().st_size*2))
+    sub=folder/'captions.ass';sub.write_text(ass,encoding='utf-8');output=folder/'export.mp4'
     filters=[]
     if quality in ('720','1080'):filters.append(f"scale=w=-2:h='min(ih,{quality})'")
     filters.append("ass=filename='captions.ass'")
@@ -213,6 +268,13 @@ def render_video(id,source,ass,quality,folder):
         process=subprocess.Popen(args,cwd=folder,stdout=subprocess.PIPE,stderr=errors,text=True)
         for line in process.stdout:
             if line.startswith('out_time_us='):
+                try:ensure_space(0)
+                except ValueError:
+                    process.kill();process.wait();process.stdout.close();output.unlink(missing_ok=True)
+                    raise ValueError('Le rendu dépasse l’espace disponible. Essayez un extrait plus court.')
+                if output.exists() and output.stat().st_size>MAX_BYTES*2:
+                    process.kill();process.wait();process.stdout.close();output.unlink(missing_ok=True)
+                    raise ValueError('Le MP4 est trop volumineux. Essayez une résolution inférieure ou un extrait plus court.')
                 try:update(id,progress=min(99,round(float(line.split('=')[1])/1e6/max(1,meta['duration'])*100,1)))
                 except ValueError:pass
         status=process.wait(timeout=30)
@@ -232,6 +294,7 @@ def process_job(id,payload):
             if not re.fullmatch(r'[a-f0-9-]{36}',asset):raise ValueError('Identifiant média invalide.')
             source=ROOT/'assets'/asset
             if not source.exists():raise ValueError('Le fichier vidéo doit être envoyé à nouveau.')
+            source.touch()
         if kind=='export':
             if source is None:
                 if not p.get('url'):raise ValueError('Associez une vidéo au projet avant de générer le MP4.')
@@ -242,18 +305,25 @@ def process_job(id,payload):
             if source is None and p.get('url'):segments,metadata=youtube_captions(id,p,folder)
             if not segments:
                 if source is None:
-                    if not OPENAI_KEY:raise NeedsConfiguration('Aucun sous-titre arabe exploitable. Configurez la clé OpenAI pour transcrire l’audio.')
+                    if not local_transcription_available() and not paid_enabled(payload):raise NeedsConfiguration('Aucun sous-titre arabe récupérable. Importez un SRT / VTT depuis Soniox ou utilisez Whisper local sur ordinateur. Aucun appel payant n’a été lancé.')
                     if not p.get('url'):raise ValueError('Associez une vidéo ou une URL YouTube au projet.')
                     source=download_youtube(id,p['url'],folder)
-                segments,extra=transcribe(id,source,p,folder);metadata.update(extra)
+                if local_transcription_available():segments,extra=transcribe_local(id,source,p,folder)
+                elif paid_enabled(payload):segments,extra=transcribe(id,source,p,folder)
+                else:raise NeedsConfiguration('Importez la transcription SRT / VTT de ce média, ou activez Whisper local sur ordinateur. La transcription payante est désactivée.')
+                metadata.update(extra)
             update(id,result={'segments':segments,'metadata':metadata})
-            translated=translate(id,segments,p,payload.get('glossary',''))
-            result={'segments':translated,'metadata':metadata}
+            # Caption retrieval/transcription must finish independently of translation.
+            result={'segments':segments,'metadata':metadata,'notice':'Arabe prêt. Utilisez Traduire avec ChatGPT pour obtenir le français sans API payante.'}
         else:
+            if not paid_enabled(payload):raise NeedsConfiguration('Utilisez Traduire avec ChatGPT dans le studio. Les appels à une API payante sont désactivés.')
             result={'segments':translate(id,p['segments'],p,payload.get('glossary',''),payload.get('instruction',''),payload.get('ids'))}
         update(id,status='complete',stage='Traitement terminé',progress=100,result=result)
     except NeedsConfiguration as e:update(id,status='blocked',error=str(e),progress=None)
     except Exception as e:update(id,status='failed',error=str(e)[:800],progress=None)
+    finally:
+        for pattern in ('source.*','audio-*.wav'):
+            for temporary in folder.glob(pattern):temporary.unlink(missing_ok=True)
 
 def worker_loop(stop=None):
     while stop is None or not stop.is_set():
@@ -274,14 +344,15 @@ class Handler(BaseHTTPRequestHandler):
         if parse.urlparse(self.path).path=='/ready':return self.send_json({'ok':True})
         if not self.authorized():return self.send_json({'error':'Clé de connexion invalide.'},401)
         path=parse.urlparse(self.path).path
-        if path=='/health':return self.send_json({'ok':True,'ffmpeg':bool(shutil.which('ffmpeg')),'ai':bool(OPENAI_KEY),'version':'1.0.0'})
+        if path=='/health':return self.send_json({'ok':True,'ffmpeg':bool(shutil.which('ffmpeg')),'captions':importlib.util.find_spec('yt_dlp') is not None,'ai':False,'transcription':'local' if local_transcription_available() else 'manual','translation':'chatgpt-exchange','maxUploadBytes':MAX_BYTES,'retentionHours':RETENTION_SECONDS//3600,'version':'1.1.0'})
         m=re.fullmatch(r'/jobs/([a-f0-9-]{36})(/file)?',path)
         if not m:return self.send_json({'error':'Introuvable.'},404)
         try:
             state=job_state(m[1])
             if not m[2]:return self.send_json(state)
             file=ROOT/m[1]/'export.mp4'
-            if state['status']!='complete' or not file.exists():return self.send_json({'error':'Le MP4 n’est pas prêt.'},409)
+            if state['status']!='complete':return self.send_json({'error':'Le MP4 n’est pas prêt.'},409)
+            if not file.exists():return self.send_json({'error':'Ce MP4 temporaire a expiré. Relancez son export depuis le studio.'},410)
             size=file.stat().st_size;start=0;end=size-1
             r=self.headers.get('Range')
             if r:
@@ -312,18 +383,20 @@ class Handler(BaseHTTPRequestHandler):
         if not m:return self.send_json({'error':'Identifiant de fichier invalide.'},400)
         try:
             length=int(self.headers.get('Content-Length',0))
-            if not 0<length<=MAX_BYTES:return self.send_json({'error':'La taille de la vidéo doit être comprise entre 1 octet et 8 Go.'},413)
+            if not 0<length<=MAX_BYTES:return self.send_json({'error':'Le fichier dépasse la limite de '+str(MAX_BYTES//1024**2)+' Mo.'},413)
+            cleanup_expired();ensure_space(length)
             target=ROOT/'assets'/m[1];tmp=target.with_suffix('.upload-'+uuid.uuid4().hex)
             try:
                 with tmp.open('wb') as f:
                     remaining=length
                     while remaining:
+                        ensure_space(remaining)
                         data=self.rfile.read(min(1024**2,remaining))
                         if not data:raise ValueError('Envoi vidéo interrompu.')
                         f.write(data);remaining-=len(data)
                 probe(tmp);os.replace(tmp,target);self.send_json({'ok':True,'size':length})
             finally:tmp.unlink(missing_ok=True)
-        except (ValueError,RuntimeError) as e:self.send_json({'error':str(e)},400)
+        except (ValueError,RuntimeError,OSError) as e:self.send_json({'error':str(e)},400)
 
 if __name__=='__main__':
     if len(TOKEN)<24:raise SystemExit('Définissez BAYAN_TOKEN avec au moins 24 caractères aléatoires.')

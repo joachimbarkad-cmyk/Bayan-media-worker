@@ -1,0 +1,8 @@
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu fonts-noto-core ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir yt-dlp faster-whisper
+WORKDIR /app
+COPY worker.py start.py /app/
+ENV BAYAN_DATA=/data PORT=8080 BAYAN_TRANSCRIPTION=local BAYAN_MODEL_CACHE=/models BAYAN_ALLOW_PAID_AI=0
+EXPOSE 8080
+CMD ["python", "/app/start.py"]
