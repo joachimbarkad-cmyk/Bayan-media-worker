@@ -12,10 +12,11 @@ par société, au format JSON :
 Ces chiffres servent au filtre religieux (ratios de dette, de dépôts à intérêt et de revenus illicites). La collecte
 n'achète rien, ne passe aucun ordre et ne crée aucun compte.
 
-## Pourquoi je ne peux pas le faire moi-même
+## Qui la fait
 
-L'environnement où je travaille n'a pas accès au site de la SEC (connexion bloquée, vérifié). Il faut donc que quelqu'un
-télécharge les fichiers depuis un navigateur ordinaire, puis me les transmette.
+Depuis le 2026-09-28, `data.sec.gov` est autorisé dans l'environnement de Claude : la collecte automatique (`collect`)
+a été faite pour Apple (`collecte/apple/`, `data/audit_edgar_apple/`). La voie manuelle ci-dessous reste disponible si
+l'accès est de nouveau fermé ou si vous ne voulez pas fournir d'adresse.
 
 ## Ce que vous avez à faire (5 minutes par société, aucune adresse électronique)
 

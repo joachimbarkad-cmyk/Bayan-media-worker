@@ -104,4 +104,5 @@ n'est pas modifié ; fermez les autres programmes qui l'utilisent pour que la co
   fiqh fourni par l'utilisateur ; **non validé** (refusé sur données réelles jusqu'à validation par un sharia board).
 - `config/rulesets/TEMPLATE_a_valider.json` : modèle vide.
 
-Collecte de données réelles : voir `docs/GUIDE_COLLECTE_EDGAR.md`.
+Collecte de données réelles : voir `docs/GUIDE_COLLECTE_EDGAR.md`. Premier dossier réel (Apple, non exploitable en l'état) :
+`python3 -m halal_sim audit-docs data/audit_edgar_apple`.

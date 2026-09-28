@@ -7,6 +7,21 @@ Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier
 contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
 au document de fiqh fourni par l'utilisateur**.
 
+## 0 bis. Première collecte EDGAR réelle (Apple, CIK 320193)
+
+Collecte faite le 2026-09-28 à 10:50 UTC par `collect` (accès à `data.sec.gov` ouvert par l'utilisateur ; l'identification
+envoyée à la SEC n'est écrite nulle part dans le dépôt). Fichiers bruts et empreintes : `collecte/apple/` ; dossier converti :
+`data/audit_edgar_apple/`.
+
+- `convert` : 44 documents (10-K et 10-Q récents), 15 068 faits, 10 067 faits d'autres documents écartés, 0 doublon,
+  0 dépôt retenu puis écarté ; historique incomplet signalé (1 fichier de dépôts anciens non collecté).
+- `audit-docs` : **0 erreur bloquante**, 76 245 inconnues signalées, verdict **NON EXPLOITABLE** (aucun fait normalisé),
+  comme prévu.
+- Contrôle ponctuel : chiffre d'affaires exercice 2025 (10-K 0000320193-25-000079) = 416 161 000 000 USD, à rapprocher
+  à la main du rapport d'origine.
+- À vérifier par le relecteur : `acceptanceDateTime` de la SEC porte le suffixe `Z` ; est-ce vraiment de l'UTC ou de
+  l'heure de New York mal étiquetée ? (valeurs observées : 10:01Z, soit 6 h 01 à New York.)
+
 ## 0. Nouveau : référentiel tiré du document de fiqh de l'utilisateur
 
 L'utilisateur a fourni son document « Actions, bourse et produits financiers en Islam : vérification et annotation de vos
@@ -61,7 +76,7 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 
 1. Données de simulation fictives ; référentiel réel non validé ; simulation sur données REEL refusée.
 2. Exécutions reconstruites, non prouvées.
-3. Collecte EDGAR non éprouvée sur de vraies réponses SEC ; companyfacts partiel ; dépôts récents seulement.
+3. Collecte EDGAR éprouvée sur une seule société (Apple) ; companyfacts partiel ; dépôts récents seulement.
 4. Le numérateur « dépôts à intérêt » doit exclure la trésorerie non rémunérée : à vérifier sur chaque donnée réelle.
 5. Purification, zakāt, filtre mālikite des actifs monétaires : non codés (décisions du board).
 
