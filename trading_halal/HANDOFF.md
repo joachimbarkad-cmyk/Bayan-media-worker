@@ -1,4 +1,4 @@
-# HANDOFF — simulateur de trading halal, V1.17 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.18 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
@@ -6,6 +6,45 @@ Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier
 **Merci de relire de façon critique** : lectures d'information future, ADMISSIBLE erronés, contrôles d'audit
 contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
 au document de fiqh fourni par l'utilisateur**.
+
+## V1.18 — Revue n° 14 : le revenu des contrats clients n'est pas le revenu total
+
+**Défaut reproduit** (cas réel fourni par le relecteur) : Black Hills, 10-Q au 30/06/2026 (0001193125-26-337444). En
+V1.17, R1 (`RevenueFromContractWithCustomerExcludingAssessedTax`, 440,6 M$ au trimestre) était normalisé et rapproché
+comme **total_revenue**, « utilisable », alors que le revenu total (`us-gaap:Revenues`) est 452,8 M$. Le rapprochement
+XBRL était exact ; la règle donnait un sens trop large au concept.
+
+Correction (`config/normalisation/edgar_v3.json` ; v2 retirée) :
+- **R0** `us-gaap:Revenues` → total_revenue, prioritaire.
+- **R1** → nouveau concept composant `revenue_from_contracts_with_customers`. **Repli** vers total_revenue seulement si
+  le document ne déclare, pour l'entité entière et la même période exacte, ni `Revenues` ni
+  `RevenueNotFromContractWithCustomer` ; le fait porte alors une justification « REPLI : … », seule exception au mappage
+  admise par l'audit. Le repli est décidé sur le document, pas sur companyfacts (un `Revenues` présent dans le document
+  mais absent de companyfacts bloque aussi le repli).
+- **K1** ne s'applique qu'entre concepts visant le même concept du projet : agrégat et composant ne sont jamais en
+  conflit.
+- Lecture XBRL en ligne durcie (défense en profondeur demandée) : QNames résolus par URI (préfixe quelconque accepté
+  s'il est lié à la bonne URI ; préfixe lié à une autre URI refusé ; préfixe ambigu ou non déclaré ⇒ lecture refusée),
+  devise exigée dans l'espace ISO 4217, schéma d'identifiant `http://www.sec.gov/CIK` exigé.
+
+Résultats réels (5 documents téléchargés, tous contrôles à 0, verdict RAPPROCHEMENT AUTOMATIQUE) :
+
+| Émetteur | Document | Normalisés | Revenu total |
+|---|---|---|---|
+| Black Hills | 10-Q 30/06/2026 | 10 | `Revenues` : 452,8 M$ (T2), 1 233,5 M$ (S1) ; composant 440,6 / 1 200,6 M$ distinct |
+| Alphabet | 10-K 2025 | 5 | `Revenues` : 402 836 M$ (2025) |
+| Apple | 10-K 2025, 10-Q T3 2025 | 11 | repli R1 (aucun `Revenues` déclaré) : 416 161 M$ (2025) |
+| Microsoft | 10-K 2026 | 5 | repli R1 |
+
+Revue n° 14 (b) : 3/3 lignes contrôlées à la main par le relecteur (Apple CA 2025 `c-1`, actifs `c-20`, CA T3 `c-19`).
+
+Tests : 17 nouveaux (agrégat + composant, repli explicite, repli bloqué par revenus hors contrats ou par un `Revenues`
+absent de companyfacts, exception d'audit, règle de repli mal formée, 6 cas d'espaces de noms, Black Hills, Alphabet,
+Apple). Mutations : 9, toutes détectées (dont une après ajout du test de préfixe ambigu). **225 tests.**
+
+Points nécessitant une revue indépendante : la liste des concepts qui bloquent le repli (`Revenues`,
+`RevenueNotFromContractWithCustomer`) est-elle suffisante (revenus de location, d'intérêts, etc.) ? Le repli Apple et
+Microsoft est-il acceptable pour le dénominateur, ou faut-il une confirmation humaine du « Total net sales » ?
 
 ## V1.17 — Premiers rapprochements sur de vrais documents SEC
 
@@ -313,9 +352,9 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 
 - Simulation de bout en bout (12 contrôles), avec `--ruleset` pour choisir le référentiel et `--db` pour la base.
 - `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE.
-- **209 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+- **225 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
   test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
-  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 29, test_ruleset_validation 10, test_screening 11.
+  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 45, test_ruleset_validation 10, test_screening 11.
 
 ## Limites connues (générales)
 

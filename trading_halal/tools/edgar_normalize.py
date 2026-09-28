@@ -36,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import edgar_collect as ec  # noqa: E402
 
-from halal_sim.audit import EXCLUSION_PREFIX, FILES, audit_folder  # noqa: E402
+from halal_sim.audit import EXCLUSION_PREFIX, FALLBACK_PREFIX, FILES, audit_folder  # noqa: E402
 
 TOOL = "edgar_normalize.py"
 
@@ -140,6 +140,10 @@ def _sha(path: Path) -> str:
 def _rules(rules_path: Path) -> dict:
     rules = json.loads(rules_path.read_text(encoding="utf-8"))
     for r in rules["regles"]:
+        fb = r.get("repli_total")
+        if fb is not None and (fb.get("concept") != "total_revenue" or not fb.get("si_absents_du_document")):
+            raise NormalizeError(f"règle {r['id']} : repli_total mal formé (concept total_revenue et liste "
+                                 "si_absents_du_document obligatoires)")
         if r["normalized_concept"] in SHARE_BASED:
             raise NormalizeError(f"règle {r['id']} : {r['normalized_concept']} exige une catégorie d'actions, qui ne "
                                  "peut pas être établie automatiquement (revue n° 13) ; règle refusée")
@@ -375,8 +379,39 @@ def _ix_value(el) -> Decimal:
     return -value if el.get("sign") == "-" else value
 
 
+ISO4217 = "http://www.xbrl.org/2003/iso4217"
+SEC_CIK_SCHEME = "http://www.sec.gov/CIK"
+# Espaces de noms attendus pour les préfixes employés dans les règles (l'année de taxonomie varie).
+TAXONOMY_NS = {"us-gaap": re.compile(r"^http://fasb\.org/us-gaap/\d{4}$"),
+               "dei": re.compile(r"^http://xbrl\.sec\.gov/dei/\d{4}$"),
+               "srt": re.compile(r"^http://fasb\.org/srt/\d{4}$")}
+
+
+def _canonical(uri: str, local: str) -> str:
+    """Nom canonique « us-gaap:Local » si l'URI est celle d'une taxonomie connue ; sinon « {uri}local »."""
+    for prefix, pattern in TAXONOMY_NS.items():
+        if pattern.match(uri):
+            return f"{prefix}:{local}"
+    return f"{{{uri}}}{local}"
+
+
 def parse_ixbrl(path: Path) -> tuple[dict, dict, list]:
-    """Contextes, unités et faits numériques d'un document XBRL en ligne (XHTML bien formé)."""
+    """Contextes, unités et faits numériques d'un document XBRL en ligne (XHTML bien formé). Les QNames (concepts,
+    mesures) sont résolus par URI d'espace de noms, jamais par la seule chaîne préfixée."""
+    decl = defaultdict(set)
+    for _, (prefix, uri) in ET.iterparse(path, events=["start-ns"]):
+        decl[prefix].add(uri)
+    ambiguous = sorted(p for p, uris in decl.items() if len(uris) > 1)
+    if ambiguous:
+        raise ValueError(f"préfixes liés à plusieurs espaces de noms : {ambiguous}")
+    ns = {p: next(iter(u)) for p, u in decl.items()}
+
+    def resolve(qname: str) -> tuple[str, str]:
+        prefix, _, local = qname.strip().rpartition(":")
+        if prefix not in ns:
+            raise ValueError(f"préfixe non déclaré dans {qname!r}")
+        return ns[prefix], local
+
     root = ET.parse(path).getroot()
     contexts, units = {}, {}
     for c in root.iter(f"{{{XBRLI}}}context"):
@@ -388,13 +423,22 @@ def parse_ixbrl(path: Path) -> tuple[dict, dict, list]:
         has_segment = entity.find(f"{{{XBRLI}}}segment") is not None or c.find(f"{{{XBRLI}}}scenario") is not None
         contexts[c.get("id")] = {"start": start.text.strip() if start is not None else "",
                                  "end": (inst if inst is not None else end).text.strip(),
-                                 "entity": (ident.text or "").strip(), "segment": has_segment}
+                                 "entity": (ident.text or "").strip(), "scheme": (ident.get("scheme") or "").strip(),
+                                 "segment": has_segment}
     for u in root.iter(f"{{{XBRLI}}}unit"):
-        measures = [m.text.strip() for m in u.iter(f"{{{XBRLI}}}measure")]
-        units[u.get("id")] = measures[0].split(":")[-1] if len(measures) == 1 else "/".join(measures)
+        measures = [resolve(m.text) for m in u.iter(f"{{{XBRLI}}}measure")]
+        if len(measures) == 1 and measures[0][0] == ISO4217:
+            units[u.get("id")] = measures[0][1]                      # devise ISO 4217 (ex. USD)
+        elif len(measures) == 1 and measures[0] == (XBRLI, "shares"):
+            units[u.get("id")] = "shares"
+        else:
+            units[u.get("id")] = "/".join(f"{{{a}}}{b}" for a, b in measures)
     facts = []
     for el in root.iter(f"{{{IX}}}nonFraction"):
-        name = el.get("name", "")
+        try:
+            name = _canonical(*resolve(el.get("name", "")))
+        except ValueError:
+            name = ""
         facts.append({"name": name, "context": el.get("contextRef"), "unit": units.get(el.get("unitRef"), ""),
                       "decimals": el.get("decimals") or "", "id": el.get("id") or "", "el": el,
                       "text": _ix_text(el).strip(), "scale": el.get("scale") or "0"})
@@ -417,8 +461,23 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> di
         raise NormalizeError(f"{doc['local_copy']} : empreinte différente de local_sha256")
     proposals, _ = compute_proposals(raw, audit, rules_path)
     by_rule = {r["id"]: r for r in rules["regles"]}
-    contexts, _, ixfacts = parse_ixbrl(path)
+    try:
+        contexts, _, ixfacts = parse_ixbrl(path)
+    except (ValueError, ET.ParseError) as exc:
+        raise NormalizeError(f"{doc['local_copy']} : lecture XBRL en ligne impossible ({exc})")
     cik = int(doc["issuer_id"])
+
+    def entity_ok(ctx) -> bool:
+        if ctx["scheme"] != SEC_CIK_SCHEME:
+            return False
+        try:
+            return int(ctx["entity"]) == cik
+        except ValueError:
+            return False
+    # Concepts déclarés pour l'entité entière (contexte sans segment ni scénario), par période exacte.
+    report_wide = {(f["name"], contexts[f["context"]]["start"], contexts[f["context"]]["end"])
+                   for f in ixfacts if f["context"] in contexts and not contexts[f["context"]]["segment"]
+                   and entity_ok(contexts[f["context"]])}
     proof = f"fichier:{doc['local_copy']}#sha256={sha}"
     report = {"rapproches": 0, "echecs": []}
     failures: dict[str, str] = {}
@@ -433,10 +492,7 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> di
                 continue
             if (ctx["start"], ctx["end"]) != (prop["period_start"], prop["period_end"]):
                 continue
-            try:
-                if int(ctx["entity"]) != cik:
-                    continue
-            except ValueError:
+            if not entity_ok(ctx):
                 continue
             (segmented if ctx["segment"] else matches).append(f)
         reason = None
@@ -460,17 +516,27 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> di
         m = matches[0]
         rule = by_rule[prop["regle"]]
         _map_concept(s, rule, raw, doc["issuer_id"], rules["version"])
+        target, fallback_note = rule["normalized_concept"], ""
+        fb = rule.get("repli_total")
+        if fb:
+            blockers = [c for c in fb["si_absents_du_document"]
+                        if (c, prop["period_start"], prop["period_end"]) in report_wide]
+            if not blockers:
+                target = fb["concept"]
+                fallback_note = (f"{FALLBACK_PREFIX} aucun de {fb['si_absents_du_document']} n'est déclaré pour "
+                                 f"l'entité entière et cette période dans le document ; le composant "
+                                 f"{rule['source_concept']} est retenu comme {target}. ")
         decs = {x["decimals"] for x in matches}
         s.set("facts", fid, "source_context", m["context"], proof, "identifiant du contexte XBRL du document")
         s.set("facts", fid, "source_dimensions", "", proof, "établi par le document : contexte sans segment")
         if len(decs) == 1 and m["decimals"]:
             s.set("facts", fid, "decimals", m["decimals"], proof, "attribut decimals du document")
-        s.set("facts", fid, "normalized_concept", rule["normalized_concept"], proof, rule["id"])
+        s.set("facts", fid, "normalized_concept", target, proof, rule["id"] + (" (repli)" if fallback_note else ""))
         s.set("facts", fid, "transformation", "aucune", proof, "valeur reprise telle quelle")
         s.set("facts", fid, "value", prop["raw_value"], proof, "valeur reprise telle quelle")
         s.set("facts", fid, "normalization_justification",
-              f"Règle {rule['id']} ({tag}) : {rule['source_concept']} [{rule['source_unit']}, {rule['period_type']}] "
-              f"-> {rule['normalized_concept']} ; valeur reprise telle quelle ; contexte {m['context']} sans segment "
+              f"{fallback_note}Règle {rule['id']} ({tag}) : {rule['source_concept']} [{rule['source_unit']}, "
+              f"{rule['period_type']}] -> {target} ; valeur reprise telle quelle ; contexte {m['context']} sans segment "
               f"dans le document ; entrée brute {prop['source_pointer']} (sha256 {prop['entry_sha256'][:16]}…).",
               proof, rule["id"])
         s.set("facts", fid, "reconciled", "auto", proof, "rapprochement automatique XBRL en ligne")

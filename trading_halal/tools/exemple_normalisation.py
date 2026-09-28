@@ -26,6 +26,8 @@ def table(audit: Path, accn: str) -> str:
         fact = facts[r["fact_id"]]
         if fact["reconciled"] == "auto" and fact["normalized_concept"]:
             status = f"normalisé, rapproché (auto), contexte {fact['source_context']}, decimals {fact['decimals']}"
+            if fact["normalized_concept"] != r["normalized_concept"]:
+                status = f"**{fact['normalized_concept']} par repli** ; " + status
         else:
             status = "proposé (document non lu)"
         value = f"{int(r['raw_value']):,}".replace(",", " ")

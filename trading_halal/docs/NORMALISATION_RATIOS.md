@@ -1,8 +1,8 @@
 # Normalisation des faits pour les trois ratios : ordre de travail (Apple, exercice clos le 27/09/2025)
 
-> V1.16 : total_revenue et total_assets sont **proposés** par les règles `edgar_v2` ; ils ne seront normalisés qu'au
-> rapprochement avec le document. shares_outstanding n'est plus proposé (catégories d'actions à établir). Voir
-> `docs/EXEMPLE_NORMALISATION.md`.
+> V1.18 : règles `edgar_v3`. total_revenue vient de `us-gaap:Revenues` en priorité ; `RevenueFromContractWithCustomer…`
+> est un composant, retenu comme total seulement par repli explicite (« REPLI : »). Faits normalisés et rapprochés pour
+> les documents téléchargés : voir `docs/EXEMPLE_NORMALISATION.md`. shares_outstanding n'est pas proposé.
 
 Rien ici n'est encore normalisé ni rapproché : ces chiffres sont des **faits d'origine** du dossier
 `data/audit_edgar_apple/`, retrouvés avec `halal_sim.selection.select_fact` (période exacte, dépôt disponible au

@@ -41,13 +41,17 @@ FILES = {
 }
 # Concepts normalisés du projet (ceux qu'utiliserait un futur jeu de simulation).
 PROJECT_CONCEPTS = {"market_cap", "shares_outstanding", "total_assets", "interest_bearing_debt",
-                    "cash_and_interest_bearing_investments", "total_revenue", "non_compliant_revenue"}
+                    "cash_and_interest_bearing_investments", "total_revenue", "non_compliant_revenue",
+                    "revenue_from_contracts_with_customers"}  # composant (ASC 606), jamais un total par défaut
 SHARE_UNITS = {"shares", "actions"}
 SHARE_CONCEPTS = {"shares_outstanding", "market_cap"}
 # Nature de chaque concept normalisé : monétaire (unité « monnaie » + devise) ou nombre d'actions (sans devise).
 MONETARY_CONCEPTS = PROJECT_CONCEPTS - {"shares_outstanding"}
 MONETARY_UNIT = "monnaie"
-EXCLUSION_PREFIX = "NON NORMALISÉ :"  # exclusion explicite d'un fait dont le concept est mappé
+EXCLUSION_PREFIX = "NON NORMALISÉ :"
+# Exception au mappage, fait par fait : un composant retenu comme total faute d'agrégat dans le document (revue n° 14).
+FALLBACK_PREFIX = "REPLI :"
+FALLBACKS = {("revenue_from_contracts_with_customers", "total_revenue")}  # exclusion explicite d'un fait dont le concept est mappé
 UNKNOWN = "INCONNU"   # valeur explicite « non établi » (distincte du vide, qui signifie « aucune » pour les dimensions)
 CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 
@@ -290,7 +294,10 @@ def audit_folder(root: str | Path) -> AuditResult:
             if mapped is None:
                 E(f"{ctx} : concept normalisé {norm!r} sans mappage explicite de {r['source_concept']!r}")
             elif mapped != norm:
-                E(f"{ctx} : concept normalisé {norm!r} contraire au mappage ({mapped!r})")
+                if (mapped, norm) in FALLBACKS and r["normalization_justification"].startswith(FALLBACK_PREFIX):
+                    U(f"{ctx} : {norm} retenu par repli depuis {mapped} ({r['normalization_justification'][:120]})")
+                else:
+                    E(f"{ctx} : concept normalisé {norm!r} contraire au mappage ({mapped!r})")
         elif mapped:
             if r["normalization_justification"].startswith(EXCLUSION_PREFIX) and \
                     len(r["normalization_justification"]) > len(EXCLUSION_PREFIX) + 3:

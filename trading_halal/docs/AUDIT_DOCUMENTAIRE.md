@@ -111,7 +111,7 @@ une contre-vérification humaine indépendante restent nécessaires.
 - Un fait dont le concept est mappé mais qui n'est pas normalisé doit porter une justification
   « NON NORMALISÉ : motif » (exclusion explicite) ; sinon, erreur bloquante.
 - Outil : `tools/edgar_normalize.py` (`normalize`, `import-filing`, `reconcile-ixbrl`), règles
-  `config/normalisation/edgar_v2.json` (v1 retirée, revue n° 13), exemples `docs/EXEMPLE_NORMALISATION.md`.
+  `config/normalisation/edgar_v3.json` (v1 et v2 retirées, revues n° 13 et 14), exemples `docs/EXEMPLE_NORMALISATION.md`.
 
 ## Conformité aux règles (V1.14)
 
@@ -124,3 +124,10 @@ attribué à l'outil est une erreur ; une saisie humaine différente est listée
 `normalize` ne fait que proposer (`propositions_normalisation.csv`) ; aucun fait n'est normalisé sans le document du
 dépôt. `reconcile-ixbrl` établit contexte et dimensions à partir de la copie locale XBRL en ligne, puis normalise et
 rapproche. Les nombres d'actions ne sont pas normalisés automatiquement (catégories à établir par une personne).
+
+## Total et composant (revue n° 14)
+
+`revenue_from_contracts_with_customers` (composant ASC 606) s'ajoute aux concepts du projet. Un fait peut porter un
+concept différent de son mappage **uniquement** pour le repli déclaré composant → total_revenue, avec une justification
+commençant par « REPLI : » ; toute autre divergence reste une erreur bloquante. La lecture XBRL en ligne résout les
+concepts et mesures par URI d'espace de noms, exige une devise ISO 4217 et un identifiant au schéma CIK de la SEC.
