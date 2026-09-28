@@ -22,7 +22,7 @@ Depuis la racine du dépôt :
 cd trading_halal
 python3 -m halal_sim check-data                 # valide les fichiers de données de démonstration
 python3 -m halal_sim run                        # simulation complète + rapport + sensibilité au capital
-python3 -m unittest discover -s tests -v        # 35 vérifications automatiques
+python3 -m unittest discover -s tests -v        # 51 vérifications automatiques
 ```
 
 Options utiles :
@@ -42,7 +42,7 @@ Résultats :
 
 | Chemin | Rôle |
 |---|---|
-| `data/demo/` | Données **FICTIVES** : `manifest.json` (nature = FICTIF), titres, prix quotidiens, états financiers datés |
+| `data/demo/` | Données **FICTIVES** : `manifest.json` (nature = FICTIF), titres, prix quotidiens, états financiers et fiches d'activité datés par leur publication |
 | `config/simulation.json` | Capital, frais (fictifs), stratégie, politique de vente, chemins |
 | `config/rulesets/demo_fictif.json` | Référentiel de **démonstration** (seuils arbitraires, interdit sur données réelles) |
 | `config/rulesets/TEMPLATE_a_valider.json` | Modèle à compléter depuis un texte officiel ; seuils `null` → rien n'est admissible |
@@ -65,6 +65,11 @@ Tout achat dont le coût aller-retour estimé dépasse 1,5 % du montant est refu
 
 ## Utiliser vos propres données (plus tard)
 
-Créer un dossier avec un `manifest.json` (`"nature": "REEL"`) et les trois CSV au même format que `data/demo/`,
-chaque état financier ayant sa **date de publication** et sa **source**. Le moteur refusera de tourner tant que le
-référentiel choisi n'est pas marqué `validated: true` (voir `docs/REFERENTIEL_ET_SOURCES.md`).
+Créer un dossier avec un `manifest.json` (`"nature": "REEL"`) et les quatre CSV au même format que `data/demo/`
+(titres, prix, états financiers, fiches d'activité), chaque document ayant sa **date de publication** et sa **source**.
+Un document publié le jour J n'est utilisé qu'à partir de la décision du jour J+1 (l'heure de publication n'est pas connue).
+Tous les titres doivent être dans la devise du portefeuille (pas encore de conversion).
+
+Le moteur refusera de tourner tant que le référentiel choisi n'est pas **complet** : texte source daté, chaque seuil
+renseigné et sourcé, source du classement des activités, nom et date de la validation, `validated: true` et
+`demo_only: false`. Basculer les booléens ne suffit pas (voir `docs/REFERENTIEL_ET_SOURCES.md`).

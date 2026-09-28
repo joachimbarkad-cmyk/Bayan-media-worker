@@ -6,8 +6,9 @@ l'ouverture du jour de bourse suivant) :
 - titre ADMISSIBLE dont la clôture <= SMA -> ne pas détenir (VENTE s'il est détenu) ;
 - titre EXCLU ou INCERTAIN -> jamais d'achat ; vente s'il est détenu, selon la politique configurée.
 
-Pourquoi celle-ci : règle publique et ancienne (cf. M. Faber, « A Quantitative Approach
-to Tactical Asset Allocation », 2007, version à 10 mois), un seul paramètre, peu de
+Pourquoi celle-ci : variante (200 jours de bourse, titres individuels) de la règle de moyenne
+mobile sur 10 mois décrite par M. Faber, « A Quantitative Approach to Tactical Asset
+Allocation », 2007 — inspirée de cette approche, pas sa reproduction exacte. Un seul paramètre, peu de
 transactions (important quand les frais fixes pèsent sur un petit capital), et en
 dehors des tendances haussières le capital reste en liquidités non rémunérées.
 Elle ne prédit rien : elle réagit à des prix déjà observés.
@@ -18,10 +19,38 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from .data import PointInTimeView
-from .screening import ADMISSIBLE, EXCLU, INCERTAIN, ScreeningResult
+from .screening import ADMISSIBLE, EXCLU, INCERTAIN, INCERTAIN_CAUSES, ScreeningResult
 
 BUY, SELL, HOLD, NONE = "ACHAT", "VENTE", "CONSERVER", "AUCUNE"
 MAX_PRICE_STALENESS = timedelta(days=7)
+
+
+class PolicyConfigError(ValueError):
+    pass
+
+
+def validate_holding_policy(policy: dict) -> None:
+    """on_exclu : SELL uniquement. on_incertain : SELL/HOLD, ou un dictionnaire {cause: SELL/HOLD}."""
+    if policy.get("on_exclu") != "SELL":
+        raise PolicyConfigError("holding_policy.on_exclu doit valoir SELL (un titre EXCLU détenu est vendu)")
+    inc = policy.get("on_incertain")
+    if isinstance(inc, str):
+        if inc not in ("SELL", "HOLD"):
+            raise PolicyConfigError("holding_policy.on_incertain doit valoir SELL ou HOLD")
+    elif isinstance(inc, dict):
+        unknown = set(inc) - set(INCERTAIN_CAUSES)
+        if unknown or any(v not in ("SELL", "HOLD") for v in inc.values()):
+            raise PolicyConfigError(f"holding_policy.on_incertain invalide ; causes permises : {INCERTAIN_CAUSES}")
+    else:
+        raise PolicyConfigError("holding_policy.on_incertain manquant")
+
+
+def incertain_action(policy: dict, causes: list[str]) -> str:
+    """Vente dès qu'UNE cause d'incertitude est réglée sur SELL ; cause non listée = SELL (prudence)."""
+    inc = policy["on_incertain"]
+    if isinstance(inc, str):
+        return inc
+    return "SELL" if any(inc.get(c, "SELL") == "SELL" for c in (causes or ["INCONNUE"])) else "HOLD"
 
 
 @dataclass
@@ -63,7 +92,8 @@ class SmaTrendStrategy:
         if screening.status in (EXCLU, INCERTAIN):
             motif = "; ".join(screening.reasons)
             if held:
-                action = policy["on_exclu"] if screening.status == EXCLU else policy["on_incertain"]
+                action = (policy["on_exclu"] if screening.status == EXCLU
+                          else incertain_action(policy, screening.incertain_causes))
                 if action == "SELL":
                     d = Decision(t, SELL, f"VENTE_STATUT_{screening.status}", motif, inputs)
                 else:

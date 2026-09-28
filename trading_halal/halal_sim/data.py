@@ -1,8 +1,12 @@
 """Import, validation et accès « point dans le temps » aux données.
 
 Les décisions (filtre et stratégie) ne reçoivent jamais le jeu de données complet :
-elles passent par `PointInTimeView`, qui ne renvoie que des éléments datés au plus
-tard à la date de décision et lève `LookaheadError` sinon.
+elles passent par `PointInTimeView`, qui ne renvoie que des éléments connus à la date
+de décision et lève `LookaheadError` sinon.
+
+Règle de publication (conservatrice) : l'heure de publication n'étant pas connue, un
+document (état financier, fiche d'activité) publié le jour J n'est utilisable qu'à partir
+de la décision du jour J+1. Les prix du jour J, eux, sont utilisables à la clôture de J.
 """
 from __future__ import annotations
 
@@ -33,8 +37,8 @@ class Bar:
     volume: int
 
 
-SECURITY_COLS = ["ticker", "name", "instrument_type", "country", "currency", "activity_codes",
-                 "activity_description", "activity_as_of", "activity_source"]
+SECURITY_COLS = ["ticker", "name", "instrument_type", "country", "currency"]
+ACTIVITY_COLS = ["ticker", "available_date", "activity_codes", "activity_description", "source"]
 PRICE_COLS = ["date", "ticker", "open", "high", "low", "close", "volume"]
 FUND_NUMERIC = ["market_cap", "total_assets", "interest_bearing_debt",
                 "cash_and_interest_bearing_investments", "total_revenue", "non_compliant_revenue"]
@@ -48,14 +52,17 @@ class Dataset:
     securities: dict[str, dict]
     bars: dict[str, list[Bar]]
     fundamentals: dict[str, list[dict]]
+    activities: dict[str, list[dict]]
     calendar: list[date]
     file_hashes: dict[str, str]
     _bar_dates: dict[str, list[date]] = field(default_factory=dict, repr=False)
     _fund_dates: dict[str, list[date]] = field(default_factory=dict, repr=False)
+    _act_dates: dict[str, list[date]] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         self._bar_dates = {t: [b.date for b in bs] for t, bs in self.bars.items()}
         self._fund_dates = {t: [f["available_date"] for f in fs] for t, fs in self.fundamentals.items()}
+        self._act_dates = {t: [a["available_date"] for a in acts] for t, acts in self.activities.items()}
 
     @property
     def nature(self) -> str:
@@ -118,7 +125,7 @@ def load_dataset(root: str | Path) -> Dataset:
     if manifest.get("nature") not in ("FICTIF", "REEL"):
         raise DataError("manifest.json : 'nature' doit valoir FICTIF ou REEL")
     files = manifest.get("files", {})
-    paths = {k: root / files.get(k, "") for k in ("securities", "prices", "fundamentals")}
+    paths = {k: root / files.get(k, "") for k in ("securities", "prices", "fundamentals", "activities")}
 
     securities: dict[str, dict] = {}
     for n, row in enumerate(_read_csv(paths["securities"], SECURITY_COLS), start=2):
@@ -126,9 +133,28 @@ def load_dataset(root: str | Path) -> Dataset:
         if not t or t in securities:
             raise DataError(f"{paths['securities'].name} ligne {n} : ticker vide ou en double ({t!r})")
         row = {k: (v or "").strip() for k, v in row.items()}
-        row["activity_codes"] = [c.strip() for c in row["activity_codes"].split(";") if c.strip()]
-        row["activity_as_of"] = _date(row["activity_as_of"], f"{t} activity_as_of") if row["activity_as_of"] else None
+        if not row["currency"]:
+            raise DataError(f"{paths['securities'].name} ligne {n} : devise manquante pour {t}")
         securities[t] = row
+
+    activities: dict[str, list[dict]] = {t: [] for t in securities}
+    for n, row in enumerate(_read_csv(paths["activities"], ACTIVITY_COLS), start=2):
+        ctx = f"{paths['activities'].name} ligne {n}"
+        t = row["ticker"].strip()
+        if t not in securities:
+            raise DataError(f"{ctx} : ticker {t!r} absent de l'univers")
+        rec = {"ticker": t, "available_date": _date(row["available_date"], ctx),
+               "activity_codes": [c.strip() for c in row["activity_codes"].split(";") if c.strip()],
+               "activity_description": (row["activity_description"] or "").strip(),
+               "source": (row["source"] or "").strip()}
+        if not rec["source"]:
+            raise DataError(f"{ctx} : source manquante (traçabilité obligatoire)")
+        activities[t].append(rec)
+    for t in activities:
+        activities[t].sort(key=lambda r: r["available_date"])
+        dates = [r["available_date"] for r in activities[t]]
+        if len(dates) != len(set(dates)):
+            raise DataError(f"{paths['activities'].name} : deux fiches d'activité le même jour pour {t}")
 
     bars: dict[str, list[Bar]] = {t: [] for t in securities}
     seen: set[tuple[str, date]] = set()
@@ -174,7 +200,7 @@ def load_dataset(root: str | Path) -> Dataset:
         raise DataError("Aucun prix chargé")
     hashes = {k: _sha256(p) for k, p in paths.items()}
     hashes["manifest"] = _sha256(manifest_path)
-    return Dataset(root, manifest, securities, bars, fundamentals, calendar, hashes)
+    return Dataset(root, manifest, securities, bars, fundamentals, activities, calendar, hashes)
 
 
 class PointInTimeView:
@@ -192,6 +218,8 @@ class PointInTimeView:
             self.max_date_read = d
 
     def security(self, ticker: str) -> dict:
+        """Identifiants statiques uniquement (nom, type d'instrument, devise). L'activité, qui peut
+        changer dans le temps, passe par `latest_activity()`."""
         return self._ds.securities[ticker]
 
     def last_bars(self, ticker: str, n: int) -> list[Bar]:
@@ -202,12 +230,19 @@ class PointInTimeView:
             self._touch(b.date)
         return out
 
-    def latest_fundamentals(self, ticker: str) -> dict | None:
-        """Dernier état financier PUBLIÉ (available_date) au plus tard à la date de décision."""
-        dates = self._ds._fund_dates.get(ticker, [])
-        i = bisect.bisect_right(dates, self.as_of)
+    def _latest_published(self, dates: list[date], records: list[dict]) -> dict | None:
+        # bisect_left : seuls les documents publiés STRICTEMENT avant la date de décision sont visibles.
+        i = bisect.bisect_left(dates, self.as_of)
         if not i:
             return None
-        rec = self._ds.fundamentals[ticker][i - 1]
+        rec = records[i - 1]
         self._touch(rec["available_date"])
         return rec
+
+    def latest_fundamentals(self, ticker: str) -> dict | None:
+        """Dernier état financier publié avant le jour de décision."""
+        return self._latest_published(self._ds._fund_dates.get(ticker, []), self._ds.fundamentals.get(ticker, []))
+
+    def latest_activity(self, ticker: str) -> dict | None:
+        """Dernière fiche d'activité publiée avant le jour de décision."""
+        return self._latest_published(self._ds._act_dates.get(ticker, []), self._ds.activities.get(ticker, []))

@@ -25,6 +25,7 @@ def fresh_copy(ds: Dataset, **overrides) -> Dataset:
     fields = dict(root=ds.root, manifest=copy.deepcopy(ds.manifest), securities=copy.deepcopy(ds.securities),
                   bars={t: list(b) for t, b in ds.bars.items()},
                   fundamentals={t: [dict(f) for f in fs] for t, fs in ds.fundamentals.items()},
+                  activities={t: [dict(a) for a in acts] for t, acts in ds.activities.items()},
                   calendar=list(ds.calendar), file_hashes=dict(ds.file_hashes))
     fields.update(overrides)
     return Dataset(**fields)
@@ -46,3 +47,13 @@ def run(ds=None, ruleset=None, capital=None, cfg=None):
     store = Store(":memory:")
     res = run_backtest(ds or demo_dataset(), cfg or config(), ruleset or demo_ruleset(), store, capital=capital)
     return res, store
+
+
+def with_activity(ds: Dataset, ticker: str, published: str, codes: list[str]) -> Dataset:
+    """Copie du jeu de données avec une fiche d'activité supplémentaire publiée à la date donnée."""
+    from datetime import date
+    acts = {t: [dict(a) for a in lst] for t, lst in ds.activities.items()}
+    acts[ticker] = sorted(acts[ticker] + [{"ticker": ticker, "available_date": date.fromisoformat(published),
+                                           "activity_codes": codes, "activity_description": "test",
+                                           "source": "TEST"}], key=lambda a: a["available_date"])
+    return fresh_copy(ds, activities=acts)

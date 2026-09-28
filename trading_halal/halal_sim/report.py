@@ -4,6 +4,9 @@ from __future__ import annotations
 import json
 import sqlite3
 
+from . import PROJECT_ROOT
+from .safety import network_blocked, scan_package
+
 METRIC_LABELS = [
     ("valeur_finale", "Valeur finale"),
     ("rendement_total_pct", "Rendement total (%)"),
@@ -18,6 +21,29 @@ METRIC_LABELS = [
     ("glissement_total", "Coût de glissement simulé"),
     ("couts_total_pct_capital", "Coûts totaux (% du capital initial)"),
 ]
+
+
+# Traduction en langage simple des codes enregistrés dans la base.
+REASON_TEXT = {
+    "SIGNAL_ACHAT_TENDANCE": "Titre admissible dont le cours est au-dessus de sa moyenne : achat simulé.",
+    "SIGNAL_VENTE_TENDANCE": "Le cours est repassé sous sa moyenne : vente simulée.",
+    "CONSERVE_TENDANCE_HAUSSIERE": "Déjà détenu et toujours au-dessus de sa moyenne : on garde.",
+    "CONSERVE_TENDANCE_INCALCULABLE": "Déjà détenu, mais la tendance n'est pas calculable : on garde sans renforcer.",
+    "REFUS_SOUS_MOYENNE": "Admissible, mais le cours est sous sa moyenne : pas d'achat.",
+    "REFUS_HISTORIQUE_INSUFFISANT": "Pas assez d'historique de prix pour appliquer la règle : pas d'achat.",
+    "REFUS_STATUT_EXCLU": "Le filtre religieux exclut ce titre : achat interdit.",
+    "REFUS_STATUT_INCERTAIN": "Le filtre religieux ne peut pas conclure (donnée ou règle manquante) : achat interdit par prudence.",
+    "REFUS_COUT_DISPROPORTIONNE": "Les frais estimés sont trop élevés par rapport au montant investi : opération jugée peu pertinente.",
+    "REFUS_CAPITAL_INSUFFISANT": "Le budget ne permet pas d'acheter une seule action entière avec ses frais.",
+    "VENTE_STATUT_EXCLU": "Titre détenu devenu EXCLU : vente simulée.",
+    "VENTE_STATUT_INCERTAIN": "Titre détenu devenu INCERTAIN : vente simulée selon la politique choisie.",
+    "GEL_STATUT_INCERTAIN": "Titre détenu devenu INCERTAIN : conservé sans renforcement, à revoir.",
+    "REFERENCE_ACHAT_INITIAL": "Achat initial du portefeuille de référence.",
+}
+
+
+def _plain(code: str) -> str:
+    return REASON_TEXT.get(code, code)
 
 
 def _table(headers: list[str], rows: list[list]) -> str:
@@ -97,13 +123,20 @@ def build_report(conn: sqlite3.Connection, run_id: int, sensitivity_run_ids: lis
                  "(le capital est resté en liquidités).\n")
 
     L.append(f"## Filtre religieux au {last_date}\n")
+    thresholds = {x["id"]: x.get("max") for x in rs["financial_ratios"]}
+    tag = "" if rs.get("validated") else " — seuil de DÉMO arbitraire"
+    L.append("ADMISSIBLE = aucun motif d'exclusion ni d'incertitude trouvé avec le référentiel et les données disponibles ; "
+             "ce n'est pas une certification. Les documents publiés un jour J ne sont utilisés qu'à partir du jour J+1.\n")
     rows = []
     for r in conn.execute("SELECT * FROM screenings WHERE run_id=? AND decision_date=? ORDER BY status, ticker",
                           (run_id, last_date)):
-        ratios = ", ".join(f"{k}={v:.1%}" for k, v in json.loads(r["ratios_json"]).items()) or "—"
+        ratios = "<br>".join(
+            f"{k} = {v:.1%} (seuil {'non défini' if thresholds.get(k) is None else format(thresholds[k], '.0%')}{tag})"
+            for k, v in json.loads(r["ratios_json"]).items()) or "—"
         fin = f"{r['fundamentals_period_end']} publié le {r['fundamentals_available_date']}" if r["fundamentals_period_end"] else "aucune"
-        rows.append([r["ticker"], f"**{r['status']}**", "; ".join(json.loads(r["reasons_json"])), ratios, fin,
-                     r["activity_codes"]])
+        act = f"{r['activity_codes']} (fiche du {r['activity_available_date']})" if r["activity_available_date"] else "aucune fiche"
+        causes = f" [causes : {r['incertain_causes']}]" if r["incertain_causes"] and r["status"] == "INCERTAIN" else ""
+        rows.append([r["ticker"], f"**{r['status']}**{causes}", "; ".join(json.loads(r["reasons_json"])), ratios, fin, act])
     L.append(_table(["Titre", "Statut", "Motifs", "Ratios", "Données financières", "Activité"], rows))
     src = conn.execute("SELECT DISTINCT fundamentals_source s FROM screenings WHERE run_id=? AND s IS NOT NULL", (run_id,)).fetchall()
     L.append("\nSources des données financières : " + "; ".join(s["s"] for s in src) + "\n")
@@ -125,17 +158,17 @@ def build_report(conn: sqlite3.Connection, run_id: int, sensitivity_run_ids: lis
                           "ORDER BY final_action, ticker", (run_id, last_date)):
         inp = json.loads(r["inputs_json"])
         trend = f"clôture {inp['cloture']} / SMA {inp['sma']}" if "sma" in inp else "—"
-        rows.append([r["ticker"], r["screening_status"], r["signal"], f"**{r['final_action']}**", r["reason_code"],
-                     trend, r["detail"]])
-    L.append(_table(["Titre", "Statut", "Signal", "Décision", "Code", "Données", "Détail"], rows))
+        rows.append([r["ticker"], r["screening_status"], f"**{r['final_action']}**", _plain(r["reason_code"]),
+                     trend, f"`{r['reason_code']}` — {r['detail']}"])
+    L.append(_table(["Titre", "Statut", "Décision", "En clair", "Données", "Code et détail"], rows))
     L.append("\nUne décision « ACHAT » ici est une proposition simulée pour le jour de bourse suivant, pas un conseil.\n")
 
     L.append("## Refus et ventes imposées sur toute la période (stratégie)\n")
-    rows = [[r["reason_code"], r["n"]] for r in conn.execute(
+    rows = [[f"`{r['reason_code']}`", _plain(r["reason_code"]), r["n"]] for r in conn.execute(
         "SELECT reason_code, COUNT(*) n FROM decisions WHERE run_id=? AND portfolio='strategie' AND "
         "(reason_code LIKE 'REFUS%' OR reason_code LIKE 'VENTE_STATUT%' OR reason_code LIKE 'GEL%') "
         "GROUP BY reason_code ORDER BY n DESC", (run_id,))]
-    L.append(_table(["Motif", "Nombre de décisions"], rows))
+    L.append(_table(["Code", "En clair", "Nombre de décisions"], rows))
     L.append("\n### Achats refusés pour coût ou capital (10 derniers, deux portefeuilles)\n")
     rows = [[r["decision_date"], r["portfolio"], r["ticker"], r["reason_code"], r["detail"]] for r in conn.execute(
         "SELECT * FROM decisions WHERE run_id=? AND reason_code IN "
@@ -155,13 +188,17 @@ def build_report(conn: sqlite3.Connection, run_id: int, sensitivity_run_ids: lis
 
     L.append("\n## Vérifications automatiques de cette exécution\n")
     L.append(_table(["Contrôle", "Résultat", "Détail"], [[n, "OK" if ok else "**ÉCHEC**", d] for n, ok, d in checks]))
+    L.append("\nCes contrôles portent sur le code Python de ce projet et sur ce processus ; ils ne remplacent pas une "
+             "isolation au niveau du système. Le projet ne contient aucun connecteur de courtage.")
 
     L.append("\n## Limites à garder en tête\n")
     L.append("- Données fictives : aucune conclusion de rentabilité possible. Il faudra des données réelles datées.\n"
              "- Une seule période, un seul paramètre (SMA 200) : risque de sur-interprétation, même sur données réelles.\n"
              "- Dividendes, purification, fiscalité, change et jours fériés ne sont pas modélisés.\n"
              "- Frais fictifs : à remplacer par la grille réelle du courtier choisi.\n"
-             "- Classement d'activité supposé constant sur la période (pas d'historique daté de l'activité).\n")
+             "- Activités lues depuis un historique daté, mais aucune durée de validité maximale d'une fiche d'activité.\n"
+             "- Pas de conversion de devises : tous les titres doivent être dans la devise du portefeuille (sinon refus).\n"
+             "- La référence ne réinvestit pas le produit des ventes imposées, ce qui peut avantager la stratégie.\n")
     return "\n".join(L) + "\n"
 
 
@@ -179,6 +216,7 @@ def run_checks(conn: sqlite3.Connection, run_id: int) -> list[tuple[str, bool, s
     n_orders = q("SELECT COUNT(*) FROM orders WHERE run_id=? AND status='EXECUTE_SIMULE'")
     neg_cash = q("SELECT COUNT(*) FROM equity WHERE run_id=? AND cash < -0.01")
     sim_only = q("SELECT simulation_only FROM runs WHERE run_id=?")
+    violations = scan_package()
     return [
         ("Aucun achat d'un titre non ADMISSIBLE (statut enregistré)", bad_buys == 0, f"{bad_buys} cas"),
         ("Aucun achat d'un titre non ADMISSIBLE (recoupement avec le filtrage)", bad_buys2 == 0, f"{bad_buys2} cas"),
@@ -187,5 +225,8 @@ def run_checks(conn: sqlite3.Connection, run_id: int) -> list[tuple[str, bool, s
         ("Exécution toujours après la décision", exec_order == 0, f"{exec_order} cas sur {n_orders} ordres"),
         ("Jamais de solde de liquidités négatif (pas de marge)", neg_cash == 0, f"{neg_cash} jours"),
         ("Exécution marquée simulation uniquement", sim_only == 1, "runs.simulation_only = 1"),
-        ("Aucun ordre réel", True, "Aucun module de courtage ; réseau coupé par safety.forbid_network()"),
+        ("Code sans bibliothèque réseau/courtage ni lecture de clés (analyse statique à ce lancement)",
+         not violations, "; ".join(violations) or f"{len(list((PROJECT_ROOT / 'halal_sim').glob('*.py')))} fichiers analysés"),
+        ("Réseau effectivement coupé pendant cette exécution", network_blocked(),
+         "socket.connect / create_connection / getaddrinfo remplacés par un refus"),
     ]

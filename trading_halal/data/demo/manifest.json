@@ -7,6 +7,7 @@
   "files": {
     "securities": "securities_FICTIF.csv",
     "prices": "prices_FICTIF.csv",
-    "fundamentals": "fundamentals_FICTIF.csv"
+    "fundamentals": "fundamentals_FICTIF.csv",
+    "activities": "activities_FICTIF.csv"
   }
 }

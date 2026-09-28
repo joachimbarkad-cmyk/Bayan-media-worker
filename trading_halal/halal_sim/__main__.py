@@ -33,9 +33,10 @@ def cmd_check_data(args) -> int:
         print(f"  ! {ds.manifest['warning']}")
     print(f"  {len(ds.securities)} titres, {n_bars} barres de prix, {ds.calendar[0]} → {ds.calendar[-1]}")
     for t in ds.tickers:
-        f = ds.fundamentals[t]
-        print(f"  {t:6} {ds.securities[t]['instrument_type']:28} {len(ds.bars[t]):5} prix  "
-              f"{len(f):3} états financiers  {';'.join(ds.securities[t]['activity_codes'])}")
+        f, acts = ds.fundamentals[t], ds.activities[t]
+        hist = " → ".join(f"{a['available_date']}:{';'.join(a['activity_codes']) or '?'}" for a in acts) or "aucune fiche"
+        print(f"  {t:6} {ds.securities[t]['instrument_type']:28} {ds.securities[t]['currency']}  {len(ds.bars[t]):5} prix  "
+              f"{len(f):3} états financiers  activité {hist}")
     print("Validation OK.")
     return 0
 

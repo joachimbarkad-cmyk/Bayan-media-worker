@@ -22,8 +22,8 @@ from .broker import CostModel, Fill, PaperBroker
 from .data import Dataset, PointInTimeView
 from .db import Store
 from .metrics import compute_metrics
-from .screening import ADMISSIBLE, EXCLU, ScreeningResult, screen_security
-from .strategy import BUY, NONE, SELL, Decision, SmaTrendStrategy
+from .screening import ADMISSIBLE, EXCLU, ScreeningResult, real_data_problems, screen_security, structural_problems
+from .strategy import BUY, NONE, SELL, Decision, SmaTrendStrategy, incertain_action, validate_holding_policy
 
 PORTFOLIOS = ("strategie", "reference")
 
@@ -52,10 +52,21 @@ class BacktestResult:
     equity: dict[str, list[tuple[date, float, float]]] = field(default_factory=dict)
 
 
-def check_run_allowed(ds: Dataset, ruleset: dict) -> None:
-    if ds.nature == "REEL" and (ruleset.get("demo_only") or not ruleset.get("validated")):
-        raise PolicyError("Refus : données REELLES avec un référentiel de démonstration ou non validé. "
-                          "Complétez et faites valider un référentiel (docs/REFERENTIEL_ET_SOURCES.md).")
+def check_run_allowed(ds: Dataset, ruleset: dict, config: dict) -> None:
+    """Refuse toute simulation dont le cadre n'est pas sain. Revalide le référentiel ici (et pas seulement
+    au chargement) : un dictionnaire modifié en mémoire ne peut pas contourner les contrôles."""
+    problems = structural_problems(ruleset)
+    if ds.nature == "REEL":
+        problems = real_data_problems(ruleset)
+    if problems:
+        raise PolicyError(f"Refus : référentiel '{ruleset.get('id')}' inutilisable sur des données {ds.nature} : "
+                          + " ; ".join(problems) + " (voir docs/REFERENTIEL_ET_SOURCES.md)")
+    currency = config.get("currency")
+    others = sorted({s["currency"] for s in ds.securities.values()} - {currency})
+    if others:
+        raise PolicyError(f"Refus : titres en {others} alors que le portefeuille est en {currency}. "
+                          "La conversion de devises n'est pas encore modélisée.")
+    validate_holding_policy(config["holding_policy"])
 
 
 def month_end_dates(calendar: list[date]) -> list[date]:
@@ -73,7 +84,7 @@ def code_hash() -> str:
 class Backtest:
     def __init__(self, ds: Dataset, config: dict, ruleset: dict, store: Store, *, capital: float | None = None,
                  label: str = "principal", parent_run_id: int | None = None):
-        check_run_allowed(ds, ruleset)
+        check_run_allowed(ds, ruleset, config)
         self.ds, self.cfg, self.ruleset, self.store = ds, config, ruleset, store
         self.capital = float(capital if capital is not None else config["initial_capital"])
         c = config["costs"]
@@ -175,7 +186,7 @@ class Backtest:
             scr = screenings[t]
             if scr.status == ADMISSIBLE:
                 continue
-            action = self.policy["on_exclu"] if scr.status == EXCLU else self.policy["on_incertain"]
+            action = self.policy["on_exclu"] if scr.status == EXCLU else incertain_action(self.policy, scr.incertain_causes)
             if action == "SELL":
                 close, view = self._close(t, d)
                 sells.append((Decision(t, SELL, f"VENTE_STATUT_{scr.status}", "; ".join(scr.reasons),
@@ -233,7 +244,7 @@ class Backtest:
                 screenings = {}
                 for t in self.ds.tickers:
                     r = screen_security(PointInTimeView(self.ds, d), t, self.ruleset)
-                    self.store.add_screening(self.run_id, r, self.ds.securities[t])
+                    self.store.add_screening(self.run_id, r)
                     screenings[t] = r
                 pending["strategie"] += self._decide_strategy(d, screenings)
                 pending["reference"] += self._decide_reference(d, screenings)

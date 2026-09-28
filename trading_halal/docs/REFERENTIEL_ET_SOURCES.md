@@ -13,7 +13,11 @@
 | Absence de marge, de vente à découvert, de levier et de fractions d'action | `halal_sim/broker.py` (le courtier simulé refuse) | Règle imposée par le cahier des charges |
 | Activités EXCLUES : banque et assurance conventionnelles, alcool, porc, jeux de hasard, divertissement pour adultes | `activity_rules` | Exclusions largement partagées ; **à confirmer avec le référentiel retenu** |
 | Activités INCERTAINES : tabac, armement, médias/divertissements, hôtellerie/loisirs | `activity_rules` | **Décision religieuse à prendre par vous** (les référentiels divergent) |
-| Activité inconnue ou absente → INCERTAIN | `screening.py` | Choix conservateur |
+| Activité lue dans un **historique daté** (`activities_*.csv`) ; un document publié le jour J n'est utilisé qu'à partir de J+1 | `data.py` | Évite toute lecture d'une information future (revue n° 1) |
+| Activité inconnue, absente ou sans fiche publiée → INCERTAIN | `screening.py` | Choix conservateur |
+| Les activités « cœur » (banque et assurance conventionnelles, alcool, porc, jeux, divertissement pour adultes) doivent figurer dans tout référentiel et ne peuvent pas y être classées ADMISSIBLE | `structural_problems()` | Garde-fou logiciel contre un référentiel mal saisi ; si votre référentiel exige autre chose, il faudra modifier ce code en connaissance de cause |
+| Trois familles de ratios obligatoires (`dette_a_interet`, `liquidites_a_interet`, `revenus_non_conformes`), seuils `null` ou dans ]0 ; 1] | `structural_problems()` | Un référentiel vidé ne peut plus laisser passer un titre sans contrôle financier (revue n° 1) |
+| Chaque INCERTAIN porte sa cause (`ACTIVITE`, `DONNEE_MANQUANTE`, `DONNEE_PERIMEE`, `SEUIL_NON_DEFINI`), politique de conservation réglable par cause | `screening.py`, `holding_policy` | Mécanisme technique ; le **réglage** relève de votre référentiel (défaut : vente) |
 | Données financières absentes, incomplètes ou périmées (> 200 jours après la fin de période) → INCERTAIN | `screening.py` + `max_fundamentals_age_days` | Choix conservateur ; durée de 200 j **à valider** |
 | Seuils financiers | `config/rulesets/demo_fictif.json` | **Valeurs ARBITRAIRES de démonstration (20 % / 20 % / 3 %)**, volontairement différentes des chiffres cités ci-dessous. Interdites sur des données réelles (le moteur refuse). |
 | Seuils financiers | `config/rulesets/TEMPLATE_a_valider.json` | `null` : aucun titre ne peut être ADMISSIBLE tant qu'ils ne sont pas renseignés depuis un texte source |
@@ -38,7 +42,9 @@ Liens de recherche ayant fourni les informations secondaires :
 2. Copier `config/rulesets/TEMPLATE_a_valider.json` vers un nouveau fichier, renseigner `reference_text`,
    chaque `max` et chaque `source` (référence exacte au paragraphe), le dénominateur, et le statut des activités.
 3. Faire relire par une personne qualifiée (savant ou comité charia de votre choix) ; renseigner `validated_by` et `validated_on`,
-   puis seulement `validated: true`.
+   `activity_rules_source`, puis seulement `validated: true` et `demo_only: false`.
+   Le logiciel vérifie tous ces champs (`real_data_problems()`) avant d'accepter des données réelles ; une source
+   contenant « DEMO » ou « ARBITRAIRE » est refusée. Il ne peut évidemment pas vérifier que la validation a réellement eu lieu.
 4. Ajouter un test qui fige les valeurs validées (un changement accidentel doit faire échouer les tests).
 
 ## 4. Questions religieuses que le logiciel ne peut pas trancher

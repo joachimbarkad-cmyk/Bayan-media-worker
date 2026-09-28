@@ -4,12 +4,12 @@ import sqlite3
 import unittest
 from datetime import date
 
-from helpers import demo_dataset, fresh_copy, run
+from helpers import demo_dataset, demo_ruleset, fresh_copy, run, with_activity
 
 from halal_sim.broker import CostModel, PaperBroker
 from halal_sim.data import Bar, LookaheadError, PointInTimeView
 from halal_sim.db import Store
-from halal_sim.screening import ADMISSIBLE
+from halal_sim.screening import ADMISSIBLE, EXCLU, screen_security
 
 CUTOFF = date(2023, 6, 30)  # dernier jour de bourse de juin 2023 dans le calendrier fictif
 
@@ -29,6 +29,23 @@ class LookaheadTests(unittest.TestCase):
                 self.assertTrue(f is None or f["available_date"] <= d)
             self.assertLessEqual(v.max_date_read, d)
 
+    def test_activity_published_later_does_not_affect_earlier_screening(self):
+        """Cas signalé en revue : une fiche d'activité datée du 2025-12-01 modifiait le filtrage du 2021-10-29."""
+        ds = with_activity(demo_dataset(), "FXALP", "2025-12-01", ["ALCOHOL"])
+        early = screen_security(PointInTimeView(ds, date(2021, 10, 29)), "FXALP", demo_ruleset())
+        self.assertEqual(early.status, ADMISSIBLE)
+        self.assertLessEqual(early.max_date_read, date(2021, 10, 29))
+        self.assertEqual(early.activity_ref["available_date"], "2021-01-01")
+        late = screen_security(PointInTimeView(ds, date(2025, 12, 2)), "FXALP", demo_ruleset())
+        self.assertEqual(late.status, EXCLU)
+
+    def test_documents_published_on_decision_day_are_not_used(self):
+        ds = demo_dataset()
+        v = PointInTimeView(ds, date(2024, 8, 14))   # publication FXKAP ce jour-là
+        self.assertLess(v.latest_fundamentals("FXKAP")["available_date"], date(2024, 8, 14))
+        v = PointInTimeView(ds, date(2024, 3, 15))   # fiche d'activité FXLAM ce jour-là
+        self.assertEqual(v.latest_activity("FXLAM")["available_date"], date(2021, 1, 1))
+
     def test_view_raises_on_future_touch(self):
         v = PointInTimeView(demo_dataset(), date(2023, 1, 2))
         with self.assertRaises(LookaheadError):
@@ -46,7 +63,8 @@ class LookaheadTests(unittest.TestCase):
                            b.volume) for b in bs]
         funds = {t: [dict(f, interest_bearing_debt=f["market_cap"] * 5) if f["available_date"] > CUTOFF else f
                      for f in fs] for t, fs in base.fundamentals.items()}
-        altered = fresh_copy(base, bars=bars, fundamentals=funds)
+        altered = with_activity(fresh_copy(base, bars=bars, fundamentals=funds), "FXALP", "2023-07-03", ["ALCOHOL"])
+        altered = with_activity(altered, "FXBET", "2023-07-03", ["CODE_INCONNU"])
 
         _, s1 = run(ds=base)
         _, s2 = run(ds=altered)

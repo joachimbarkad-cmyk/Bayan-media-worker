@@ -36,6 +36,11 @@ SECURITIES = [
     ("FXOBL", "Obligation Omicron 2030 (fictif)", "OBLIGATION_CONVENTIONNELLE", "CONVENTIONAL_BANKING", "Obligation à coupon d'intérêt", 100.0, 0.0, 0.05),
 ]
 
+# Changements d'activité publiés en cours de période (ticker, date de publication, codes, description)
+ACTIVITY_CHANGES = [
+    ("FXLAM", "2024-03-15", "TRANSPORT;GAMBLING", "Transport routier ; rachat d'un casino annoncé le 2024-03-15"),
+]
+
 # ticker -> (dette/capitalisation, liquidités+placements à intérêt/capitalisation, revenus non conformes/CA)
 RATIOS = {
     "FXALP": (0.05, 0.08, 0.0),
@@ -104,10 +109,18 @@ def main() -> None:
 
     with open(OUT / "securities_FICTIF.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["ticker", "name", "instrument_type", "country", "currency", "activity_codes",
-                    "activity_description", "activity_as_of", "activity_source"])
-        for ticker, name, itype, codes, desc, *_ in SECURITIES:
-            w.writerow([ticker, name, itype, "XX", "EUR", codes, desc, "2021-01-01", SOURCE])
+        w.writerow(["ticker", "name", "instrument_type", "country", "currency"])
+        for ticker, name, itype, *_ in SECURITIES:
+            w.writerow([ticker, name, itype, "XX", "EUR"])
+
+    # Historique daté des activités : une fiche initiale par titre, puis les changements.
+    with open(OUT / "activities_FICTIF.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["ticker", "available_date", "activity_codes", "activity_description", "source"])
+        for ticker, _n, _t, codes, desc, *_ in SECURITIES:
+            w.writerow([ticker, "2021-01-01", codes, desc, SOURCE])
+        for row in ACTIVITY_CHANGES:
+            w.writerow([*row, SOURCE])
 
     periods = []
     y, q = 2020, 3
@@ -150,7 +163,7 @@ def main() -> None:
         "generator": "tools/generate_demo_data.py",
         "seed": SEED,
         "files": {"securities": "securities_FICTIF.csv", "prices": "prices_FICTIF.csv",
-                  "fundamentals": "fundamentals_FICTIF.csv"},
+                  "fundamentals": "fundamentals_FICTIF.csv", "activities": "activities_FICTIF.csv"},
     }
     (OUT / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Données fictives écrites dans {OUT}")

@@ -1,7 +1,7 @@
 import unittest
 from datetime import date
 
-from helpers import demo_dataset, demo_ruleset, fresh_copy, template_ruleset
+from helpers import demo_dataset, demo_ruleset, fresh_copy, template_ruleset, with_activity
 
 from halal_sim.data import PointInTimeView
 from halal_sim.screening import ADMISSIBLE, EXCLU, INCERTAIN, RulesetError, load_ruleset, screen_security
@@ -29,9 +29,11 @@ class ScreeningTests(unittest.TestCase):
         self.assertTrue(any("Dette" in m for m in r.reasons))
 
     def test_fundamentals_are_point_in_time(self):
-        # Le rapport FXKAP à dette élevée est publié le 2024-08-14 : invisible la veille.
+        # Le rapport FXKAP à dette élevée est publié le 2024-08-14 : heure inconnue, donc utilisable
+        # seulement à partir du lendemain.
         self.assertEqual(status("FXKAP", date(2024, 8, 13)).status, ADMISSIBLE)
-        self.assertEqual(status("FXKAP", date(2024, 8, 14)).status, EXCLU)
+        self.assertEqual(status("FXKAP", date(2024, 8, 14)).status, ADMISSIBLE)
+        self.assertEqual(status("FXKAP", date(2024, 8, 15)).status, EXCLU)
 
     def test_missing_value_gives_incertain(self):
         r = status("FXIOT", date(2023, 5, 31))
@@ -40,18 +42,33 @@ class ScreeningTests(unittest.TestCase):
 
     def test_stale_fundamentals_give_incertain(self):
         self.assertEqual(status("FXSIG", date(2023, 1, 31)).status, ADMISSIBLE)
-        self.assertEqual(status("FXSIG", date(2023, 7, 31)).status, INCERTAIN)
+        r = status("FXSIG", date(2023, 7, 31))
+        self.assertEqual((r.status, r.incertain_causes), (INCERTAIN, ["DONNEE_PERIMEE"]))
 
     def test_unknown_activity_gives_incertain(self):
-        ds = fresh_copy(demo_dataset())
-        ds.securities["FXALP"]["activity_codes"] = ["CODE_INCONNU"]
-        self.assertEqual(status("FXALP", date(2025, 11, 28), ds=ds).status, INCERTAIN)
-        ds.securities["FXALP"]["activity_codes"] = []
-        self.assertEqual(status("FXALP", date(2025, 11, 28), ds=ds).status, INCERTAIN)
+        ds = with_activity(demo_dataset(), "FXALP", "2025-01-02", ["CODE_INCONNU"])
+        r = status("FXALP", date(2025, 11, 28), ds=ds)
+        self.assertEqual((r.status, r.incertain_causes), (INCERTAIN, ["ACTIVITE"]))
+        ds = with_activity(demo_dataset(), "FXALP", "2025-01-02", [])
+        r = status("FXALP", date(2025, 11, 28), ds=ds)
+        self.assertEqual((r.status, r.incertain_causes), (INCERTAIN, ["DONNEE_MANQUANTE"]))
+
+    def test_no_activity_record_gives_incertain(self):
+        acts = {t: list(a) for t, a in demo_dataset().activities.items()}
+        acts["FXALP"] = []
+        r = status("FXALP", date(2025, 11, 28), ds=fresh_copy(demo_dataset(), activities=acts))
+        self.assertEqual((r.status, r.incertain_causes), (INCERTAIN, ["DONNEE_MANQUANTE"]))
+        self.assertIsNone(r.activity_ref)
+
+    def test_activity_change_is_dated(self):
+        # Rachat d'un casino publié le 2024-03-15 : pris en compte à partir du 2024-03-18 (jour de bourse suivant).
+        self.assertEqual(status("FXLAM", date(2024, 3, 15)).status, ADMISSIBLE)
+        r = status("FXLAM", date(2024, 3, 18))
+        self.assertEqual(r.status, EXCLU)
+        self.assertEqual(r.activity_ref["available_date"], "2024-03-15")
 
     def test_exclu_takes_precedence_over_incertain(self):
-        ds = fresh_copy(demo_dataset())
-        ds.securities["FXDEL"]["activity_codes"] = ["ALCOHOL", "CODE_INCONNU"]
+        ds = with_activity(demo_dataset(), "FXDEL", "2025-01-02", ["ALCOHOL", "CODE_INCONNU"])
         self.assertEqual(status("FXDEL", date(2025, 11, 28), ds=ds).status, EXCLU)
 
     def test_template_without_thresholds_admits_nothing(self):

@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS screenings(
   status TEXT NOT NULL CHECK (status IN ('ADMISSIBLE','EXCLU','INCERTAIN')),
   reasons_json TEXT NOT NULL, ratios_json TEXT,
   fundamentals_period_end TEXT, fundamentals_available_date TEXT, fundamentals_source TEXT,
-  activity_codes TEXT, activity_as_of TEXT, activity_source TEXT,
+  activity_codes TEXT, activity_available_date TEXT, activity_source TEXT, incertain_causes TEXT,
   ruleset_id TEXT NOT NULL, max_data_date TEXT,
   CHECK (max_data_date IS NULL OR max_data_date <= decision_date)
 );
@@ -91,14 +91,15 @@ class Store:
         self.conn.execute("UPDATE runs SET start_date=?, end_date=? WHERE run_id=?", (_s(start), _s(end), run_id))
         self.conn.commit()
 
-    def add_screening(self, run_id, r, sec):
-        ref = r.fundamentals_ref or {}
+    def add_screening(self, run_id, r):
+        ref, act = r.fundamentals_ref or {}, r.activity_ref or {}
         self.conn.execute(
-            "INSERT INTO screenings VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO screenings VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (run_id, _s(r.as_of), r.ticker, r.status, json.dumps(r.reasons, ensure_ascii=False),
              json.dumps({k: round(v, 6) for k, v in r.ratios.items()}), ref.get("period_end"),
-             ref.get("available_date"), ref.get("source"), ";".join(sec["activity_codes"]),
-             _s(sec["activity_as_of"]), sec["activity_source"], r.ruleset_id, _s(r.max_date_read)))
+             ref.get("available_date"), ref.get("source"), ";".join(act.get("codes", [])),
+             act.get("available_date"), act.get("source"), ";".join(r.incertain_causes), r.ruleset_id,
+             _s(r.max_date_read)))
 
     def add_decision(self, run_id, portfolio, decision_date, status, dec, final_action, reason_code, detail):
         self.conn.execute(
