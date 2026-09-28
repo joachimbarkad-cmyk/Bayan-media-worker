@@ -23,7 +23,7 @@ Depuis la racine du dépôt :
 cd trading_halal
 python3 -m halal_sim check-data                 # valide les fichiers de données de démonstration
 python3 -m halal_sim run                        # simulation complète + rapport + sensibilité au capital
-python3 -m unittest discover -s tests -v        # 157 vérifications automatiques
+python3 -m unittest discover -s tests -v        # 169 vérifications automatiques
 python3 -m halal_sim audit-docs                  # contrôle du dossier d'audit documentaire d'exemple (FICTIF)
 python3 -m halal_sim run --ruleset config/rulesets/AAOIFI_SS21_document_utilisateur.json --no-sensitivity   # référentiel tiré de votre document (non validé)
 python3 tools/edgar_collect.py collect --cik 320193 --dry-run --out collecte_brute   # collecte EDGAR (voir docs/AUDIT_DOCUMENTAIRE.md)
@@ -107,4 +107,6 @@ n'est pas modifié ; fermez les autres programmes qui l'utilisent pour que la co
 Collecte de données réelles : voir `docs/GUIDE_COLLECTE_EDGAR.md`. Premier dossier réel (Apple, non exploitable en l'état) :
 `python3 -m halal_sim audit-docs data/audit_edgar_apple` ;
 `python3 tools/edgar_collect.py verify-trace --raw collecte/apple --audit data/audit_edgar_apple` (chaque fait recalculé
-depuis le JSON brut). Ordre de normalisation des ratios : `docs/NORMALISATION_RATIOS.md`.
+depuis le JSON brut, et toute la conversion refaite et comparée). Contrôle indépendant contre une copie retéléchargée :
+`python3 tools/edgar_collect.py collect --cik 320193 --user-agent "…" --out /tmp/copie` puis
+`python3 tools/edgar_collect.py verify-source --raw collecte/apple --fresh /tmp/copie --audit data/audit_edgar_apple`. Ordre de normalisation des ratios : `docs/NORMALISATION_RATIOS.md`.

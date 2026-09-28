@@ -22,9 +22,25 @@ trois ratios n'est calculable de façon fiable à ce stade. L'ordre et les point
   date de décision. Les valeurs antérieures différentes sont signalées comme révisées.
 - Deux dépôts du même jour avec des valeurs différentes : aucune valeur retenue.
 - Un fait n'est « utilisable » que normalisé et rapproché (`reconciled = oui`).
+- La clé comprend l'émetteur ; un fait monétaire normalisé exige sa devise.
+- La valeur publiée à l'origine est conservée (`Selection.original`) pour mesurer l'effet des retraitements.
 
 ## Limites de companyfacts
 
 companyfacts ne contient qu'une partie des faits (concepts standard, entité entière). L'absence d'un poste ne prouve
 pas qu'il manque au rapport. Contexte XBRL, dimensions et précision (`decimals`) n'y figurent pas. Les rectificatifs
 (10-K/A) ne sont pas convertis automatiquement : leurs faits sont listés dans `journal_conversion.json`.
+
+## Capitalisation : règles à respecter (revue n° 11)
+
+- Enregistrer pour chaque cours : sa date, sa disponibilité à la date de décision, sa devise, et s'il est ajusté ou non.
+- Enregistrer pour chaque nombre d'actions : sa date de mesure et la date de disponibilité du dépôt qui le porte.
+- Ne jamais associer un cours historique à un nombre d'actions publié plus tard (même règle J+1 que les autres faits).
+- La convention de date (fin d'exercice, date de décision, moyenne) est une décision du référentiel, encore ouverte.
+
+## Source de cours non ajustés : décision en attente
+
+Proposée par le relecteur : **Massive Stocks Basic** (gratuit ; barres journalières avec `adjusted=false` ; deux ans
+d'historique ; cinq appels par minute). Elle exige la création d'un **compte** et d'une **clé API** : c'est à
+l'utilisateur de décider ; rien n'a été créé. Deux ans d'historique ne couvrent pas un backtest depuis 2021. Aucune
+autre source gratuite offrant à la fois la profondeur et une garantie explicite de cours non ajustés n'a été vérifiée.

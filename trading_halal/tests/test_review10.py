@@ -21,14 +21,14 @@ APPLE_RAW = ROOT / "collecte" / "apple"
 REV = "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"
 
 
-def _doc(doc_id, accepted, version="original", amends="", public=""):
-    return {"doc_id": doc_id, "accession_number": doc_id, "accepted_at": accepted, "public_available_at": public,
+def _doc(doc_id, accepted, version="original", amends="", public="", issuer="1"):
+    return {"doc_id": doc_id, "issuer_id": issuer, "accession_number": doc_id, "accepted_at": accepted, "public_available_at": public,
             "version": version, "amends_doc_id": amends}
 
 
 def _fact(doc_id, value, start, end, *, concept="c:Revenue", unit="USD", normalized="", reconciled=""):
     return {"doc_id": doc_id, "source_concept": concept, "source_unit": unit, "raw_value": value,
-            "normalized_concept": normalized, "unit": "monnaie", "value": value if normalized else "",
+            "normalized_concept": normalized, "unit": "monnaie", "currency": "USD", "value": value if normalized else "",
             "period_start": start, "period_end": end, "reconciled": reconciled}
 
 
@@ -53,7 +53,7 @@ class PointInTimeSelectionTests(unittest.TestCase):
     ]
 
     def sel(self, day, start="2023-10-01", end="2024-09-28"):
-        return select_fact(self.docs, self.facts, "c:Revenue", "USD", start, end, date.fromisoformat(day))
+        return select_fact(self.docs, self.facts, "1", "c:Revenue", "USD", start, end, date.fromisoformat(day))
 
     def test_nothing_before_or_on_the_filing_day(self):
         self.assertIsNone(self.sel("2024-10-31").fact)
@@ -89,7 +89,7 @@ class PointInTimeSelectionTests(unittest.TestCase):
     def test_same_day_conflict_is_ambiguous(self):
         docs = {"A": _doc("A", "2025-01-01T10:00:00+00:00"), "B": _doc("B", "2025-01-01T15:00:00+00:00")}
         facts = [_fact("A", "1", "", "2024-12-31"), _fact("B", "2", "", "2024-12-31")]
-        s = select_fact(docs, facts, "c:Revenue", "USD", "", "2024-12-31", date(2025, 2, 1))
+        s = select_fact(docs, facts, "1", "c:Revenue", "USD", "", "2024-12-31", date(2025, 2, 1))
         self.assertIsNone(s.fact)
         self.assertIn("ambiguïté", s.reason)
 
@@ -97,8 +97,8 @@ class PointInTimeSelectionTests(unittest.TestCase):
         self.assertFalse(self.sel("2025-11-01").usable)
         docs = {"A": _doc("A", "2025-01-01T10:00:00+00:00")}
         f = _fact("A", "5", "2024-01-01", "2024-12-31", normalized="total_revenue", reconciled="oui")
-        s = select_fact(docs, [f], "total_revenue", "monnaie", "2024-01-01", "2024-12-31", date(2025, 1, 2),
-                        concept_field="normalized_concept")
+        s = select_fact(docs, [f], "1", "total_revenue", "monnaie", "2024-01-01", "2024-12-31", date(2025, 1, 2),
+                        concept_field="normalized_concept", currency="USD")
         self.assertTrue(s.usable)
 
 
@@ -111,7 +111,7 @@ class AppleRealDataTests(unittest.TestCase):
         cls.docs, cls.facts = load_audit(APPLE)
 
     def sel(self, start, end, day):
-        return select_fact(self.docs, self.facts, REV, "USD", start, end, date.fromisoformat(day))
+        return select_fact(self.docs, self.facts, "0000320193", REV, "USD", start, end, date.fromisoformat(day))
 
     def test_fiscal_2025_revenue_only_after_the_10k(self):
         self.assertIsNone(self.sel("2024-09-29", "2025-09-27", "2025-10-31").fact)

@@ -36,7 +36,9 @@ import csv
 import hashlib
 import json
 import re
+import shutil
 import sys
+import tempfile
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -298,6 +300,7 @@ def convert(raw: Path, out: Path, forms: set[str], replace: bool = False) -> dic
         w.writerows(trace)
     exclusions = sorted(excluded.values(), key=lambda e: (e["cik"], e["filed"], e["accn"]))
     (out / JOURNAL_FILE).write_text(json.dumps({
+        "formulaires": sorted(forms),
         "entrees_brutes_companyfacts": total_items, "faits_retenus": len(trace),
         "doublons_identiques_fusionnes": merged_trace,
         "faits_ecartes": skipped_facts, "exclusions_par_depot": exclusions,
@@ -390,7 +393,111 @@ def verify_trace(raw: Path, audit: Path) -> list[str]:
                 problems.append(f"{fid} : {label} différent(e) de l'entrée brute ({a!r} contre {b!r})")
     for fid in facts.keys() - traced:
         problems.append(f"{fid} : fait sans trace vers une entrée brute")
+    problems += _compare_with_reconversion(raw, audit)
     return problems
+
+
+# Colonnes produites par la conversion. Les autres (normalisation, rapprochement, copie locale, diffusion publique,
+# rectificatif désigné à la main) relèvent du travail humain et ne sont pas comparées.
+CONVERTER_OWNED = {
+    "issuers": ("issuer_id", ["issuer_id", "name", "id_scheme", "source", "source_url"]),
+    "documents": ("doc_id", ["doc_id", "issuer_id", "doc_type", "accession_number", "url", "period_end", "accepted_at",
+                             "retrieved_at"]),
+    "facts": ("fact_id", ["fact_id", "doc_id", "source_concept", "source_unit", "raw_value", "definition",
+                          "period_type", "period_start", "period_end", "measure_date"]),
+}
+
+
+def _compare_with_reconversion(raw: Path, audit: Path) -> list[str]:
+    """Refait la conversion depuis les fichiers bruts et compare chaque colonne produite par la conversion : une date
+    d'acceptation, un formulaire, un émetteur ou une ligne modifiés, ajoutés ou supprimés sont signalés."""
+    problems: list[str] = []
+    jpath = audit / JOURNAL_FILE
+    if not jpath.exists():
+        return [f"{JOURNAL_FILE} absent : reconversion impossible"]
+    forms = set(json.loads(jpath.read_text(encoding="utf-8")).get("formulaires") or [])
+    if not forms:
+        return [f"{JOURNAL_FILE} : formulaires retenus non indiqués ; reconversion impossible"]
+    tmp = Path(tempfile.mkdtemp(prefix="reconversion_"))
+    try:
+        ref = tmp / "ref"
+        convert(raw, ref, forms)
+        for name, (key, cols) in CONVERTER_OWNED.items():
+            def load(folder):
+                with open(folder / f"{name}.csv", newline="", encoding="utf-8") as f:
+                    return {r[key]: r for r in csv.DictReader(f)}
+            mine, theirs = load(audit), load(ref)
+            for k in sorted(mine.keys() - theirs.keys()):
+                problems.append(f"{name}.csv : ligne {k} absente de la reconversion (ajoutée à la main ?)")
+            for k in sorted(theirs.keys() - mine.keys()):
+                problems.append(f"{name}.csv : ligne {k} de la reconversion absente du dossier")
+            for k in sorted(mine.keys() & theirs.keys()):
+                for c in cols:
+                    if mine[k].get(c, "") != theirs[k].get(c, ""):
+                        problems.append(f"{name}.csv {k} : {c} = {mine[k].get(c, '')!r}, reconversion "
+                                        f"{theirs[k].get(c, '')!r}")
+        for fname in (TRACE_FILE, JOURNAL_FILE):
+            if (audit / fname).read_bytes() != (ref / fname).read_bytes():
+                problems.append(f"{fname} différent de la reconversion")
+        mine_w = json.loads((audit / "manifest.json").read_text(encoding="utf-8")).get("warning")
+        if mine_w != json.loads((ref / "manifest.json").read_text(encoding="utf-8")).get("warning"):
+            problems.append("manifest.json : avertissement différent de la reconversion")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return problems
+
+
+def verify_source(raw: Path, fresh: Path, audit: Path) -> tuple[list[str], list[str]]:
+    """Contrôle INDÉPENDANT des empreintes locales : compare le dossier à une copie retéléchargée de la SEC.
+    Renvoie (écarts, invérifiables). Les métadonnées d'un dépôt et les faits déjà publiés ne devraient pas changer ;
+    un dépôt sorti de filings.recent dans la nouvelle copie est seulement « invérifiable »."""
+    problems, unverifiable = [], []
+    with open(audit / "documents.csv", newline="", encoding="utf-8") as f:
+        docs = list(csv.DictReader(f))
+    new_log = {(e["kind"], e["cik"]): e for e in json.loads((fresh / "journal_collecte.json").read_text("utf-8"))}
+    for d in docs:
+        entry = new_log.get(("submissions", d["issuer_id"]))
+        if entry is None:
+            unverifiable.append(f"{d['doc_id']} : submissions absent de la nouvelle copie")
+            continue
+        rec = _need(_need(json.loads((fresh / entry["file"]).read_text("utf-8")), "filings", entry["file"]), "recent",
+                    entry["file"])
+        try:
+            i = rec["accessionNumber"].index(d["accession_number"])
+        except ValueError:
+            unverifiable.append(f"{d['doc_id']} : dépôt absent de filings.recent dans la nouvelle copie")
+            continue
+        fresh_vals = {"accepted_at": rec["acceptanceDateTime"][i].replace("Z", "+00:00"), "doc_type": rec["form"][i],
+                      "period_end": rec["reportDate"][i]}
+        for c, v in fresh_vals.items():
+            if d[c] != v:
+                problems.append(f"{d['doc_id']} : {c} = {d[c]!r}, SEC (nouvelle copie) {v!r}")
+    with open(audit / TRACE_FILE, newline="", encoding="utf-8") as f:
+        trace = list(csv.DictReader(f))
+    old_cache, new_index = {}, {}
+    for t in trace:
+        name = Path(t["source_file"]).name
+        if name not in old_cache:
+            old_cache[name] = json.loads((raw / name).read_text(encoding="utf-8"))
+            new_index[name] = None
+            if any(e["kind"] == "companyfacts" and e["file"] == name for e in new_log.values()):
+                cf = json.loads((fresh / name).read_text(encoding="utf-8"))
+                new_index[name] = {_fact_key(tax, concept, unit, it)
+                                   for tax, concepts in cf["facts"].items()
+                                   for concept, body in concepts.items()
+                                   for unit, items in body["units"].items() for it in items}
+        tax, concept, unit, _ = parse_pointer(t["source_pointer"])
+        it = _resolve_pointer(old_cache[name], t["source_pointer"])
+        if new_index[name] is None:
+            unverifiable.append(f"{t['fact_id']} : companyfacts absent de la nouvelle copie")
+        elif _fact_key(tax, concept, unit, it) not in new_index[name]:
+            problems.append(f"{t['fact_id']} : entrée absente ou différente dans la copie retéléchargée")
+    return problems, unverifiable
+
+
+def _fact_key(tax: str, concept: str, unit: str, it: dict) -> tuple:
+    return (tax, concept, unit, it.get("accn"), it.get("start", ""), it.get("end"), json.dumps(it.get("val")),
+            it.get("form"), it.get("filed"))
 
 
 def _check_cik(obj: dict, c10: str, ctx: str) -> None:
@@ -427,6 +534,10 @@ def main(argv=None) -> int:
     r = sub.add_parser("verify-trace", help="Recalculer chaque fait converti depuis son entrée JSON brute")
     r.add_argument("--raw", required=True, type=Path)
     r.add_argument("--audit", required=True, type=Path)
+    s = sub.add_parser("verify-source", help="Comparer le dossier à une copie retéléchargée de la SEC (collect)")
+    s.add_argument("--raw", required=True, type=Path)
+    s.add_argument("--fresh", required=True, type=Path, help="dossier produit par un nouveau collect")
+    s.add_argument("--audit", required=True, type=Path)
     a = p.parse_args(argv)
     if a.cmd == "collect":
         collect(a.cik, a.out, a.user_agent, a.dry_run, replace=a.remplacer)
@@ -438,6 +549,12 @@ def main(argv=None) -> int:
         for msg in problems[:50]:
             print("  ÉCART", msg)
         print(f"{len(problems)} écart(s) entre le dossier converti et les entrées brutes.")
+        return 1 if problems else 0
+    elif a.cmd == "verify-source":
+        problems, unverifiable = verify_source(a.raw, a.fresh, a.audit)
+        for msg in problems[:50]:
+            print("  ÉCART", msg)
+        print(f"{len(problems)} écart(s) avec la copie retéléchargée ; {len(unverifiable)} élément(s) invérifiable(s).")
         return 1 if problems else 0
     else:
         res = convert(a.raw, a.out, set(a.forms.split(",")), a.remplacer)

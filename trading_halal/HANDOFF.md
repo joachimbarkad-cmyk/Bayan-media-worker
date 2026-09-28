@@ -1,4 +1,4 @@
-# HANDOFF — simulateur de trading halal, V1.10 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.11 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
@@ -6,6 +6,26 @@ Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier
 **Merci de relire de façon critique** : lectures d'information future, ADMISSIBLE erronés, contrôles d'audit
 contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
 au document de fiqh fourni par l'utilisateur**.
+
+## 000. Suite donnée à la revue n° 11
+
+Les deux défauts signalés ont été reproduits sur c48d19d (chiffre de l'émetteur 2 renvoyé pour l'émetteur 1 ; date
+d'acceptation du 10-K 2025 avancée au 30/10 : 0 écart à `verify-trace`, 0 erreur à `audit-docs`), puis corrigés.
+
+| Point | Correction | Test |
+|---|---|---|
+| Sélection sans émetteur | `select_fact(docs, facts, issuer_id, …)` : émetteur obligatoire (via le document porteur) ; devise obligatoire pour un fait monétaire normalisé | `test_review_case_other_issuer_is_never_returned`, `test_normalized_monetary_fact_requires_matching_currency` |
+| Valeur publiée à l'origine | `Selection.original` (premier dépôt disponible) à côté de la valeur retenue ; une décision antérieure à une révision n'en voit jamais l'effet | `test_original_value_is_kept_next_to_the_revised_one` |
+| `accepted_at` non contrôlé | `verify-trace` refait toute la conversion depuis les fichiers bruts et compare chaque colonne produite par la conversion (émetteurs, documents, faits), la trace et le journal ; lignes ajoutées ou supprimées signalées ; colonnes du travail humain (normalisation, rapprochement, copie locale, diffusion publique, rectificatif) non comparées | `test_review_case_moved_acceptance_date_is_detected`, `test_review_case_apple_10k_acceptance_moved_one_day_earlier`, `test_changed_form_issuer_or_removed_document_is_detected`, `test_human_columns_are_not_flagged` |
+| Empreintes locales non indépendantes | `verify-source` compare le dossier à une copie **retéléchargée de la SEC** (`collect` vers un autre dossier) : dates d'acceptation, formulaires, fins de période, et présence identique de chaque fait tracé ; dépôt sorti de `filings.recent` = « invérifiable », jamais « conforme ». Exécuté pour de vrai sur Apple : 0 écart, 0 invérifiable ; la copie altérée est détectée | `VerifySourceTests` (4 cas, hors ligne) |
+
+Limite restante : `verify-source` suppose que la SEC ne réécrit pas un dépôt passé ; il prouve la concordance avec la
+SEC à la date du second téléchargement, pas l'exactitude économique des chiffres. Mutations : 9 défauts réintroduits,
+tous détectés. **169 tests.**
+
+Source de cours (question c) : Massive Stocks Basic (gratuit, `adjusted=false`, 2 ans d'historique, 5 appels/min)
+demande un **compte et une clé API** : décision laissée à l'utilisateur ; rien n'a été créé. Règles de capitalisation
+ajoutées à `docs/NORMALISATION_RATIOS.md`.
 
 ## 00. Suite donnée à la revue n° 10 (collecte Apple)
 
@@ -83,9 +103,9 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 
 - Simulation de bout en bout (12 contrôles), avec `--ruleset` pour choisir le référentiel et `--db` pour la base.
 - `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE.
-- **157 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+- **169 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
   test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
-  test_review9 9, test_review10 15, test_ruleset_validation 10, test_screening 11.
+  test_review9 9, test_review10 15, test_review11 12, test_ruleset_validation 10, test_screening 11.
 
 ## 4. Limites connues
 

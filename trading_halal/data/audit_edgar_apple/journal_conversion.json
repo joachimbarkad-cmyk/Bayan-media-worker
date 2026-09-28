@@ -1,4 +1,8 @@
 {
+ "formulaires": [
+  "10-K",
+  "10-Q"
+ ],
  "entrees_brutes_companyfacts": 25135,
  "faits_retenus": 15068,
  "doublons_identiques_fusionnes": [],
