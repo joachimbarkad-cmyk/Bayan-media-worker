@@ -1,0 +1,12 @@
+{
+  "name": "demo_fictif_v1",
+  "nature": "FICTIF",
+  "warning": "DONNÉES ENTIÈREMENT FICTIVES générées pour tester le logiciel. Aucune société réelle. Aucun résultat obtenu sur ces données ne dit quoi que ce soit sur la rentabilité réelle.",
+  "generator": "tools/generate_demo_data.py",
+  "seed": 20260928,
+  "files": {
+    "securities": "securities_FICTIF.csv",
+    "prices": "prices_FICTIF.csv",
+    "fundamentals": "fundamentals_FICTIF.csv"
+  }
+}
