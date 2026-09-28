@@ -106,7 +106,8 @@
       "numerator": "interest_bearing_debt",
       "denominator": "market_cap",
       "max": null,
-      "source": null
+      "source": null,
+      "calcul": "ponctuel_derniere_publication"
     },
     {
       "id": "liquidites_a_interet",
@@ -114,7 +115,8 @@
       "numerator": "cash_and_interest_bearing_investments",
       "denominator": "market_cap",
       "max": null,
-      "source": null
+      "source": null,
+      "calcul": "ponctuel_derniere_publication"
     },
     {
       "id": "revenus_non_conformes",
@@ -122,7 +124,8 @@
       "numerator": "non_compliant_revenue",
       "denominator": "total_revenue",
       "max": null,
-      "source": null
+      "source": null,
+      "calcul": "ponctuel_derniere_publication"
     }
   ],
   "activity_rules_source": null

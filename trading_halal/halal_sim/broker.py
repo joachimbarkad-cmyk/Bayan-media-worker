@@ -64,6 +64,24 @@ class PaperBroker:
     costs: CostModel
     positions: dict[str, int] = field(default_factory=dict)
     fills: list[Fill] = field(default_factory=list)
+    # Titres radiés sans contrepartie documentée : ni vendables ni valorisables avec certitude.
+    # ticker -> {"qty", "last_close", "date"} ; le rapport les montre à 0 (borne basse) ET au dernier cours (borne haute).
+    frozen: dict[str, dict] = field(default_factory=dict)
+
+    def freeze(self, ticker: str, last_close: float, d: date) -> int:
+        qty = self.positions.pop(ticker)
+        prev = self.frozen.get(ticker, {"qty": 0})
+        self.frozen[ticker] = {"qty": prev["qty"] + qty, "last_close": last_close, "date": d}
+        return qty
+
+    def cash_out(self, ticker: str, cash_per_share: float) -> tuple[int, float]:
+        """Radiation avec contrepartie en espèces DOCUMENTÉE (opération sur titres) : pas de frais ni de glissement."""
+        qty = self.positions.pop(ticker)
+        self.cash += qty * cash_per_share
+        return qty, qty * cash_per_share
+
+    def frozen_value_at_last_close(self) -> float:
+        return sum(v["qty"] * v["last_close"] for v in self.frozen.values())
 
     def max_affordable_qty(self, ref_price: float) -> int:
         price = self.costs.fill_price(ref_price, "BUY")

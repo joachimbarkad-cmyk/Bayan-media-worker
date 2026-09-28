@@ -60,7 +60,7 @@ def cmd_run(args) -> int:
             sens_ids.append(run_backtest(ds, cfg, ruleset, store, capital=c, label=f"sensibilite_{c}",
                                          parent_run_id=main.run_id).run_id)
     store.commit()
-    checks = run_checks(store.conn, main.run_id)
+    checks = run_checks(store.conn, main.run_id, ds)
     report = build_report(store.conn, main.run_id, sens_ids, checks)
     out = _path(cfg["report_path"])
     out.parent.mkdir(parents=True, exist_ok=True)

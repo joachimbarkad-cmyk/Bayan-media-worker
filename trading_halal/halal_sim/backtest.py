@@ -15,7 +15,13 @@ Trois portefeuilles, mêmes données, mêmes frais, même filtre religieux, mêm
   actuellement ADMISSIBLES, à parts cibles égales, sans SMA ; aucune vente pour rééquilibrer.
 
 Univers : à chaque date, seuls les titres dont la fiche est connue (known_from < J) et non radiés sont
-filtrés. Un titre détenu qui sort de l'univers est vendu (VENTE_HORS_UNIVERS).
+filtrés. Radiation d'un titre détenu (traitée au début du jour de radiation) : aucune vente n'est simulée
+faute de prix négociable. Avec une contrepartie en espèces documentée (fiche titre), elle est créditée ;
+sinon la position est GELÉE à valeur inconnue et les résultats sont donnés à 0 (borne basse, valeur
+principale) et au dernier cours (borne haute).
+
+Compléments de lignes : une seule règle (`sizing.topup_held_positions`) pour la stratégie ET la référence
+réinvestie, afin que leur écart ne mesure que l'effet du filtre de tendance.
 """
 from __future__ import annotations
 
@@ -28,8 +34,7 @@ from .broker import CostModel, Fill, PaperBroker
 from .data import Dataset, PointInTimeView
 from .db import Store
 from .metrics import compute_metrics
-from .screening import (ADMISSIBLE, CAUSE_DONNEE_MANQUANTE, EXCLU, INCERTAIN, ScreeningResult, real_data_problems,
-                        screen_security, structural_problems)
+from .screening import ADMISSIBLE, EXCLU, ScreeningResult, real_data_problems, screen_security, structural_problems
 from .strategy import BUY, NONE, SELL, Decision, SmaTrendStrategy, incertain_action, validate_holding_policy
 
 PORTFOLIOS = ("strategie", "reference", "reference_reinvestie")
@@ -103,6 +108,8 @@ class Backtest:
         self.run_id = store.start_run(label=label, parent_run_id=parent_run_id, ds=ds, ruleset=ruleset,
                                       config=config, code_hash=code_hash(), capital=self.capital)
         self.bench_started = False
+        self.topup = bool(config.get("sizing", {}).get("topup_held_positions", False))
+        self.delistings_done: set[str] = set()
 
     # --- dimensionnement d'un achat, décidé avec le cours de clôture de la date de décision ---
     def _size_buy(self, close: float, budget: float) -> tuple[int, str, str]:
@@ -143,18 +150,32 @@ class Backtest:
             self._record(pf, d, scr.status, dec, SELL, dec.reason_code, dec.detail)
         return orders, proceeds
 
-    def _out_of_universe(self, t: str, d: date, scr: ScreeningResult) -> tuple[Decision, ScreeningResult]:
-        close, view = self._close(t, d)
-        return Decision(t, SELL, "VENTE_HORS_UNIVERS", "; ".join(scr.reasons), {"cloture": close}, view.max_date_read), scr
+    def _process_delistings(self, d: date) -> None:
+        """Au début du jour de radiation (fait survenu, pas anticipé) : contrepartie documentée ou gel."""
+        for t, sec in self.ds.securities.items():
+            dl = sec["delisted_date"]
+            if dl is None or d < dl or t in self.delistings_done:
+                continue
+            self.delistings_done.add(t)
+            for pf, br in self.brokers.items():
+                if not br.positions.get(t):
+                    continue
+                cash = sec["delisting_cash_per_share"]
+                if cash is not None:
+                    qty, received = br.cash_out(t, cash)
+                    self.store.add_corporate_event(self.run_id, pf, d, t, "RADIATION_CONTREPARTIE_DOCUMENTEE", qty,
+                                                   cash, received, sec["delisting_source"])
+                else:
+                    last = self.ds.last_close_on_or_before(t, d)
+                    qty = br.freeze(t, last, d)
+                    self.store.add_corporate_event(self.run_id, pf, d, t, "RADIATION_VALEUR_INCONNUE", qty, last, 0.0,
+                                                   "aucune contrepartie documentée")
 
     def _forced_sells(self, br: PaperBroker, d: date, screenings: dict[str, ScreeningResult], universe: set[str]):
         """Ventes imposées (hors univers, EXCLU, INCERTAIN selon la politique) : mêmes règles pour les références."""
         sells = []
         for t in sorted(br.positions):
             scr = screenings[t]
-            if t not in universe:
-                sells.append(self._out_of_universe(t, d, scr))
-                continue
             if scr.status == ADMISSIBLE:
                 continue
             action = self.policy["on_exclu"] if scr.status == EXCLU else incertain_action(self.policy, scr.incertain_causes)
@@ -168,10 +189,6 @@ class Backtest:
         br = self.brokers["strategie"]
         decisions = []
         for t in sorted(screenings):
-            if t not in universe:
-                if br.positions.get(t, 0) > 0:
-                    decisions.append(self._out_of_universe(t, d, screenings[t]))
-                continue
             view = PointInTimeView(self.ds, d)
             decisions.append((self.strategy.decide(view, screenings[t], br.positions.get(t, 0) > 0, self.policy),
                               screenings[t]))
@@ -183,6 +200,15 @@ class Backtest:
             if dec.signal == SELL:
                 continue
             if dec.signal != BUY:
+                if self.topup and dec.reason_code == "CONSERVE_TENDANCE_HAUSSIERE":
+                    close = dec.inputs["cloture"]
+                    gap = target - br.positions[dec.ticker] * close
+                    qty, _code, detail = self._size_buy(close, min(gap, cash_est)) if gap > 0 else (0, "", "")
+                    if qty:
+                        cash_est -= qty * self.costs.fill_price(close, "BUY") + self.costs.fee(qty * self.costs.fill_price(close, "BUY"))
+                        orders.append(PendingOrder(dec.ticker, "BUY", qty, d, scr.status, "COMPLEMENT_TENDANCE"))
+                        self._record("strategie", d, scr.status, dec, BUY, "COMPLEMENT_TENDANCE", f"{dec.detail} ; {detail}")
+                        continue
                 self._record("strategie", d, scr.status, dec, dec.signal, dec.reason_code, dec.detail)
                 continue
             qty, code, detail = self._size_buy(dec.inputs["cloture"], min(target, cash_est))
@@ -238,6 +264,8 @@ class Backtest:
             if close is None:
                 continue
             held = br.positions.get(t, 0)
+            if held and not self.topup:
+                continue  # même règle que la stratégie : pas de complément des lignes détenues
             gap = target - held * close
             if gap <= 0:
                 continue
@@ -260,15 +288,11 @@ class Backtest:
             bar = self.ds.bar_on(o.ticker, d)
             if bar is None:
                 delisted = self.ds.securities[o.ticker]["delisted_date"]
-                if o.side == "SELL" and delisted is not None and d >= delisted and br.positions.get(o.ticker):
-                    # HYPOTHÈSE : liquidation au dernier cours coté (en réalité : rachat, échange ou perte totale).
-                    last = self.ds.last_close_on_or_before(o.ticker, delisted)
-                    self.store.add_fill(self.run_id, br.sell(o.ticker, br.positions[o.ticker], last, o.decision_date, d,
-                                                             o.status, "LIQUIDATION_RADIATION_AU_DERNIER_COURS"))
-                    continue
+                gone = delisted is not None and d >= delisted
                 self.store.add_rejected_order(self.run_id, pf, o.decision_date, d, o.ticker, o.side, o.qty, o.status,
-                                              "PRIX_MANQUANT_A_L_EXECUTION" + (" (vente reportée)" if o.side == "SELL" else ""))
-                if o.side == "SELL":
+                                              "TITRE_RADIE" if gone else "PRIX_MANQUANT_A_L_EXECUTION"
+                                              + (" (vente reportée)" if o.side == "SELL" else ""))
+                if o.side == "SELL" and not gone:
                     carry.append(o)
                 continue
             if o.side == "SELL":
@@ -300,25 +324,28 @@ class Backtest:
         pending: dict[str, list[PendingOrder]] = {p: [] for p in PORTFOLIOS}
         series: dict[str, list[tuple[date, float, float]]] = {p: [] for p in PORTFOLIOS}
         rows = []
+        frozen_final: dict[str, float] = {}
         for d in cal:
+            self._process_delistings(d)
             for pf in PORTFOLIOS:
                 pending[pf] = self._execute(pf, pending[pf], d)
             if d >= start:
                 for pf, br in self.brokers.items():
                     pv = sum(q * self.ds.last_close_on_or_before(t, d) for t, q in br.positions.items())
-                    series[pf].append((d, br.cash + pv, pv))
-                    rows.append((pf, d, round(br.cash, 4), round(pv, 4), round(br.cash + pv, 4)))
+                    fz = br.frozen_value_at_last_close()
+                    series[pf].append((d, br.cash + pv, pv))  # valeur principale : titres gelés comptés à 0
+                    rows.append((pf, d, round(br.cash, 4), round(pv, 4), round(br.cash + pv, 4), round(fz, 4)))
+                    frozen_final[pf] = fz
             if d in decision_set:
                 universe = set(self.ds.universe_at(d))
                 held = {t for br in self.brokers.values() for t in br.positions}
+                if held - universe:  # impossible : les radiations sont traitées en début de journée
+                    raise RuntimeError(f"Positions hors univers le {d} : {sorted(held - universe)}")
                 screenings = {}
                 for t in sorted(universe):
                     r = screen_security(PointInTimeView(self.ds, d), t, self.ruleset)
                     self.store.add_screening(self.run_id, r)
                     screenings[t] = r
-                for t in sorted(held - universe):  # détenu mais radié : aucune lecture de sa fiche
-                    screenings[t] = ScreeningResult(t, d, INCERTAIN, ["Titre sorti de l'univers (radié) à cette date"],
-                                                    incertain_causes=[CAUSE_DONNEE_MANQUANTE], ruleset_id=self.ruleset["id"])
                 pending["strategie"] += self._decide_strategy(d, screenings, universe)
                 pending["reference"] += self._decide_reference(d, screenings, universe)
                 pending["reference_reinvestie"] += self._decide_reinvested(d, screenings, universe)
@@ -326,6 +353,10 @@ class Backtest:
         metrics = {}
         for pf, br in self.brokers.items():
             metrics[pf] = compute_metrics(series[pf], br.fills, self.capital)
+            fz = frozen_final.get(pf, 0.0)
+            metrics[pf]["valeur_titres_radies_au_dernier_cours"] = round(fz, 2)
+            metrics[pf]["rendement_total_pct_si_radies_au_dernier_cours"] = round(
+                100 * ((series[pf][-1][1] + fz) / self.capital - 1), 2)
             self.store.add_metrics(self.run_id, pf, metrics[pf])
         end = cal[-1]
         self.store.finish_run(self.run_id, start, end)

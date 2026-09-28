@@ -117,10 +117,9 @@ class DatedUniverseTests(unittest.TestCase):
         first_nu = c.execute("SELECT MIN(decision_date) FROM screenings WHERE ticker='FXNU'").fetchone()[0]
         last_mu = c.execute("SELECT MAX(decision_date) FROM screenings WHERE ticker='FXMU'").fetchone()[0]
         self.assertEqual((first_nu, last_mu), ("2023-03-31", "2024-05-31"))
-        liq = c.execute("SELECT portfolio FROM orders WHERE ticker='FXMU' AND reason="
-                        "'LIQUIDATION_RADIATION_AU_DERNIER_COURS'").fetchall()
-        self.assertTrue(liq)
-        # Plus aucune position FXMU après la radiation, dans aucun portefeuille
+        # Revue n° 3 : plus de vente encaissée à la radiation ; la position est gelée (voir test_review3).
+        self.assertEqual(c.execute("SELECT COUNT(*) FROM orders WHERE ticker='FXMU' AND status='EXECUTE_SIMULE' "
+                                   "AND execution_date >= '2024-06-28'").fetchone()[0], 0)
         for br in run()[0].brokers.values():
             self.assertNotIn("FXMU", br.positions)
 

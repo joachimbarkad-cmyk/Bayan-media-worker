@@ -139,12 +139,14 @@ def main() -> None:
     with open(OUT / "securities_FICTIF.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         # known_from : date à partir de laquelle la fiche (type d'instrument, devise) est connue et le titre coté.
-        w.writerow(["ticker", "name", "instrument_type", "country", "currency", "known_from", "delisted_date"])
+        # delisting_cash_per_share / delisting_source : contrepartie documentée d'une radiation (vide = inconnue).
+        w.writerow(["ticker", "name", "instrument_type", "country", "currency", "known_from", "delisted_date",
+                    "delisting_cash_per_share", "delisting_source"])
         for ticker, name, itype, *_ in SECURITIES:
-            w.writerow([ticker, name, itype, "XX", "EUR", "2021-01-01", ""])
+            w.writerow([ticker, name, itype, "XX", "EUR", "2021-01-01", "", "", ""])
         for ticker, name, itype, _c, _d, _p, _dr, _b, start, delisted in LATE_SECURITIES:
             w.writerow([ticker, name, itype, "XX", "EUR", (start - timedelta(days=1)).isoformat(),
-                        delisted.isoformat() if delisted else ""])
+                        delisted.isoformat() if delisted else "", "", ""])
 
     # Historique daté des activités : une fiche initiale par titre, puis les changements.
     with open(OUT / "activities_FICTIF.csv", "w", newline="", encoding="utf-8") as f:
@@ -169,7 +171,7 @@ def main() -> None:
 
     with open(OUT / "fundamentals_FICTIF.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["ticker", "period_end", "available_date", "currency", "market_cap", "total_assets",
+        w.writerow(["ticker", "period_end", "available_date", "currency", "market_cap", "shares_outstanding", "total_assets",
                     "interest_bearing_debt", "cash_and_interest_bearing_investments", "total_revenue",
                     "non_compliant_revenue", "source"])
         for ticker, _n, _t, _c, _d, p0, *_ in SECURITIES:
@@ -187,7 +189,7 @@ def main() -> None:
                 revenue = mcap * 0.5 * noise()
                 nc = "" if (ticker == "FXIOT" and pe == date(2023, 3, 31)) else f"{revenue * nc_r:.0f}"
                 w.writerow([ticker, pe.isoformat(), (pe + timedelta(days=45)).isoformat(), "EUR",
-                            f"{mcap:.0f}", f"{mcap * 0.8 * noise():.0f}", f"{mcap * dr * noise():.0f}",
+                            f"{mcap:.0f}", f"{1e9 / p0:.0f}", f"{mcap * 0.8 * noise():.0f}", f"{mcap * dr * noise():.0f}",
                             f"{mcap * cash_r * noise():.0f}", f"{revenue:.0f}", nc, SOURCE])
 
     with open(OUT / "fundamentals_FICTIF.csv", "a", newline="", encoding="utf-8") as f:
@@ -200,7 +202,7 @@ def main() -> None:
                 mcap = 1e9 * (known[-1] if known else p0) / p0
                 revenue = mcap * 0.5
                 w.writerow([ticker, pe.isoformat(), (pe + timedelta(days=45)).isoformat(), "EUR", f"{mcap:.0f}",
-                            f"{mcap * 0.8:.0f}", f"{mcap * 0.08:.0f}", f"{mcap * 0.05:.0f}", f"{revenue:.0f}", "0",
+                            f"{1e9 / p0:.0f}", f"{mcap * 0.8:.0f}", f"{mcap * 0.08:.0f}", f"{mcap * 0.05:.0f}", f"{revenue:.0f}", "0",
                             SOURCE])
 
     manifest = {

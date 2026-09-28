@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import date
 
 from . import PROJECT_ROOT
 from .safety import network_blocked, scan_package
@@ -20,6 +21,8 @@ METRIC_LABELS = [
     ("frais_total", "Frais de courtage simulés"),
     ("glissement_total", "Coût de glissement simulé"),
     ("couts_total_pct_capital", "Coûts totaux (% du capital initial)"),
+    ("valeur_titres_radies_au_dernier_cours", "Titres radiés gelés, au dernier cours (non compris ci-dessus)"),
+    ("rendement_total_pct_si_radies_au_dernier_cours", "Rendement total si les radiés valaient leur dernier cours (%)"),
 ]
 
 
@@ -41,7 +44,7 @@ REASON_TEXT = {
     "REFERENCE_ACHAT_INITIAL": "Achat initial du portefeuille de référence.",
     "REFERENCE_REINVESTIE_ACHAT": "Référence réinvestie : achat d'un titre admissible non détenu.",
     "REFERENCE_REINVESTIE_COMPLEMENT": "Référence réinvestie : complément d'une ligne sous sa part cible.",
-    "VENTE_HORS_UNIVERS": "Titre détenu radié de la cote : vente (liquidation au dernier cours, hypothèse du modèle).",
+    "COMPLEMENT_TENDANCE": "Stratégie : complément d'une ligne détenue sous sa part cible (option activée).",
 }
 
 
@@ -190,6 +193,16 @@ def build_report(conn: sqlite3.Connection, run_id: int, sensitivity_run_ids: lis
     L.append("\n### Ordres rejetés au moment de l'exécution simulée\n")
     L.append(_table(["Date", "Portefeuille", "Titre", "Sens", "Motif"], rows) if rows else "Aucun.")
 
+    L.append("\n## Radiations de titres détenus\n")
+    rows = [[r["date"], r["portfolio"], r["ticker"], r["event"], r["qty"],
+             "—" if r["value_per_share"] is None else f"{r['value_per_share']:.2f}", f"{r['cash_received']:.2f}", r["source"]]
+            for r in conn.execute("SELECT * FROM corporate_events WHERE run_id=? ORDER BY date, portfolio", (run_id,))]
+    L.append("Aucune vente n'est simulée faute de prix négociable. Sans contrepartie documentée, la position est gelée "
+             "à valeur **inconnue** : les résultats principaux la comptent à 0 (borne basse) ; la ligne « si les radiés "
+             "valaient leur dernier cours » donne la borne haute. Ni l'une ni l'autre n'est une estimation fiable.\n")
+    L.append(_table(["Date", "Portefeuille", "Titre", "Événement", "Qté", "Dernier cours / contrepartie", "Espèces reçues",
+                     "Source"], rows) if rows else "Aucune.")
+
     L.append("\n## Journal des ordres simulés (15 derniers, stratégie)\n")
     rows = [[r["decision_date"], r["execution_date"], r["ticker"], r["side"], r["qty"], f"{r['ref_price']:.2f}",
              f"{r['exec_price']:.2f}", f"{r['fees']:.2f}", f"{r['slippage_cost']:.2f}", r["reason"]]
@@ -209,13 +222,15 @@ def build_report(conn: sqlite3.Connection, run_id: int, sensitivity_run_ids: lis
              "- Frais fictifs : à remplacer par la grille réelle du courtier choisi.\n"
              "- Activités lues depuis un historique daté, mais aucune durée de validité maximale d'une fiche d'activité.\n"
              "- Pas de conversion de devises : tous les titres doivent être dans la devise du portefeuille (sinon refus).\n"
-             "- Titre radié : liquidation supposée au dernier cours coté (en réalité : rachat, échange ou perte totale).\n"
+             "- Titre radié sans contrepartie documentée : valeur inconnue, résultats donnés à 0 et au dernier cours.\n"
+             "- Capitalisation vérifiée par nombre d'actions x cours : écarte une valeur aberrante, pas une donnée fausse mais cohérente.\n"
              "- Le référentiel religieux s'applique rétroactivement à toute la période simulée.\n")
     return "\n".join(L) + "\n"
 
 
-def run_checks(conn: sqlite3.Connection, run_id: int) -> list[tuple[str, bool, str]]:
-    """Contrôles recalculés depuis la base, indépendamment du moteur."""
+def run_checks(conn: sqlite3.Connection, run_id: int, ds=None) -> list[tuple[str, bool, str]]:
+    """Contrôles recalculés depuis la base, indépendamment du moteur. Avec `ds`, chaque exécution simulée est
+    aussi confrontée au cours d'ouverture réel de son jour d'exécution."""
     q = lambda sql: conn.execute(sql, (run_id,)).fetchone()[0]
     bad_buys = q("SELECT COUNT(*) FROM orders WHERE run_id=? AND side='BUY' AND status='EXECUTE_SIMULE' "
                  "AND screening_status_at_decision<>'ADMISSIBLE'")
@@ -229,7 +244,18 @@ def run_checks(conn: sqlite3.Connection, run_id: int) -> list[tuple[str, bool, s
     neg_cash = q("SELECT COUNT(*) FROM equity WHERE run_id=? AND cash < -0.01")
     sim_only = q("SELECT simulation_only FROM runs WHERE run_id=?")
     violations = scan_package()
-    return [
+    open_check = []
+    if ds is not None:
+        bad = []
+        fills = conn.execute("SELECT ticker, execution_date, ref_price FROM orders WHERE run_id=? AND "
+                             "status='EXECUTE_SIMULE'", (run_id,)).fetchall()
+        for r in fills:
+            bar = ds.bar_on(r["ticker"], date.fromisoformat(r["execution_date"]))
+            if bar is None or abs(bar.open - r["ref_price"]) > 1e-9:
+                bad.append(f"{r['ticker']} {r['execution_date']}")
+        open_check = [("Chaque exécution simulée a lieu à un cours d'ouverture réellement coté ce jour-là", not bad,
+                       "; ".join(bad[:5]) or f"{len(fills)} exécutions vérifiées")]
+    return open_check + [
         ("Aucun achat d'un titre non ADMISSIBLE (statut enregistré)", bad_buys == 0, f"{bad_buys} cas"),
         ("Aucun achat d'un titre non ADMISSIBLE (recoupement avec le filtrage)", bad_buys2 == 0, f"{bad_buys2} cas"),
         ("Aucune décision n'a lu une donnée postérieure à sa date", future_dec == 0, f"{future_dec} cas"),

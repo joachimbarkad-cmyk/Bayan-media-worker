@@ -1,113 +1,107 @@
-# HANDOFF — simulateur de trading halal, V1.2 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.3 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
 
-**Merci de relire de façon critique** : cherchez les lectures d'information future, les chemins vers un statut
-ADMISSIBLE erroné ou un achat non ADMISSIBLE, les affirmations non justifiées et les erreurs de calcul.
+**Merci de relire de façon critique** : lectures d'information future, chemins vers un ADMISSIBLE erroné ou un
+achat non ADMISSIBLE, valeurs encaissées sans prix négociable, affirmations non justifiées, erreurs de calcul.
 
-## 0. Suite donnée à la revue n° 2
+**Le logiciel n'implémente encore aucun référentiel religieux réel complet** : il teste une mécanique de filtrage
+avec des seuils de démonstration arbitraires, sur des données inventées.
 
-Chaque cas a été **reproduit sur le commit 1d980c0**, corrigé, puis couvert par un test (`tests/test_review2.py`).
-J'ai ensuite réintroduit chaque défaut un par un dans le code : à chaque fois, au moins un test échoue.
+## 0. Suite donnée à la revue n° 3
+
+Chaque cas a été reproduit sur le commit 0e830bc, corrigé et couvert par `tests/test_review3.py`. J'ai ensuite
+réintroduit chaque défaut dans le code : à chaque fois, au moins un test échoue.
 
 | Cas signalé | Correction | Test |
 |---|---|---|
-| Les trois ratios pointés vers `non_compliant_revenue / total_revenue` passaient la validation (y compris en référentiel « réel » complet) ; FXEPS devenait ADMISSIBLE | `RATIO_CATALOG` lie chaque type de ratio à **son** numérateur et à ses dénominateurs admis (dette et liquidités : capitalisation ou total de l'actif ; revenus non conformes : chiffre d'affaires). Tout identifiant hors catalogue est refusé. | `test_review_case_all_ratios_pointing_to_revenue_fields_is_refused`, `test_allowed_and_refused_denominators` |
-| `data._num()` acceptait `nan` et `inf` ; une dette négative passait sous le plafond ; `value > max` ne détecte pas `nan` | Import : nombres non finis refusés (prix compris : `nan <= 0` valait `False`), valeurs négatives ou nulles impossibles refusées, revenus non conformes > chiffre d'affaires refusés. Filtre (défense en profondeur si les données sont construites en mémoire) : cause `DONNEE_INVALIDE` → INCERTAIN, ratio non fini ou négatif → INCERTAIN. | `test_review_case_nan_or_negative_debt_is_never_admissible`, `test_loader_rejects_non_finite_and_impossible_values`, `test_non_compliant_revenue_above_revenue_is_invalid` |
-| `PointInTimeView.security()` renvoyait type d'instrument et devise sans date ; la liste des titres était connue dès le début | Fiche titre datée : `known_from` (obligatoire) et `delisted_date`. `security()` lève `LookaheadError` pour une fiche pas encore connue (règle J+1). `Dataset.universe_at(d)` : seuls les titres connus et non radiés sont filtrés à la date d. Titre détenu radié → vente, liquidation supposée au dernier cours coté. Données de démo : FXNU introduit en mars 2023, FXMU radié en juin 2024. | `test_review_case_security_record_known_later_is_not_used_earlier`, `test_listed_late_and_delisted_securities` |
-| Seconde référence avec réinvestissement (règles proposées par le relecteur) | `reference_reinvestie`, règles écrites dans `docs/REFERENCES.md` et dans la docstring **avant** sa première exécution ; la référence achat-conservation est conservée | `test_reinvested_reference_rebuys_title_that_becomes_admissible_again`, `test_reinvested_reference_never_sells_to_rebalance_and_never_uses_sma` |
-| Rapport | Libellés français des ratios à la place des identifiants ; phrase précisant qu'un ACHAT peut être réduit ou rejeté à l'ouverture ; trois colonnes de résultats | — |
+| `PointInTimeView.security()` révélait au 31/01/2022 la radiation de FXMU du 28/06/2024 | La vue ne renvoie que les champs publics (`SECURITY_PUBLIC_FIELDS`) ; `delisted_date` n'apparaît qu'une fois la radiation passée (règle J+1) et sa lecture est tracée. Test de perturbation : repousser la radiation ne change aucune décision antérieure. | `test_review_case_future_delisting_not_exposed_by_view`, `test_changing_future_delisting_date_does_not_change_earlier_decisions` |
+| Capitalisation de 1e300 → FXEPS ADMISSIBLE | Nouveau champ `shares_outstanding`. Quand un ratio utilise la capitalisation, elle est confrontée à nombre d'actions x cours de clôture de fin de période (écart toléré 5 %, contrôle de données et non seuil religieux) ; sinon INCERTAIN (`DONNEE_INVALIDE` ou `DONNEE_MANQUANTE`). Nouvelle incohérence refusée : liquidités > total de l'actif. | `test_review_case_absurd_market_cap_is_not_admissible` et 3 autres |
+| Vente fictivement encaissée au dernier cours lors d'une radiation (260,83 € pour la référence réinvestie) | Aucune vente sans prix d'ouverture négociable. Radiation traitée au début du jour où elle survient : contrepartie en espèces créditée **seulement** si elle est documentée dans la fiche (`delisting_cash_per_share` + `delisting_source`) ; sinon position **gelée à valeur inconnue**, table `corporate_events`. Résultats principaux : titres gelés à 0 (borne basse) ; ligne séparée au dernier cours (borne haute). Nouveau contrôle indépendant : chaque exécution simulée correspond à un cours d'ouverture réellement coté ce jour-là. | `test_review_case_no_cash_credited_without_documented_consideration`, `test_documented_cash_consideration_is_credited`, `test_every_fill_matches_a_real_opening_price` |
+| La référence réinvestie complétait ses lignes, pas la stratégie | Règle unique `sizing.topup_held_positions` (défaut `false`) pour les deux portefeuilles ; avec `true`, les deux complètent. Révision datée et justifiée dans `docs/REFERENCES.md` (les résultats V1.2 étaient connus : je le signale). | `test_default_no_topup_in_either_portfolio`, `test_topup_enabled_applies_to_both` |
+| `RATIO_CATALOG` ne lie pas le dénominateur à une méthode datée ; FTSE/S&P non reproductibles | Chaque ratio déclare sa méthode `calcul` ; seule `ponctuel_derniere_publication` est implémentée, toute autre est refusée. Documentation explicite des référentiels non reproductibles (`docs/REFERENTIEL_ET_SOURCES.md` § 7 ; points rapportés par le relecteur, non vérifiés par moi). | `test_unsupported_or_missing_calculation_method_refused` |
 
-**Point où je ne suis pas la revue :** elle juge trop rigide d'imposer trois types de ratios et six activités « cœur ».
-Je les conserve volontairement : les assouplir rouvrirait la faille de la revue n° 1. Ils sont regroupés dans trois
-constantes de `screening.py` et se modifient par le code, avec un test, si le référentiel choisi l'exige
-(`docs/REFERENTIEL_ET_SOURCES.md` § 5).
+Non traité (documenté) : lien formel entre chaque combinaison de champs et un texte daté (possible seulement une
+fois un référentiel choisi) ; contrôle des créances ; moyennes glissantes ; annonce de radiation distincte de sa
+prise d'effet ; provenance des données.
 
-**Documenté mais non codé :** horodatage, fuseau et version des publications (EDGAR distingue la date de dépôt et
-l'heure d'acceptation) ; application rétroactive d'un référentiel unique ; changement de type d'instrument sans
-historique daté (indétectable si `known_from` n'est pas mis à jour).
-
-Rappel de la revue n° 1 (déjà corrigé en V1.1) : activités datées, règle J → J+1, validation du référentiel pour
-données réelles, contrôle réseau réellement calculé, refus des devises mixtes, causes d'incertitude.
+Rappels : revue n° 1 (activités datées, règle J → J+1, validation du référentiel, contrôle réseau réel, devises,
+causes d'incertitude) et revue n° 2 (catalogue de ratios, nombres non finis, fiches titres et univers datés,
+référence réinvestie) restent corrigées et testées.
 
 ## 1. Ce qui fonctionne réellement (vérifié en lançant le code)
 
-- `python3 -m halal_sim run` tourne de bout en bout en environ une seconde, avec la seule bibliothèque standard de Python 3.11.
-- Données fictives : 15 titres (dont 1 introduit et 1 radié en cours de période), 18 589 barres quotidiennes
-  2021-01-04 → 2025-12-31, 244 états financiers trimestriels et 16 fiches d'activité datés par leur publication.
+- `python3 -m halal_sim run` tourne de bout en bout en quelques secondes, bibliothèque standard de Python 3.11 uniquement.
+- Données fictives : 15 titres (FXNU introduit en 2023, FXMU radié en 2024 sans contrepartie documentée),
+  18 589 barres quotidiennes, 244 états financiers et 16 fiches d'activité datés par leur publication.
 - Filtre à 3 statuts sur l'univers daté ; stratégie SMA 200 ; deux références ; frais, glissement, actions entières.
-- Journal SQLite complet (`runs`, `screenings`, `decisions`, `orders`, `equity`, `metrics`) et rapport Markdown
-  généré depuis la base, avec 9 contrôles recalculés.
-- **61 tests** `unittest`, tous au vert : `python3 -m unittest discover -s tests -v`.
+- SQLite : `runs`, `screenings`, `decisions`, `orders`, `equity` (avec valeur gelée), `corporate_events`, `metrics`.
+- Rapport généré depuis la base, **10 contrôles** recalculés (dont le nouveau contrôle des cours d'ouverture).
+- **73 tests** `unittest`, tous au vert.
 
 ## 2. Choix et justification
 
 | Sujet | Choix | Pourquoi |
 |---|---|---|
-| Langage / stockage | Python stdlib + SQLite, aucune dépendance | Coût nul, auditable |
-| Stratégie | Détenir si clôture > SMA(200), revue mensuelle | Variante inspirée de la règle à 10 mois de Faber (2007) ; un paramètre, peu d'ordres |
-| Chronologie | Décision à la clôture de fin de mois → exécution à l'ouverture suivante ; documents publiés le jour J utilisés à J+1 | Ni exécution au prix de décision ni ambiguïté sur l'heure de publication |
-| Références | Achat-conservation et réinvestie (`docs/REFERENCES.md`) | La réinvestie isole l'apport de la SMA ; l'autre mesure le « ne rien faire » |
-| Coûts | 1 € par ordre, glissement 10 pb ; refus si coût aller-retour estimé > 1,5 % | **Valeurs fictives** ; 1,5 % est une tolérance, pas un seuil de rentabilité établi |
-| Politique titres détenus | EXCLU → vente ; INCERTAIN → vente (réglable par cause) ; radié → vente | Conservateur en attendant la décision de l'utilisateur |
-| Seuils religieux | Démo : 20 % / 20 % / 3 % **arbitraires** ; modèle réel : `null` | Aucun seuil AAOIFI codé de mémoire ; texte primaire non consulté (accès bloqué) |
+| Stratégie | Détenir si clôture > SMA(200), revue mensuelle, pas de complément | Variante inspirée de Faber (2007) ; un paramètre, peu d'ordres |
+| Chronologie | Décision à la clôture de fin de mois → ouverture suivante ; documents publiés le jour J utilisés à J+1 ; radiation connue le jour où elle survient | Aucune anticipation |
+| Références | Achat-conservation ; réinvestie avec la même règle de complément que la stratégie | La réinvestie isole au mieux l'effet de la SMA |
+| Radiation | Gel à valeur inconnue sauf contrepartie documentée ; bornes 0 / dernier cours | Ni le dernier cours ni zéro ne sont une valeur par défaut fiable |
+| Coûts | 1 € par ordre, glissement 10 pb ; refus si coût aller-retour estimé > 1,5 % | **Fictifs** ; 1,5 % est une tolérance, pas un seuil de rentabilité |
+| Seuils religieux | Démo 20 % / 20 % / 3 % **arbitraires** ; modèle réel `null` | Aucun seuil codé de mémoire ; texte AAOIFI primaire non consulté |
 
 ## 3. Résultats de la démonstration (données FICTIVES : aucune valeur probante)
 
-Période 2021-10-29 → 2025-12-31, capital 2 000 € :
+Période 2021-10-29 → 2025-12-31, capital 2 000 €. Titres radiés comptés à 0 ; entre parenthèses, au dernier cours.
 
 | | Stratégie | Réf. achat-conservation | Réf. réinvestie |
 |---|---|---|---|
-| Rendement total | +25,86 % | −3,92 % | +14,14 % |
+| Rendement total | +25,86 % | −8,07 % (−3,86 %) | +4,43 % (+8,64 %) |
 | Baisse maximale | −11,82 % | −29,79 % | −28,86 % |
-| Exposition moyenne | 44,4 % | 58,1 % | 81,1 % |
-| Ordres | 41 | 11 | 19 |
-| Coûts (% du capital) | 2,56 % | 0,66 % | 1,14 % |
+| Exposition moyenne | 44,4 % | 58,8 % | 74,8 % |
+| Ordres | 41 | 10 | 14 |
+| Coûts (% du capital) | 2,56 % | 0,60 % | 0,84 % |
 
-À 500 € : aucun achat jugé pertinent (145 refus). À 10 000 € : stratégie +27,94 %, réinvestie +8,54 %.
-Les chiffres changent par rapport à la V1.1 parce que l'univers contient maintenant FXNU et FXMU (ce dernier radié après une forte baisse).
+La stratégie avait vendu FXMU en 2023 (tendance baissière) et n'est pas touchée par sa radiation. À 500 € : aucun achat
+jugé pertinent (145 refus). À 10 000 € : stratégie +27,94 %, réinvestie −1,11 %.
 
-**Sans valeur de preuve :** les prix fictifs contiennent une phase baissière en 2022 voulue pour faire jouer la règle,
-ce qui avantage *par construction* un filtre de tendance. La référence réinvestie réduit l'écart dû au non-réinvestissement,
-mais la conclusion reste impossible sur des données inventées.
+**Sans valeur de preuve :** prix inventés avec une phase baissière voulue en 2022 et un titre radié après une forte
+baisse — deux situations qui avantagent *par construction* un filtre de tendance.
 
-## 4. Vérifications (61 tests, tous passés)
+## 4. Vérifications (73 tests, tous passés)
 
-| Point critique | Défenses | Tests |
-|---|---|---|
-| Aucun achat non ADMISSIBLE, aucun ADMISSIBLE erroné | Stratégie, courtier simulé, contraintes et trigger SQLite ; référentiel structurellement validé (catalogue de ratios) ; données invalides refusées puis INCERTAIN | `test_incertain_never_bought.py` (5), `test_ruleset_validation.py` (10), `test_review2.py` (10), `test_screening.py` (11) |
-| Aucun ordre réel | Aucun module de courtage ; analyse statique au lancement ; coupure réseau vérifiée ; `simulation_only` = 1 | `test_no_real_orders.py` (8) |
-| Pas d'information future | `PointInTimeView` pour prix, états financiers, activités **et fiches titres** ; univers daté ; test de perturbation ; dates lues contraintes en base | `test_lookahead.py` (8), `test_review2.py` |
-| Coûts et import | Frais, glissement, actions entières, pas de découvert ; import strict | `test_costs_and_data.py` (9) |
+| Point critique | Tests |
+|---|---|
+| Aucun achat non ADMISSIBLE, aucun ADMISSIBLE erroné | `test_incertain_never_bought.py` (5), `test_ruleset_validation.py` (10), `test_screening.py` (11), `test_review2.py` (10), `test_review3.py` (12) |
+| Aucun ordre réel | `test_no_real_orders.py` (8) |
+| Pas d'information future (prix, états financiers, activités, fiches titres, radiations) | `test_lookahead.py` (8), `test_review2.py`, `test_review3.py` |
+| Coûts, import | `test_costs_and_data.py` (9) |
 
 ## 5. Limites connues
 
-1. Données fictives uniquement.
-2. Radiation : liquidation supposée au dernier cours coté (en réalité rachat, échange ou perte totale).
-3. Pas de conversion de devises (refus si les devises diffèrent) ; dividendes, purification, fiscalité non modélisés.
-4. Référentiel appliqué rétroactivement ; fiche titre modifiée sans `known_from` à jour indétectable.
-5. Pas d'horodatage ni de fuseau des publications (indispensable avant des données réelles).
-6. Capitalisation prise en fin de période (pas de moyenne glissante) ; aucune durée de validité d'une fiche d'activité.
-7. Un seul paramètre, une seule période ; pas encore d'évaluation hors échantillon.
-8. L'analyse statique et la coupure réseau ne remplacent pas une isolation système.
-9. Le logiciel vérifie qu'une validation religieuse est **renseignée**, pas qu'elle a eu lieu ni que la source dit ce qui est codé.
+1. Données fictives uniquement ; aucun référentiel réel complet.
+2. Radiation sans contrepartie documentée : valeur inconnue, seulement bornée (0 / dernier cours).
+3. Capitalisation contrôlée par cohérence interne, pas par provenance ; total de l'actif non vérifiable au-delà de « liquidités ≤ actif ».
+4. Pas de conversion de devises (refus) ; dividendes, purification, fiscalité non modélisés.
+5. Référentiel appliqué rétroactivement ; pas d'horodatage ni de fuseau des publications.
+6. Un seul paramètre, une seule période, pas d'évaluation hors échantillon.
+7. Analyse statique et coupure réseau ≠ isolation système ; validation religieuse vérifiée dans sa forme seulement.
 
 ## 6. Prochaines décisions
 
-**Religieuses (à l'utilisateur) :** référentiel, dénominateur, seuils, classement du tabac, de l'armement, des médias et
-de l'hôtellerie, politique par cause pour un titre détenu devenu INCERTAIN, purification.
+**Religieuses (à l'utilisateur) :** référentiel, dénominateur, seuils, contrôles supplémentaires éventuels (créances),
+classement du tabac, de l'armement, des médias et de l'hôtellerie, politique pour un titre devenu INCERTAIN, purification.
 
 **Compte ou coût (à l'utilisateur) :** marché visé ; grille tarifaire réelle d'un courtier envisagé (paramétrage seulement).
 
-**Techniques proposées (gratuites) :** horodatage et version des documents ; historique daté des fiches titres ;
-données réelles gratuites (SEC EDGAR avec heure d'acceptation, prix quotidiens dont les conditions seront vérifiées) ;
-dividendes ; évaluation hors échantillon.
+**Techniques proposées (gratuites) :** horodatage et version des documents ; événements de radiation datés (annonce,
+prise d'effet, contrepartie) ; données réelles gratuites avec provenance ; dividendes ; évaluation hors échantillon.
 
 ## 7. Questions pour le relecteur
 
-1. Le catalogue `RATIO_CATALOG` est-il correct (en particulier : total de l'actif admis comme dénominateur de la dette et des liquidités) ?
-2. Reste-t-il un chemin vers un ADMISSIBLE erroné, par exemple une combinaison de valeurs valides mais absurdes ?
-3. La liquidation au dernier cours lors d'une radiation est-elle la bonne hypothèse par défaut, ou faut-il une valeur nulle par prudence ?
-4. Les règles de la référence réinvestie (`docs/REFERENCES.md`) correspondent-elles à ta proposition ?
-5. Les exigences structurelles rigides (§ 0) te paraissent-elles acceptables avec leur justification ?
+1. Reste-t-il un champ ou une méthode de `PointInTimeView` ou du moteur qui expose une information future ?
+2. Le gel à valeur inconnue et ses deux bornes sont-ils présentés honnêtement dans le rapport ?
+3. Le contrôle de capitalisation (actions x cours, 5 %) crée-t-il de nouveaux faux INCERTAIN problématiques, par exemple autour des dates de fin de période non ouvrées ?
+4. Avec la même règle de complément, l'écart stratégie / référence réinvestie isole-t-il désormais l'effet de la SMA, ou voyez-vous une autre différence de traitement ?
+5. Faut-il passer maintenant aux données réelles d'essai (sans aucun ordre), ou reste-t-il un préalable bloquant ?

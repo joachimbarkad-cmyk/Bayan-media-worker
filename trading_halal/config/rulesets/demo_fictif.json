@@ -91,7 +91,8 @@
       "numerator": "interest_bearing_debt",
       "denominator": "market_cap",
       "max": 0.2,
-      "source": "VALEUR ARBITRAIRE DE DÉMONSTRATION"
+      "source": "VALEUR ARBITRAIRE DE DÉMONSTRATION",
+      "calcul": "ponctuel_derniere_publication"
     },
     {
       "id": "liquidites_a_interet",
@@ -99,7 +100,8 @@
       "numerator": "cash_and_interest_bearing_investments",
       "denominator": "market_cap",
       "max": 0.2,
-      "source": "VALEUR ARBITRAIRE DE DÉMONSTRATION"
+      "source": "VALEUR ARBITRAIRE DE DÉMONSTRATION",
+      "calcul": "ponctuel_derniere_publication"
     },
     {
       "id": "revenus_non_conformes",
@@ -107,7 +109,8 @@
       "numerator": "non_compliant_revenue",
       "denominator": "total_revenue",
       "max": 0.03,
-      "source": "VALEUR ARBITRAIRE DE DÉMONSTRATION"
+      "source": "VALEUR ARBITRAIRE DE DÉMONSTRATION",
+      "calcul": "ponctuel_derniere_publication"
     }
   ],
   "activity_rules_source": "DÉMONSTRATION : classement indicatif non validé"

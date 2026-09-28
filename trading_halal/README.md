@@ -5,6 +5,7 @@ applique une stratégie simple aux seuls titres admissibles, simule un portefeui
 glissement, enregistre tout dans SQLite et produit un rapport comparé à une référence.
 
 **Ce que ce projet ne fait pas :**
+- il n'implémente encore **aucun référentiel religieux réel complet** (voir `docs/REFERENTIEL_ET_SOURCES.md`) ;
 - aucun ordre réel, aucune connexion à un courtier, aucune clé API (le réseau est même coupé au lancement) ;
 - aucune certification religieuse : « ADMISSIBLE » n'est pas « 100 % halal » ;
 - aucune prédiction de rendement : les propositions découlent d'une règle explicite sur des données datées ;
@@ -22,7 +23,7 @@ Depuis la racine du dépôt :
 cd trading_halal
 python3 -m halal_sim check-data                 # valide les fichiers de données de démonstration
 python3 -m halal_sim run                        # simulation complète + rapport + sensibilité au capital
-python3 -m unittest discover -s tests -v        # 61 vérifications automatiques
+python3 -m unittest discover -s tests -v        # 73 vérifications automatiques
 ```
 
 Options utiles :
@@ -69,7 +70,11 @@ Tout achat dont le coût aller-retour estimé dépasse 1,5 % du montant est refu
 Créer un dossier avec un `manifest.json` (`"nature": "REEL"`) et les quatre CSV au même format que `data/demo/`
 (titres, prix, états financiers, fiches d'activité), chaque document ayant sa **date de publication** et sa **source**.
 Chaque fiche titre porte `known_from` (date à partir de laquelle son type d'instrument et sa devise sont connus)
-et, s'il y a lieu, `delisted_date` : inclure les titres **radiés** pour limiter le biais du survivant.
+et, s'il y a lieu, `delisted_date` : inclure les titres **radiés** pour limiter le biais du survivant. Une radiation
+avec contrepartie en espèces se documente par `delisting_cash_per_share` et `delisting_source` ; sans elle, la
+position est gelée à valeur inconnue (résultats donnés à 0 et au dernier cours).
+Les états financiers portent `shares_outstanding` : la capitalisation publiée est vérifiée contre nombre d'actions
+x cours de fin de période quand un ratio l'utilise.
 Les valeurs non finies (`nan`, `inf`), négatives ou incohérentes sont refusées à l'import.
 Un document publié le jour J n'est utilisé qu'à partir de la décision du jour J+1 (l'heure de publication n'est pas connue).
 Tous les titres doivent être dans la devise du portefeuille (pas encore de conversion).

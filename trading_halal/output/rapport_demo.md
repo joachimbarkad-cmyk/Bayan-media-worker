@@ -21,24 +21,26 @@
 | Référence « réinvestie » | Chaque fin de mois : mêmes ventes imposées, puis liquidités réparties à parts cibles égales entre les titres admissibles du moment, sans moyenne mobile (docs/REFERENCES.md) |
 | Frais (fictifs) | 1.0 EUR fixe + 0 % (min 1.0 EUR) par ordre ; glissement 10 pb ; refus si coût aller-retour > 1.5 % |
 | Politique titres détenus | EXCLU → SELL, INCERTAIN → SELL |
-| Empreinte du code / des données | c4a4b7a62f02 / 8973b58e3308 |
+| Empreinte du code / des données | a329f3606f37 / 8973b58e3308 |
 
 ## Résultats : stratégie contre deux références
 
 | Indicateur | Stratégie | Réf. achat-conservation | Réf. réinvestie |
 |---|---|---|---|
-| Valeur finale | 2517.29 | 1921.66 | 2282.82 |
-| Rendement total (%) | 25.86 | -3.92 | 14.14 |
-| Rendement annualisé (%) | 5.67 | -0.95 | 3.22 |
-| Volatilité annualisée (%) | 10.03 | 10.46 | 14.25 |
+| Valeur finale | 2517.29 | 1838.52 | 2088.52 |
+| Rendement total (%) | 25.86 | -8.07 | 4.43 |
+| Rendement annualisé (%) | 5.67 | -2 | 1.04 |
+| Volatilité annualisée (%) | 10.03 | 10.78 | 13.38 |
 | Baisse maximale (%) | -11.82 | -29.79 | -28.86 |
-| Rendement/risque (taux sans risque = 0) | 0.58 | -0.04 | 0.29 |
-| Exposition moyenne aux actions (%) | 44.4 | 58.1 | 81.1 |
-| Achats simulés | 22 | 7 | 14 |
-| Ventes simulées | 19 | 4 | 5 |
-| Frais de courtage simulés | 41 | 11 | 19 |
-| Coût de glissement simulé | 10.14 | 2.17 | 3.83 |
-| Coûts totaux (% du capital initial) | 2.56 | 0.66 | 1.14 |
+| Rendement/risque (taux sans risque = 0) | 0.58 | -0.13 | 0.14 |
+| Exposition moyenne aux actions (%) | 44.4 | 58.8 | 74.8 |
+| Achats simulés | 22 | 7 | 10 |
+| Ventes simulées | 19 | 3 | 4 |
+| Frais de courtage simulés | 41 | 10 | 14 |
+| Coût de glissement simulé | 10.14 | 2.09 | 2.89 |
+| Coûts totaux (% du capital initial) | 2.56 | 0.6 | 0.84 |
+| Titres radiés gelés, au dernier cours (non compris ci-dessus) | 0 | 84.22 | 84.22 |
+| Rendement total si les radiés valaient leur dernier cours (%) | 25.86 | -3.86 | 8.64 |
 
 Les trois portefeuilles utilisent les mêmes données, le même univers daté, le même filtre, les mêmes frais et les mêmes règles d'exécution. Les liquidités ne sont pas rémunérées (pas d'intérêts). Dividendes non modélisés. La référence achat-conservation ne réinvestit pas le produit des ventes imposées ; la référence réinvestie, si.
 
@@ -47,8 +49,8 @@ Les trois portefeuilles utilisent les mêmes données, le même univers daté, l
 | Capital | Stratégie (%) | Réf. achat-conservation (%) | Réf. réinvestie (%) | Coûts stratégie (% capital) | Achats refusés stratégie (coût/capital) |
 |---|---|---|---|---|---|
 | 500 EUR | 0 | 0 | 0 | 0 | 145 |
-| 2000 EUR | 25.86 | -3.92 | 14.14 | 2.56 | 0 |
-| 10000 EUR | 27.94 | -6.11 | 8.54 | 0.95 | 0 |
+| 2000 EUR | 25.86 | -8.07 | 4.43 | 2.56 | 0 |
+| 10000 EUR | 27.94 | -10.48 | -1.11 | 0.95 | 0 |
 
 Avec un petit capital, les frais fixes et les actions entières pèsent davantage : c'est ce que mesure ce tableau. Un rendement de 0 avec des refus signifie qu'aucun achat n'a été jugé pertinent à ce niveau de capital (le capital est resté en liquidités).
 
@@ -137,6 +139,15 @@ Une décision « ACHAT » est une proposition simulée pour l'ouverture du jour 
 
 Aucun.
 
+## Radiations de titres détenus
+
+Aucune vente n'est simulée faute de prix négociable. Sans contrepartie documentée, la position est gelée à valeur **inconnue** : les résultats principaux la comptent à 0 (borne basse) ; la ligne « si les radiés valaient leur dernier cours » donne la borne haute. Ni l'une ni l'autre n'est une estimation fiable.
+
+| Date | Portefeuille | Titre | Événement | Qté | Dernier cours / contrepartie | Espèces reçues | Source |
+|---|---|---|---|---|---|---|---|
+| 2024-06-28 | reference | FXMU | RADIATION_VALEUR_INCONNUE | 10 | 8.42 | 0.00 | aucune contrepartie documentée |
+| 2024-06-28 | reference_reinvestie | FXMU | RADIATION_VALEUR_INCONNUE | 10 | 8.42 | 0.00 | aucune contrepartie documentée |
+
 ## Journal des ordres simulés (15 derniers, stratégie)
 
 | Décision | Exécution | Titre | Sens | Qté | Ouverture | Prix simulé | Frais | Glissement | Motif |
@@ -161,11 +172,12 @@ Aucun.
 
 | Contrôle | Résultat | Détail |
 |---|---|---|
+| Chaque exécution simulée a lieu à un cours d'ouverture réellement coté ce jour-là | OK | 65 exécutions vérifiées |
 | Aucun achat d'un titre non ADMISSIBLE (statut enregistré) | OK | 0 cas |
 | Aucun achat d'un titre non ADMISSIBLE (recoupement avec le filtrage) | OK | 0 cas |
 | Aucune décision n'a lu une donnée postérieure à sa date | OK | 0 cas |
 | Aucun filtrage n'a lu une donnée postérieure à sa date | OK | 0 cas |
-| Exécution toujours après la décision | OK | 0 cas sur 71 ordres |
+| Exécution toujours après la décision | OK | 0 cas sur 65 ordres |
 | Jamais de solde de liquidités négatif (pas de marge) | OK | 0 jours |
 | Exécution marquée simulation uniquement | OK | runs.simulation_only = 1 |
 | Code sans bibliothèque réseau/courtage ni lecture de clés (analyse statique à ce lancement) | OK | 11 fichiers analysés |
@@ -181,6 +193,7 @@ Ces contrôles portent sur le code Python de ce projet et sur ce processus ; ils
 - Frais fictifs : à remplacer par la grille réelle du courtier choisi.
 - Activités lues depuis un historique daté, mais aucune durée de validité maximale d'une fiche d'activité.
 - Pas de conversion de devises : tous les titres doivent être dans la devise du portefeuille (sinon refus).
-- Titre radié : liquidation supposée au dernier cours coté (en réalité : rachat, échange ou perte totale).
+- Titre radié sans contrepartie documentée : valeur inconnue, résultats donnés à 0 et au dernier cours.
+- Capitalisation vérifiée par nombre d'actions x cours : écarte une valeur aberrante, pas une donnée fausse mais cohérente.
 - Le référentiel religieux s'applique rétroactivement à toute la période simulée.
 

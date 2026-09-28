@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from .data import PointInTimeView, fundamentals_problems
+from .data import PRICE_STALENESS_DAYS, PointInTimeView, fundamentals_problems
 
 ADMISSIBLE = "ADMISSIBLE"
 EXCLU = "EXCLU"
@@ -39,12 +39,19 @@ ALLOWED_INSTRUMENT_TYPES = {"ACTION"}
 # Catalogue des types de ratios : chaque identifiant est lié à SON numérateur et aux dénominateurs admis.
 # Un référentiel choisit le dénominateur et le seuil, pas la signification du ratio. Ajouter un type
 # (par exemple créances / actifs) exige de modifier ce catalogue, avec un test : c'est voulu.
+# Seule méthode de calcul implémentée : valeurs ponctuelles du dernier état financier publié. Une méthodologie
+# qui exige une moyenne glissante (ex. capitalisation moyenne sur 36 mois) ou un contrôle supplémentaire
+# (ex. créances) n'est PAS reproductible en l'état : le logiciel n'implémente aucun référentiel réel complet.
+SUPPORTED_CALCULATIONS = {"ponctuel_derniere_publication"}
 RATIO_CATALOG = {
     "dette_a_interet": {"numerator": "interest_bearing_debt", "denominators": {"market_cap", "total_assets"}},
     "liquidites_a_interet": {"numerator": "cash_and_interest_bearing_investments",
                              "denominators": {"market_cap", "total_assets"}},
     "revenus_non_conformes": {"numerator": "non_compliant_revenue", "denominators": {"total_revenue"}},
 }
+# Écart toléré entre la capitalisation publiée et nombre d'actions x cours de fin de période. Contrôle de
+# cohérence des DONNÉES (pas un seuil religieux) : il écarte une valeur aberrante, pas une donnée fausse mais cohérente.
+MARKET_CAP_TOLERANCE = 0.05
 REQUIRED_RATIO_IDS = set(RATIO_CATALOG)
 CORE_EXCLUDED_ACTIVITIES = ("CONVENTIONAL_BANKING", "CONVENTIONAL_INSURANCE", "ALCOHOL", "PORK", "GAMBLING",
                             "ADULT_ENTERTAINMENT")
@@ -102,9 +109,12 @@ def structural_problems(rs: dict) -> list[str]:
     if len(ids) != len(set(ids)):
         p.append("identifiants de ratios en double")
     for r in ratios:
-        for key in ("id", "label", "numerator", "denominator", "max"):
+        for key in ("id", "label", "numerator", "denominator", "max", "calcul"):
             if key not in r:
                 p.append(f"ratio {r.get('id')} : clé '{key}' manquante")
+        if "calcul" in r and r["calcul"] not in SUPPORTED_CALCULATIONS:
+            p.append(f"ratio {r.get('id')} : méthode de calcul {r['calcul']!r} non implémentée "
+                     f"(disponible : {sorted(SUPPORTED_CALCULATIONS)})")
         spec = RATIO_CATALOG.get(r.get("id"))
         if spec is None:
             p.append(f"ratio {r.get('id')!r} absent du catalogue RATIO_CATALOG (types permis : {sorted(RATIO_CATALOG)})")
@@ -157,6 +167,23 @@ def load_ruleset(path: str | Path) -> dict:
     return rs
 
 
+def _market_cap_findings(view: PointInTimeView, ticker: str, fund: dict) -> list[tuple[str, str, str]]:
+    """Vérifie la capitalisation publiée contre nombre d'actions x cours de clôture à la fin de période."""
+    mcap, shares = fund.get("market_cap"), fund.get("shares_outstanding")
+    if mcap is None:
+        return []  # absence déjà traitée par le calcul du ratio
+    if shares is None:
+        return [(INCERTAIN, "Capitalisation invérifiable : nombre d'actions absent", CAUSE_DONNEE_MANQUANTE)]
+    bar = view.close_on_or_before(ticker, fund["period_end"])
+    if bar is None or (fund["period_end"] - bar.date).days > PRICE_STALENESS_DAYS:
+        return [(INCERTAIN, f"Capitalisation invérifiable : pas de cours au {fund['period_end']}", CAUSE_DONNEE_MANQUANTE)]
+    computed = shares * bar.close
+    if abs(mcap / computed - 1) > MARKET_CAP_TOLERANCE:
+        return [(INCERTAIN, f"Capitalisation publiée {mcap:.4g} incohérente avec actions x cours = {computed:.4g} "
+                            f"(écart > {MARKET_CAP_TOLERANCE:.0%})", CAUSE_DONNEE_INVALIDE)]
+    return []
+
+
 def screen_security(view: PointInTimeView, ticker: str, ruleset: dict) -> ScreeningResult:
     sec = view.security(ticker)
     findings: list[tuple[str, str, str | None]] = []  # (statut, motif, cause d'incertitude)
@@ -193,6 +220,8 @@ def screen_security(view: PointInTimeView, ticker: str, ruleset: dict) -> Screen
         invalid = fundamentals_problems(fund)  # défense en profondeur : déjà refusé à l'import
         for msg in invalid:
             findings.append((INCERTAIN, f"Donnée financière invalide : {msg}", CAUSE_DONNEE_INVALIDE))
+        if not invalid and any(r["denominator"] == "market_cap" for r in ruleset["financial_ratios"]):
+            findings.extend(_market_cap_findings(view, ticker, fund))
         age = (view.as_of - fund["period_end"]).days
         if age > ruleset["max_fundamentals_age_days"]:
             findings.append((INCERTAIN, f"Données financières périmées : fin de période {fund['period_end']} "

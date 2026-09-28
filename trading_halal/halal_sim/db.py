@@ -52,7 +52,14 @@ BEGIN SELECT RAISE(ABORT, 'Achat interdit : statut non ADMISSIBLE'); END;
 CREATE TABLE IF NOT EXISTS equity(
   run_id INTEGER NOT NULL REFERENCES runs(run_id),
   portfolio TEXT NOT NULL, date TEXT NOT NULL,
-  cash REAL NOT NULL, positions_value REAL NOT NULL, equity REAL NOT NULL
+  cash REAL NOT NULL, positions_value REAL NOT NULL, equity REAL NOT NULL,
+  frozen_value_last_close REAL NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS corporate_events(
+  run_id INTEGER NOT NULL REFERENCES runs(run_id),
+  portfolio TEXT NOT NULL, date TEXT NOT NULL, ticker TEXT NOT NULL,
+  event TEXT NOT NULL CHECK (event IN ('RADIATION_VALEUR_INCONNUE','RADIATION_CONTREPARTIE_DOCUMENTEE')),
+  qty INTEGER NOT NULL, value_per_share REAL, cash_received REAL NOT NULL DEFAULT 0, source TEXT
 );
 CREATE TABLE IF NOT EXISTS metrics(
   run_id INTEGER NOT NULL REFERENCES runs(run_id),
@@ -120,8 +127,12 @@ class Store:
             (run_id, portfolio, _s(decision_date), _s(execution_date), ticker, side, qty, "REJETE", reason, status))
 
     def add_equity_rows(self, run_id, rows):
-        self.conn.executemany("INSERT INTO equity VALUES(?,?,?,?,?,?)",
-                              [(run_id, p, _s(d), c, pv, e) for p, d, c, pv, e in rows])
+        self.conn.executemany("INSERT INTO equity VALUES(?,?,?,?,?,?,?)",
+                              [(run_id, p, _s(d), c, pv, e, fz) for p, d, c, pv, e, fz in rows])
+
+    def add_corporate_event(self, run_id, portfolio, d, ticker, event, qty, value_per_share, cash, source):
+        self.conn.execute("INSERT INTO corporate_events VALUES(?,?,?,?,?,?,?,?,?)",
+                          (run_id, portfolio, _s(d), ticker, event, qty, value_per_share, cash, source))
 
     def add_metrics(self, run_id, portfolio, metrics: dict):
         self.conn.executemany("INSERT INTO metrics VALUES(?,?,?,?)",

@@ -19,6 +19,10 @@
     "on_exclu": "SELL",
     "on_incertain": "SELL"
   },
+  "sizing": {
+    "topup_held_positions": false,
+    "_commentaire": "Même règle pour la stratégie et la référence réinvestie : compléter ou non une ligne détenue sous sa part cible."
+  },
   "sensitivity_capitals": [
     500,
     2000,

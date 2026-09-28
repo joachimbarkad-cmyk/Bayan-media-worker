@@ -38,13 +38,17 @@ class Bar:
     volume: int
 
 
-SECURITY_COLS = ["ticker", "name", "instrument_type", "country", "currency", "known_from", "delisted_date"]
+SECURITY_COLS = ["ticker", "name", "instrument_type", "country", "currency", "known_from", "delisted_date",
+                 "delisting_cash_per_share", "delisting_source"]
+# Champs de la fiche titre lisibles par une décision. delisted_date n'en fait partie qu'une fois la radiation passée.
+SECURITY_PUBLIC_FIELDS = ("ticker", "name", "instrument_type", "country", "currency", "known_from")
+PRICE_STALENESS_DAYS = 7
 ACTIVITY_COLS = ["ticker", "available_date", "activity_codes", "activity_description", "source"]
 PRICE_COLS = ["date", "ticker", "open", "high", "low", "close", "volume"]
-FUND_NUMERIC = ["market_cap", "total_assets", "interest_bearing_debt",
+FUND_NUMERIC = ["market_cap", "shares_outstanding", "total_assets", "interest_bearing_debt",
                 "cash_and_interest_bearing_investments", "total_revenue", "non_compliant_revenue"]
 FUND_COLS = ["ticker", "period_end", "available_date", "currency", *FUND_NUMERIC, "source"]
-FUND_POSITIVE = ("market_cap", "total_assets")          # strictement positifs s'ils sont renseignés
+FUND_POSITIVE = ("market_cap", "shares_outstanding", "total_assets")  # strictement positifs s'ils sont renseignés
 FUND_NON_NEGATIVE = ("interest_bearing_debt", "cash_and_interest_bearing_investments", "total_revenue",
                      "non_compliant_revenue")
 
@@ -66,6 +70,9 @@ def fundamentals_problems(rec: dict) -> list[str]:
     nc, rev = rec.get("non_compliant_revenue"), rec.get("total_revenue")
     if not p and nc is not None and rev is not None and nc > rev:
         p.append("revenus non conformes supérieurs au chiffre d'affaires")
+    cash, assets = rec.get("cash_and_interest_bearing_investments"), rec.get("total_assets")
+    if not p and cash is not None and assets is not None and cash > assets:
+        p.append("liquidités supérieures au total de l'actif")
     return p
 
 
@@ -176,6 +183,10 @@ def load_dataset(root: str | Path) -> Dataset:
         row["delisted_date"] = _date(row["delisted_date"], ctx) if row["delisted_date"] else None
         if row["delisted_date"] and row["delisted_date"] <= row["known_from"]:
             raise DataError(f"{ctx} : radiation antérieure à known_from")
+        row["delisting_cash_per_share"] = _num(row["delisting_cash_per_share"], ctx)
+        if row["delisting_cash_per_share"] is not None:
+            if row["delisting_cash_per_share"] < 0 or not row["delisting_source"] or not row["delisted_date"]:
+                raise DataError(f"{ctx} : contrepartie de radiation négative, sans source ou sans date de radiation")
         securities[t] = row
 
     activities: dict[str, list[dict]] = {t: [] for t in securities}
@@ -269,7 +280,24 @@ class PointInTimeView:
         if sec["known_from"] >= self.as_of:
             raise LookaheadError(f"Fiche {ticker} connue à partir du {sec['known_from']}, décision du {self.as_of}")
         self._touch(sec["known_from"])
-        return sec
+        out = {k: sec[k] for k in SECURITY_PUBLIC_FIELDS}
+        if sec["delisted_date"] is not None and sec["delisted_date"] < self.as_of:  # radiation déjà survenue
+            self._touch(sec["delisted_date"])
+            out["delisted_date"] = sec["delisted_date"]
+        return out
+
+    def close_on_or_before(self, ticker: str, d: date) -> Bar | None:
+        """Dernière barre au plus tard le jour d (d <= date de décision), par exemple le cours de fin de période
+        comptable pour vérifier une capitalisation."""
+        if d > self.as_of:
+            raise LookaheadError(f"Cours du {d} demandé pour une décision du {self.as_of}")
+        dates = self._ds._bar_dates.get(ticker, [])
+        i = bisect.bisect_right(dates, d)
+        if not i:
+            return None
+        bar = self._ds.bars[ticker][i - 1]
+        self._touch(bar.date)
+        return bar
 
     def last_bars(self, ticker: str, n: int) -> list[Bar]:
         dates = self._ds._bar_dates.get(ticker, [])

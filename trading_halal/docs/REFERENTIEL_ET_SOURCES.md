@@ -79,3 +79,20 @@ citée dit bien ce qui est codé, ni que la validation a réellement eu lieu. Ce
   fixée à l'avance ; cela ne reconstruit pas les décisions religieuses réellement disponibles à chaque date passée.
 - Une fiche titre modifiée sans mise à jour de `known_from` ne peut pas être détectée par le logiciel : pour un
   changement de type d'instrument ou de devise, il faudra un historique daté (comme pour les activités).
+
+## 7. Ce que le catalogue de ratios ne sait pas encore reproduire (revue n° 3)
+
+**Le logiciel n'implémente aucun référentiel réel complet.** Chaque ratio déclare sa méthode de calcul (`calcul`) ;
+seule `ponctuel_derniere_publication` est implémentée (valeurs du dernier état financier publié). D'après le
+relecteur — points **non vérifiés par moi** sur les textes :
+- les règles FTSE SGX utiliseraient le total de l'actif pour la dette et les liquidités, exigeraient un contrôle des
+  créances et prévoiraient des règles de suivi entre deux examens ;
+- une méthodologie S&P utiliserait une capitalisation moyenne sur 36 mois.
+Aucun de ces deux référentiels n'est donc reproductible en l'état. Pour en adopter un, il faudra : le texte daté,
+de nouveaux champs (créances, historique de capitalisation), de nouvelles méthodes de calcul dans le code, et des
+tests propres à ce référentiel. Le total de l'actif n'est pas interchangeable avec la capitalisation : le choix
+du dénominateur doit venir du texte retenu.
+
+La capitalisation publiée est confrontée à nombre d'actions x cours de clôture à la fin de période (écart toléré
+5 %, contrôle de cohérence des données et non seuil religieux). Cela écarte une valeur aberrante isolée, pas une
+série de données fausses mais cohérentes entre elles : la provenance des données reste à contrôler.
