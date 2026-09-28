@@ -11,7 +11,7 @@ Date : 28/09/2026. Aucun service payant utilisé (`costPolicy=free`, `BAYAN_ALLO
 | Fichier source | 1920×1080, 30 i/s, H.264 ~3,8 Mbit/s + AAC, **180 s, 88,8 Mo** (mire avec grain, proche d’une vidéo filmée) |
 | Sous-titres | ASS de 60 segments arabe + français (un toutes les 3 s), en-tête identique à `tests/fixtures/captions.ass` |
 
-La construction de l’image Docker n’a pas pu être testée dans cet environnement : les dépôts Debian renvoient 403 à travers le proxy du bac à sable. Le code exécuté est le même.
+La construction de l’image Docker n’a pas pu être testée dans cet environnement : la politique réseau du bac à sable refuse `deb.debian.org`, en HTTP comme en HTTPS (403). Le code exécuté est le même. Le parcours a aussi été rejoué sous l’utilisateur non privilégié uid 10001, comme `start.py` le fait dans le conteneur. Résultat : 2 exports de 97,7 Mo, et seul le dernier MP4 reste sur le disque.
 
 ## Parcours et résultat avant correction
 
