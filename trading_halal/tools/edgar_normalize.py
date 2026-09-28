@@ -1,4 +1,7 @@
-"""Normalisation de faits EDGAR (companyfacts) selon des règles versionnées, HORS LIGNE, par le journal des saisies.
+"""Normalisation de faits EDGAR selon des règles versionnées, HORS LIGNE, par le journal des saisies.
+
+Deux temps (revue n° 13) : `normalize` PROPOSE (fichier de propositions, aucun fait modifié) ; `reconcile-ixbrl`
+normalise et rapproche à partir de la copie locale du document, seule source du contexte et des dimensions.
 
 Aucune cellule n'est modifiée directement : chaque changement devient une entrée de `journal_saisies.csv`
 (auteur = cet outil, preuve = document ou URL de la source), puis les fichiers sont réécrits, et le dossier doit
@@ -9,7 +12,7 @@ Usage :
       --regles config/normalisation/edgar_v1.json
   python3 tools/edgar_normalize.py import-filing --audit DOSSIER --doc-id DOC --fichier aapl-20250927.htm \
       --retrieved-at 2026-09-28T14:05:00+02:00
-  python3 tools/edgar_normalize.py reconcile-ixbrl --audit DOSSIER --doc-id DOC
+  python3 tools/edgar_normalize.py reconcile-ixbrl --audit DOSSIER --doc-id DOC --raw RAW --regles REGLES
 
 La normalisation rend un fait utilisable par le projet UNIQUEMENT après rapprochement (reconcile-ixbrl ou humain).
 """
@@ -26,7 +29,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -119,166 +122,129 @@ class Session:
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-# ----------------------------------------------------------------------------------------------- normalisation
-def _submissions(raw: Path, cik: str) -> dict:
-    log = json.loads((raw / "journal_collecte.json").read_text(encoding="utf-8"))
-    e = next((e for e in log if e["kind"] == "submissions" and e["cik"] == cik), None)
-    if e is None:
-        raise NormalizeError(f"submissions de {cik} absent de {raw}")
-    return json.loads((raw / e["file"]).read_text(encoding="utf-8")), e
-
-
-def normalize(raw: Path, audit: Path, rules_path: Path) -> dict:
-    rules = json.loads(rules_path.read_text(encoding="utf-8"))
-    version = rules["version"]
-    before = ec.verify_trace(raw, audit)
-    if before:
-        raise NormalizeError("le dossier ne passe pas verify-trace avant normalisation :\n  " + "\n  ".join(before[:10]))
-    s = Session(audit, normalize_author(rules_path))
-    with open(audit / ec.TRACE_FILE, newline="", encoding="utf-8") as f:
-        trace = {r["fact_id"]: r for r in csv.DictReader(f)}
-    raw_cache: dict[str, dict] = {}
-
-    def raw_entries(name):
-        if name not in raw_cache:
-            raw_cache[name] = json.loads((raw / name).read_text(encoding="utf-8"))
-        return raw_cache[name]
-
-    by_concept = {r["source_concept"]: r for r in rules["regles"]}
-    docs = s.index["documents"]
-    report = {"version": version, "regles_sha256": _sha(rules_path), "normalises": defaultdict(int), "ecartes": [],
-              "conflits": []}
-    candidates, excluded = [], {}
-    for fact in s.tables["facts"]:
-        rule = by_concept.get(fact["source_concept"])
-        if rule is None:
-            continue
-        fid = fact["fact_id"]
-        if fact["source_unit"] != rule["source_unit"] or fact["period_type"] != rule["period_type"]:
-            report["ecartes"].append(f"{fid} : unité ou type de période hors règle {rule['id']}")
-            excluded[fid] = f"unité ou type de période hors règle {rule['id']}"
-            continue
-        t = trace.get(fid)
-        if t is None:
-            report["ecartes"].append(f"{fid} : sans trace brute")
-            excluded[fid] = "sans trace brute"
-            continue
-        # D1 : une seule valeur brute pour ce concept, cette unité, cette période et ce dépôt
-        tax, concept, unit, _ = ec.parse_pointer(t["source_pointer"])
-        items = raw_entries(Path(t["source_file"]).name)["facts"][tax][concept]["units"][unit]
-        accn = docs[fact["doc_id"]]["accession_number"]
-        same = {json.dumps(it.get("val")) for it in items
-                if it.get("accn") == accn and it.get("start", "") == fact["period_start"] and it.get("end") ==
-                fact["period_end"]}
-        if len(same) != 1:
-            report["ecartes"].append(f"{fid} : {len(same)} valeurs brutes pour la même clé (dimensions probables)")
-            excluded[fid] = f"D1 non satisfaite ({len(same)} valeurs brutes pour la même clé)"
-            continue
-        candidates.append((rule, fact, t))
-    # K1 : conflits entre concepts d'origine normalisés vers le même concept
-    groups = defaultdict(list)
-    for rule, fact, t in candidates:
-        groups[(fact["doc_id"], rule["normalized_concept"], fact["period_start"], fact["period_end"])].append(
-            (rule, fact, t))
-    tickers_cache: dict[str, list] = {}
-    for key, members in groups.items():
-        if len({m[1]["raw_value"] for m in members}) > 1:
-            detail = ", ".join(f"{m[1]['source_concept']}={m[1]['raw_value']}" for m in members)
-            report["conflits"].append(f"{key} : {detail}")
-            for m in members:
-                excluded[m[1]["fact_id"]] = f"conflit K1 ({detail})"
-            continue
-        for rule, fact, t in members:
-            fid = fact["fact_id"]
-            issuer = docs[fact["doc_id"]]["issuer_id"]
-            share_class = ""
-            if rule["normalized_concept"] == "shares_outstanding":
-                if issuer not in tickers_cache:
-                    tickers_cache[issuer] = _submissions(raw, issuer)[0].get("tickers") or []
-                tk = tickers_cache[issuer]
-                if len(tk) != 1:
-                    report["ecartes"].append(f"{fid} : {len(tk)} titre(s) coté(s) {tk} : catégorie non établie (C1)")
-                    excluded[fid] = f"catégorie d'actions non établie (C1 : {len(tk)} titre(s) coté(s))"
-                    continue
-                share_class = f"ordinaire (déduit C1 : titre coté unique {tk[0]})"
-            _map_concept(s, rule, raw, issuer, version)
-            proof = f"doc:{fact['doc_id']}"
-            period = (f"{fact['period_start']}/{fact['period_end']}" if fact["period_start"]
-                      else fact["period_end"])
-            s.set("facts", fid, "source_context",
-                  f"companyfacts;entite=CIK{issuer};periode={period};segment=aucun(deduit D1)", proof, "X1")
-            s.set("facts", fid, "source_dimensions", "", proof, "D1 : une seule valeur brute pour cette clé")
-            if share_class:
-                s.set("facts", fid, "share_class", share_class, proof, "C1")
-            s.set("facts", fid, "normalized_concept", rule["normalized_concept"], proof, rule["id"])
-            s.set("facts", fid, "transformation", "aucune", proof, "T1")
-            s.set("facts", fid, "value", fact["raw_value"], proof, "T1")
-            s.set("facts", fid, "normalization_justification",
-                  f"Règle {rule['id']} ({version}) : {rule['source_concept']} [{rule['source_unit']}, "
-                  f"{rule['period_type']}] -> {rule['normalized_concept']}. Valeur reprise telle quelle (T1). "
-                  f"Dimensions : aucune, déduit (D1). Entrée brute {t['source_pointer']} "
-                  f"(sha256 {t['entry_sha256'][:16]}…). À confirmer sur l'instance XBRL.", proof, rule["id"])
-            report["normalises"][rule["normalized_concept"]] += 1
-    # Exclusion explicite de tout fait dont le concept est mappé mais qui n'a pas été normalisé.
-    for fact in s.tables["facts"]:
-        if fact["normalized_concept"] or not s.cell("concept_map", fact["source_concept"], "normalized_concept"):
-            continue
-        reason = excluded.get(fact["fact_id"], "hors règles")
-        s.set("facts", fact["fact_id"], "normalization_justification", f"{EXCLUSION_PREFIX} {reason} ({version})",
-              f"doc:{fact['doc_id']}", "exclusion explicite")
-    s.commit(raw)
-    report["saisies"] = len(s.new)
-    report["normalises"] = dict(report["normalises"])
-    (audit / "rapport_normalisation.json").write_text(json.dumps(report, ensure_ascii=False, indent=1) + "\n",
-                                                      encoding="utf-8")
-    return report
+# ----------------------------------------------------------------------------------------------- propositions
+# Revue n° 13 : companyfacts ne prouve ni l'absence de dimensions (D1 retirée) ni la catégorie d'actions (C1 retirée :
+# la liste actuelle des tickers est une information future et ignore les catégories non cotées). `normalize` ne fait
+# donc que PROPOSER ; la normalisation n'est écrite qu'au rapprochement avec le document (reconcile-ixbrl), qui établit
+# contexte et dimensions à partir du document lui-même.
+PROPOSALS_FILE = "propositions_normalisation.csv"
+PROPOSAL_HEADERS = ["fact_id", "doc_id", "regle", "source_concept", "normalized_concept", "source_unit",
+                    "period_start", "period_end", "raw_value", "source_pointer", "entry_sha256"]
+SHARE_BASED = {"shares_outstanding", "market_cap"}
 
 
 def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def normalize_author(rules_path: Path) -> str:
-    """Auteur des saisies de normalisation : l'outil, la version ET l'empreinte exacte du fichier de règles."""
-    version = json.loads(rules_path.read_text(encoding="utf-8"))["version"]
-    return f"{TOOL} (règles {version} sha256:{_sha(rules_path)[:16]}, automatique)"
+def _rules(rules_path: Path) -> dict:
+    rules = json.loads(rules_path.read_text(encoding="utf-8"))
+    for r in rules["regles"]:
+        if r["normalized_concept"] in SHARE_BASED:
+            raise NormalizeError(f"règle {r['id']} : {r['normalized_concept']} exige une catégorie d'actions, qui ne "
+                                 "peut pas être établie automatiquement (revue n° 13) ; règle refusée")
+    return rules
 
 
-# Colonnes écrites par `normalize` ; `reconcile-ixbrl` remplace ensuite source_context (et renseigne decimals).
+def rules_tag(rules_path: Path) -> str:
+    return f"règles {_rules(rules_path)['version']} sha256:{_sha(rules_path)[:16]}"
+
+
+def compute_proposals(raw: Path, audit: Path, rules_path: Path) -> tuple[list[dict], dict]:
+    """Propositions (lecture seule) : faits dont le concept, l'unité et le type de période relèvent d'une règle, hors
+    conflits K1. Aucune inférence sur les dimensions, le contexte ou la catégorie d'actions."""
+    rules = _rules(rules_path)
+    tables = _load_tables(audit)
+    docs = {r["doc_id"]: r for r in tables["documents"]}
+    with open(audit / ec.TRACE_FILE, newline="", encoding="utf-8") as f:
+        trace = {r["fact_id"]: r for r in csv.DictReader(f)}
+    by_concept = {r["source_concept"]: r for r in rules["regles"]}
+    report = {"version": rules["version"], "regles_sha256": _sha(rules_path), "propositions": defaultdict(int),
+              "ecartes": [], "conflits": []}
+    groups = defaultdict(list)
+    for fact in tables["facts"]:
+        rule = by_concept.get(fact["source_concept"])
+        if rule is None:
+            continue
+        fid = fact["fact_id"]
+        if fact["source_unit"] != rule["source_unit"] or fact["period_type"] != rule["period_type"]:
+            report["ecartes"].append(f"{fid} : unité ou type de période hors règle {rule['id']}")
+            continue
+        t = trace.get(fid)
+        if t is None:
+            report["ecartes"].append(f"{fid} : sans trace brute")
+            continue
+        groups[(fact["doc_id"], rule["normalized_concept"], fact["period_start"], fact["period_end"])].append(
+            (rule, fact, t))
+    proposals = []
+    for key, members in sorted(groups.items()):
+        if len({m[1]["raw_value"] for m in members}) > 1:  # K1
+            report["conflits"].append(f"{key} : " + ", ".join(f"{m[1]['source_concept']}={m[1]['raw_value']}"
+                                                              for m in members))
+            continue
+        for rule, fact, t in members:
+            proposals.append({"fact_id": fact["fact_id"], "doc_id": fact["doc_id"], "regle": rule["id"],
+                              "source_concept": fact["source_concept"], "normalized_concept": rule["normalized_concept"],
+                              "source_unit": fact["source_unit"], "period_start": fact["period_start"],
+                              "period_end": fact["period_end"], "raw_value": fact["raw_value"],
+                              "source_pointer": t["source_pointer"], "entry_sha256": t["entry_sha256"]})
+            report["propositions"][rule["normalized_concept"]] += 1
+    proposals.sort(key=lambda p: p["fact_id"])
+    report["propositions"] = dict(report["propositions"])
+    return proposals, report
+
+
+def normalize(raw: Path, audit: Path, rules_path: Path) -> dict:
+    """Écrit les propositions et le rapport ; ne modifie aucun fait (rien n'est normalisé sans le document)."""
+    before = ec.verify_trace(raw, audit)
+    if before:
+        raise NormalizeError("le dossier ne passe pas verify-trace :\n  " + "\n  ".join(before[:10]))
+    proposals, report = compute_proposals(raw, audit, rules_path)
+    with open(audit / PROPOSALS_FILE, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=PROPOSAL_HEADERS)
+        w.writeheader()
+        w.writerows(proposals)
+    (audit / "rapport_normalisation.json").write_text(json.dumps(report, ensure_ascii=False, indent=1) + "\n",
+                                                      encoding="utf-8")
+    return report
+
+
+# Colonnes écrites par reconcile-ixbrl.
 NORMALIZE_FACT_COLUMNS = ["normalized_concept", "transformation", "value", "source_dimensions", "share_class",
-                          "normalization_justification", "source_context"]
+                          "normalization_justification", "source_context", "decimals", "reconciled",
+                          "reconciled_note"]
 
 
 def verify_normalisation(raw: Path, audit: Path, rules_path: Path) -> tuple[list[str], list[str]]:
-    """Refait conversion + normalisation dans un dossier temporaire avec CES règles et compare chaque cellule de
-    normalisation. Renvoie (écarts, saisies humaines hors règles). Une cellule attribuée à l'outil mais différente de ce
-    que produisent les règles est un écart ; une cellule dont la dernière saisie est humaine est seulement listée."""
+    """Refait conversion, propositions, import et rapprochement (mêmes copies locales) avec CES règles dans un dossier
+    temporaire et compare chaque cellule de normalisation, concept_map et le fichier de propositions. Renvoie (écarts,
+    saisies humaines hors règles) ; une saisie humaine différente est listée, jamais masquée."""
     problems, human = [], []
-    author = normalize_author(rules_path)
+    expected = f"{TOOL} reconcile-ixbrl ({rules_tag(rules_path)}, automatique)"
     journal = _load_journal(audit)
     last_author = {(e["fichier"], e["cle"], e["colonne"]): e["auteur"] for e in journal}
-    tool_authors = {e["auteur"] for e in journal if e["auteur"].startswith(f"{TOOL} (règles")}
-    for a in sorted(tool_authors - {author}):
-        problems.append(f"saisies attribuées à d'autres règles que celles fournies : « {a} » (attendu « {author} »)")
+    for a in sorted({e["auteur"] for e in journal if e["auteur"].startswith(f"{TOOL} reconcile-ixbrl")} - {expected}):
+        problems.append(f"saisies attribuées à d'autres règles que celles fournies : « {a} » (attendu « {expected} »)")
     forms = set(json.loads((audit / ec.JOURNAL_FILE).read_text(encoding="utf-8")).get("formulaires") or [])
     tmp = Path(tempfile.mkdtemp(prefix="verif_normalisation_"))
     try:
         ref = tmp / "ref"
         ec.convert(raw, ref, forms)
         normalize(raw, ref, rules_path)
+        if not (audit / PROPOSALS_FILE).exists() or \
+                (audit / PROPOSALS_FILE).read_bytes() != (ref / PROPOSALS_FILE).read_bytes():
+            problems.append(f"{PROPOSALS_FILE} absent ou différent de ce que donnent les règles")
         mine = _load_tables(audit)
-        for doc in mine["documents"]:  # rejouer import + rapprochement automatique sur les mêmes copies locales
+        for doc in mine["documents"]:
             if doc["local_copy"]:
                 src = audit / doc["local_copy"]
                 if not src.is_file() or _sha(src) != doc["local_sha256"]:
                     problems.append(f"{doc['doc_id']} : copie locale absente ou différente de local_sha256")
                     continue
                 import_filing(ref, doc["doc_id"], src, "2000-01-01T00:00:00+00:00", raw)
-                reconcile_ixbrl(ref, doc["doc_id"], raw)
+                reconcile_ixbrl(ref, doc["doc_id"], raw, rules_path)
         theirs = _load_tables(ref)
-        checks = {"facts": NORMALIZE_FACT_COLUMNS + ["decimals", "reconciled", "reconciled_note"],
-                  "concept_map": FILES["concept_map"]}
-        for name, cols in checks.items():
+        for name, cols in (("facts", NORMALIZE_FACT_COLUMNS), ("concept_map", FILES["concept_map"])):
             m = {ec._row_key(name, r): r for r in mine[name]}
             th = {ec._row_key(name, r): r for r in theirs[name]}
             for key in sorted(m.keys() | th.keys()):
@@ -397,66 +363,95 @@ def parse_ixbrl(path: Path) -> tuple[dict, dict, list]:
     return contexts, units, facts
 
 
-def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path | None = None) -> dict:
-    """Rapproche chaque fait normalisé du document de sa copie locale XBRL en ligne (automatique, reconciled=auto)."""
-    s = Session(audit, f"{TOOL} reconcile-ixbrl (automatique)")
+def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> dict:
+    """Normalise ET rapproche les propositions d'un document à partir de sa copie locale XBRL en ligne : même entité,
+    même période exacte, même unité, contexte SANS segment, valeur affichée égale à la valeur companyfacts. Le contexte
+    et l'absence de dimensions sont alors établis par le document (preuve : fichier + empreinte)."""
+    rules = _rules(rules_path)
+    tag = rules_tag(rules_path)
+    s = Session(audit, f"{TOOL} reconcile-ixbrl ({tag}, automatique)")
     doc = s.index["documents"].get(doc_id)
     if doc is None or not doc["local_copy"]:
         raise NormalizeError(f"{doc_id} : aucune copie locale (utiliser import-filing)")
     path = audit / doc["local_copy"]
-    sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    sha = _sha(path)
     if sha != doc["local_sha256"]:
         raise NormalizeError(f"{doc['local_copy']} : empreinte différente de local_sha256")
+    proposals, _ = compute_proposals(raw, audit, rules_path)
+    by_rule = {r["id"]: r for r in rules["regles"]}
     contexts, _, ixfacts = parse_ixbrl(path)
     cik = int(doc["issuer_id"])
     proof = f"fichier:{doc['local_copy']}#sha256={sha}"
     report = {"rapproches": 0, "echecs": []}
-    for fact in s.tables["facts"]:
-        if fact["doc_id"] != doc_id or not fact["normalized_concept"] or fact["reconciled"]:
+    failures: dict[str, str] = {}
+    for prop in proposals:
+        fid = prop["fact_id"]
+        if prop["doc_id"] != doc_id or s.cell("facts", fid, "reconciled"):
             continue
-        fid = fact["fact_id"]
-        unit = "shares" if fact["source_unit"] == "shares" else fact["source_unit"]
-        matches, refuted = [], []
+        matches, segmented = [], []
         for f in ixfacts:
             ctx = contexts.get(f["context"])
-            if f["name"] != fact["source_concept"] or ctx is None or f["unit"] != unit:
+            if f["name"] != prop["source_concept"] or ctx is None or f["unit"] != prop["source_unit"]:
                 continue
-            if (ctx["start"], ctx["end"]) != (fact["period_start"], fact["period_end"]):
+            if (ctx["start"], ctx["end"]) != (prop["period_start"], prop["period_end"]):
                 continue
             try:
-                entity_ok = int(ctx["entity"]) == cik
+                if int(ctx["entity"]) != cik:
+                    continue
             except ValueError:
-                entity_ok = False
-            if not entity_ok:
                 continue
-            (refuted if ctx["segment"] else matches).append(f)
+            (segmented if ctx["segment"] else matches).append(f)
+        reason = None
         if not matches:
-            report["echecs"].append(f"{fid} : aucun fait sans segment dans le document"
-                                    + (f" ({len(refuted)} fait(s) avec segment : D1 réfutée)" if refuted else ""))
+            reason = ("aucun fait sans segment dans le document"
+                      + (f" ({len(segmented)} fait(s) ventilé(s) seulement)" if segmented else ""))
+        else:
+            try:
+                values = {_ix_value(m["el"]) for m in matches}
+            except ValueError as exc:
+                values, reason = set(), str(exc)
+            if reason is None and len(values) != 1:
+                reason = f"valeurs affichées incohérentes {sorted(map(str, values))}"
+            elif reason is None and next(iter(values)) != Decimal(prop["raw_value"]):
+                reason = f"document {next(iter(values))} ≠ companyfacts {prop['raw_value']}"
+        if reason:
+            report["echecs"].append(f"{fid} : {reason}")
+            failures[fid] = reason
             continue
-        try:
-            values = {_ix_value(m["el"]) for m in matches}
-        except ValueError as exc:
-            report["echecs"].append(f"{fid} : {exc}")
-            continue
-        if len(values) != 1:
-            report["echecs"].append(f"{fid} : valeurs affichées incohérentes {sorted(map(str, values))}")
-            continue
-        (value,) = values
-        if value != Decimal(fact["raw_value"]):
-            report["echecs"].append(f"{fid} : document {value} ≠ companyfacts {fact['raw_value']}")
-            continue
-        decs = {m["decimals"] for m in matches}
+        value = next(iter(values))
         m = matches[0]
-        s.set("facts", fid, "source_context", m["context"], proof, "identifiant du contexte XBRL (remplace X1)")
+        rule = by_rule[prop["regle"]]
+        _map_concept(s, rule, raw, doc["issuer_id"], rules["version"])
+        decs = {x["decimals"] for x in matches}
+        s.set("facts", fid, "source_context", m["context"], proof, "identifiant du contexte XBRL du document")
+        s.set("facts", fid, "source_dimensions", "", proof, "établi par le document : contexte sans segment")
         if len(decs) == 1 and m["decimals"]:
             s.set("facts", fid, "decimals", m["decimals"], proof, "attribut decimals du document")
+        s.set("facts", fid, "normalized_concept", rule["normalized_concept"], proof, rule["id"])
+        s.set("facts", fid, "transformation", "aucune", proof, "valeur reprise telle quelle")
+        s.set("facts", fid, "value", prop["raw_value"], proof, "valeur reprise telle quelle")
+        s.set("facts", fid, "normalization_justification",
+              f"Règle {rule['id']} ({tag}) : {rule['source_concept']} [{rule['source_unit']}, {rule['period_type']}] "
+              f"-> {rule['normalized_concept']} ; valeur reprise telle quelle ; contexte {m['context']} sans segment "
+              f"dans le document ; entrée brute {prop['source_pointer']} (sha256 {prop['entry_sha256'][:16]}…).",
+              proof, rule["id"])
         s.set("facts", fid, "reconciled", "auto", proof, "rapprochement automatique XBRL en ligne")
         s.set("facts", fid, "reconciled_note",
               f"AUTOMATIQUE : {doc['local_copy']} (sha256 {sha[:16]}…), {len(matches)} élément(s) ix:nonFraction "
               f"{m['name']} contexte {m['context']} sans segment, id {m['id'] or '?'}, affiché « {m['text']} », "
               f"échelle {m['scale']} = {value} ; à relire par une personne.", proof, "")
         report["rapproches"] += 1
+    # Tout fait d'un concept désormais mappé mais non normalisé porte une exclusion motivée.
+    for fact in s.tables["facts"]:
+        if fact["normalized_concept"] or not s.cell("concept_map", fact["source_concept"], "normalized_concept"):
+            continue
+        fid = fact["fact_id"]
+        if fid in failures:
+            why, pr = f"document : {failures[fid]}", proof
+        else:
+            why, pr = "en attente du rapprochement avec son document (dimensions non établies)", f"doc:{fact['doc_id']}"
+        s.set("facts", fid, "normalization_justification", f"{EXCLUSION_PREFIX} {why} ({rules['version']})", pr,
+              "exclusion explicite")
     s.commit(raw)
     return report
 
@@ -477,7 +472,8 @@ def main(argv=None) -> int:
     r = sub.add_parser("reconcile-ixbrl")
     r.add_argument("--audit", required=True, type=Path)
     r.add_argument("--doc-id", required=True)
-    r.add_argument("--raw", type=Path)
+    r.add_argument("--raw", required=True, type=Path)
+    r.add_argument("--regles", required=True, type=Path)
     v = sub.add_parser("verify-normalisation", help="Refaire la normalisation avec ces règles et comparer")
     v.add_argument("--raw", required=True, type=Path)
     v.add_argument("--audit", required=True, type=Path)
@@ -486,8 +482,10 @@ def main(argv=None) -> int:
     try:
         if a.cmd == "normalize":
             res = normalize(a.raw, a.audit, a.regles)
-            print(json.dumps({k: (v if k != "ecartes" else len(v)) for k, v in res.items()}, ensure_ascii=False,
-                             indent=1))
+            print(json.dumps({k: (v if k not in ("ecartes", "conflits") else len(v)) for k, v in res.items()},
+                             ensure_ascii=False, indent=1))
+            print(f"Propositions écrites dans {PROPOSALS_FILE} ; aucun fait n'est normalisé sans son document "
+                  "(import-filing puis reconcile-ixbrl).")
         elif a.cmd == "verify-normalisation":
             problems, human = verify_normalisation(a.raw, a.audit, a.regles)
             for msg in problems[:50]:
@@ -499,7 +497,7 @@ def main(argv=None) -> int:
         elif a.cmd == "import-filing":
             print("sha256", import_filing(a.audit, a.doc_id, a.fichier, a.retrieved_at, a.raw))
         else:
-            print(json.dumps(reconcile_ixbrl(a.audit, a.doc_id, a.raw), ensure_ascii=False, indent=1))
+            print(json.dumps(reconcile_ixbrl(a.audit, a.doc_id, a.raw, a.regles), ensure_ascii=False, indent=1))
     except NormalizeError as exc:
         print("REFUS :", exc)
         return 2

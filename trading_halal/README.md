@@ -23,7 +23,7 @@ Depuis la racine du dépôt :
 cd trading_halal
 python3 -m halal_sim check-data                 # valide les fichiers de données de démonstration
 python3 -m halal_sim run                        # simulation complète + rapport + sensibilité au capital
-python3 -m unittest discover -s tests -v        # 209 vérifications automatiques
+python3 -m unittest discover -s tests -v        # 204 vérifications automatiques
 python3 -m halal_sim audit-docs                  # contrôle du dossier d'audit documentaire d'exemple (FICTIF)
 python3 -m halal_sim run --ruleset config/rulesets/AAOIFI_SS21_document_utilisateur.json --no-sensitivity   # référentiel tiré de votre document (non validé)
 python3 tools/edgar_collect.py collect --cik 320193 --dry-run --out collecte_brute   # collecte EDGAR (voir docs/AUDIT_DOCUMENTAIRE.md)
@@ -110,7 +110,8 @@ Collecte de données réelles : voir `docs/GUIDE_COLLECTE_EDGAR.md`. Premier dos
 depuis le JSON brut, et toute la conversion refaite et comparée). Contrôle indépendant contre une copie retéléchargée :
 `python3 tools/edgar_collect.py collect --cik 320193 --user-agent "…" --out /tmp/copie` puis
 `python3 tools/edgar_collect.py verify-source --raw collecte/apple --fresh /tmp/copie --audit data/audit_edgar_apple`. Ordre de normalisation des ratios : `docs/NORMALISATION_RATIOS.md`.
-Normalisation (règles `config/normalisation/edgar_v1.json`, hors ligne, par le journal des saisies) :
-`python3 tools/edgar_normalize.py normalize --raw collecte/apple --audit data/audit_edgar_apple --regles config/normalisation/edgar_v1.json` ;
+Normalisation en deux temps (règles `config/normalisation/edgar_v2.json`) : propositions, puis normalisation au rapprochement
+avec le document (`import-filing`, `reconcile-ixbrl`) :
+`python3 tools/edgar_normalize.py normalize --raw collecte/apple --audit data/audit_edgar_apple --regles config/normalisation/edgar_v2.json` ;
 exemples vérifiables : `docs/EXEMPLE_NORMALISATION.md` ; conformité aux règles :
-`python3 tools/edgar_normalize.py verify-normalisation --raw collecte/apple --audit data/audit_edgar_apple --regles config/normalisation/edgar_v1.json`.
+`python3 tools/edgar_normalize.py verify-normalisation --raw collecte/apple --audit data/audit_edgar_apple --regles config/normalisation/edgar_v2.json`.

@@ -1,7 +1,7 @@
 {
   "version": "edgar_v1",
   "date": "2026-09-28",
-  "statut": "PROPOSITION NON RELUE : règles écrites par l'assistant, à faire relire indépendamment (voir HANDOFF.md)",
+  "statut": "RETIRÉE (revue n° 13) : inférences D1 et C1 non prouvées ; conservée pour l'historique, remplacée par edgar_v2",
   "portee": "Faits companyfacts (SEC) d'émetteurs américains en USD ; correspondance UN concept d'origine -> UN concept du projet, sans agrégation ni calcul.",
   "regles": [
     {

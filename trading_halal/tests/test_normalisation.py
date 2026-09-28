@@ -1,4 +1,5 @@
-"""Normalisation EDGAR par règles versionnées, journal des saisies et rapprochement XBRL en ligne (hors ligne)."""
+"""Normalisation EDGAR en deux temps (revue n° 13) : propositions depuis companyfacts, puis normalisation et
+rapprochement à partir du document XBRL en ligne. Tout hors ligne ; document FICTIF pour le rapprochement."""
 import csv
 import hashlib
 import json
@@ -6,6 +7,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from datetime import date
 from pathlib import Path
 
@@ -19,20 +21,18 @@ from halal_sim.audit import audit_folder  # noqa: E402
 from halal_sim.selection import load_audit, select_fact  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "edgar_FICTIF"
-APPLE = ROOT / "data" / "audit_edgar_apple"
-APPLE_RAW = ROOT / "collecte" / "apple"
 RULES_V1 = ROOT / "config" / "normalisation" / "edgar_v1.json"
+RULES_V2 = ROOT / "config" / "normalisation" / "edgar_v2.json"
 K10 = "0000000123-0000000123-25-000004"
+Q10 = "0000000123-0000000123-24-000030"
+REV = "us-gaap:Revenues"
 
 
-def _rules(tmp: Path, extra=()) -> Path:
-    rules = {"version": "test_v1", "regles": [
-        {"id": "T1", "source_concept": "us-gaap:Revenues", "normalized_concept": "total_revenue", "source_unit": "USD",
-         "period_type": "duration", "justification": "Revenu total (règle de test)."},
-        {"id": "T2", "source_concept": "dei:EntityCommonStockSharesOutstanding",
-         "normalized_concept": "shares_outstanding", "source_unit": "shares", "period_type": "instant",
-         "justification": "Actions en circulation (règle de test)."}, *extra]}
-    p = tmp / "regles.json"
+def _rules(tmp: Path, extra=(), name="regles.json") -> Path:
+    rules = {"version": "test_v2", "regles": [
+        {"id": "T1", "source_concept": REV, "normalized_concept": "total_revenue", "source_unit": "USD",
+         "period_type": "duration", "justification": "Revenu total (règle de test)."}, *extra]}
+    p = tmp / name
     p.write_text(json.dumps(rules), encoding="utf-8")
     return p
 
@@ -83,17 +83,18 @@ class Base(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp)
         self.raw = self.tmp / "raw"
         self.raw.mkdir()
-        self.mutate_raw(lambda cf: None, lambda sub: None)
+        self.mutate_raw(lambda cf: None)
         self.out = self.tmp / "audit"
         ec.convert(self.raw, self.out, {"10-K", "10-Q"})
         self.rules = _rules(self.tmp)
 
-    def mutate_raw(self, cf_fn, sub_fn):
+    def mutate_raw(self, cf_fn):
         log = []
-        for kind, fn in (("submissions", sub_fn), ("companyfacts", cf_fn)):
+        for kind in ("submissions", "companyfacts"):
             name = f"{kind}_CIK0000000123.json"
             data = json.loads((FIX / name).read_text(encoding="utf-8"))
-            fn(data)
+            if kind == "companyfacts":
+                cf_fn(data)
             (self.raw / name).write_text(json.dumps(data), encoding="utf-8")
             log.append({"kind": kind, "cik": "0000000123", "url": f"https://data.sec.gov/{kind}", "file": name,
                         "retrieved_at": "2026-09-28T10:00:00+00:00",
@@ -104,104 +105,71 @@ class Base(unittest.TestCase):
         with open(self.out / "facts.csv", newline="", encoding="utf-8") as f:
             return {r["fact_id"]: r for r in csv.DictReader(f)}
 
-    def normalized(self):
-        return {k: r for k, r in self.facts().items() if r["normalized_concept"]}
+    def fact(self, doc, end, start=""):
+        return next(r for r in self.facts().values() if r["doc_id"] == doc and r["source_concept"] == REV
+                    and r["period_end"] == end and (not start or r["period_start"] == start))
 
     def import_doc(self, content=None):
         src = self.tmp / "fxei-10k.htm"
         src.write_text(content or ixbrl(GOOD), encoding="utf-8")
         return en.import_filing(self.out, K10, src, "2026-09-28T14:05:00+02:00", self.raw)
 
-
-class NormalizeTests(Base):
-    def test_normalizes_through_the_journal_and_passes_all_checks(self):
-        rep = en.normalize(self.raw, self.out, self.rules)
-        self.assertEqual(rep["normalises"], {"total_revenue": 3, "shares_outstanding": 1})
-        n = self.normalized()
-        for r in n.values():
-            self.assertEqual(r["value"], r["raw_value"])
-            self.assertEqual(r["transformation"], "aucune")
-            self.assertEqual(r["source_dimensions"], "")
-            self.assertTrue(r["source_context"].startswith("companyfacts;entite=CIK0000000123"))
-        shares = next(r for r in n.values() if r["normalized_concept"] == "shares_outstanding")
-        self.assertIn("FXEI", shares["share_class"])
-        self.assertEqual(ec.verify_trace(self.raw, self.out), [])
-        res = audit_folder(self.out)
-        self.assertEqual(res.errors, [])
-        self.assertEqual(res.to_reconcile, 4)
-        self.assertIn("non rapproché", res.verdict)
-
-    def test_second_run_adds_nothing(self):
+    def reconcile(self, content=None):
         en.normalize(self.raw, self.out, self.rules)
-        before = (self.out / ec.SAISIES_FILE).read_bytes()
-        self.assertEqual(en.normalize(self.raw, self.out, self.rules)["saisies"], 0)
-        self.assertEqual((self.out / ec.SAISIES_FILE).read_bytes(), before)
+        self.import_doc(content)
+        return en.reconcile_ixbrl(self.out, K10, self.raw, self.rules)
 
-    def test_conflicting_source_concepts_are_not_normalized(self):
+
+class ProposalTests(Base):
+    def test_normalize_only_proposes(self):
+        before = (self.out / "facts.csv").read_bytes()
+        rep = en.normalize(self.raw, self.out, self.rules)
+        self.assertEqual(rep["propositions"], {"total_revenue": 3})
+        self.assertEqual((self.out / "facts.csv").read_bytes(), before)
+        self.assertFalse((self.out / ec.SAISIES_FILE).exists())
+        self.assertEqual(ec.verify_trace(self.raw, self.out), [])
+        self.assertIn("aucun fait normalisé", audit_folder(self.out).verdict)
+        with open(self.out / en.PROPOSALS_FILE, newline="", encoding="utf-8") as f:
+            props = list(csv.DictReader(f))
+        self.assertEqual({p["period_end"] for p in props}, {"2024-12-31", "2023-12-31", "2024-09-30"})
+
+    def test_second_run_is_identical(self):
+        en.normalize(self.raw, self.out, self.rules)
+        first = (self.out / en.PROPOSALS_FILE).read_bytes()
+        en.normalize(self.raw, self.out, self.rules)
+        self.assertEqual((self.out / en.PROPOSALS_FILE).read_bytes(), first)
+
+    def test_share_rules_are_refused(self):
+        shares = _rules(self.tmp, [{"id": "T2", "source_concept": "dei:EntityCommonStockSharesOutstanding",
+                                    "normalized_concept": "shares_outstanding", "source_unit": "shares",
+                                    "period_type": "instant", "justification": "x"}], "actions.json")
+        for rules in (shares, RULES_V1):
+            with self.assertRaises(en.NormalizeError):
+                en.normalize(self.raw, self.out, rules)
+
+    def test_conflicting_source_concepts_are_not_proposed(self):
         def add_conflict(cf):
             cf["facts"]["us-gaap"]["RevenueFromContractWithCustomerExcludingAssessedTax"] = {
                 "label": "Rev", "description": "d", "units": {"USD": [
                     {"start": "2024-01-01", "end": "2024-12-31", "val": 1240000000, "accn": "0000000123-25-000004",
                      "form": "10-K", "filed": "2025-02-20"}]}}
-        self.mutate_raw(add_conflict, lambda s: None)
+        self.mutate_raw(add_conflict)
         ec.convert(self.raw, self.out, {"10-K", "10-Q"}, replace=True)
         rules = _rules(self.tmp, [{"id": "T3", "source_concept": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
                                    "normalized_concept": "total_revenue", "source_unit": "USD",
-                                   "period_type": "duration", "justification": "test"}])
+                                   "period_type": "duration", "justification": "test"}], "conflit.json")
         rep = en.normalize(self.raw, self.out, rules)
         self.assertEqual(len(rep["conflits"]), 1)
-        self.assertFalse(any(r["period_end"] == "2024-12-31" and r["period_start"] == "2024-01-01"
-                             for r in self.normalized().values()))
-        excl = [r for r in self.facts().values() if r["normalization_justification"].startswith("NON NORMALISÉ")]
-        # le concept mappé (Revenues) porte l'exclusion motivée ; l'autre, sans aucun fait normalisé, n'est pas mappé
-        self.assertEqual([r["source_concept"] for r in excl], ["us-gaap:Revenues"])
-        self.assertIn("conflit K1", excl[0]["normalization_justification"])
-        self.assertEqual(audit_folder(self.out).errors, [])
-
-    def test_several_listed_classes_block_share_normalization(self):
-        self.mutate_raw(lambda cf: None, lambda s: s.update(tickers=["FXEI", "FXEI.B"]))
-        ec.convert(self.raw, self.out, {"10-K", "10-Q"}, replace=True)
-        rep = en.normalize(self.raw, self.out, self.rules)
-        self.assertNotIn("shares_outstanding", rep["normalises"])
-        self.assertTrue(any("catégorie non établie" in e for e in rep["ecartes"]))
-
-    def test_failed_checks_write_nothing(self):
-        bad = _rules(self.tmp, [])
-        data = json.loads(bad.read_text(encoding="utf-8"))
-        data["regles"][0]["normalized_concept"] = "concept_inexistant"
-        bad.write_text(json.dumps(data), encoding="utf-8")
-        snapshot = {p.name: p.read_bytes() for p in self.out.iterdir() if p.is_file()}
-        with self.assertRaises(en.NormalizeError):
-            en.normalize(self.raw, self.out, bad)
-        self.assertEqual({p.name: p.read_bytes() for p in self.out.iterdir() if p.is_file()}, snapshot)
+        self.assertEqual(rep["propositions"], {"total_revenue": 2})
 
     def test_refuses_a_folder_that_does_not_verify(self):
-        with open(self.out / "facts.csv", encoding="utf-8") as f:
-            text = f.read()
+        text = (self.out / "facts.csv").read_text(encoding="utf-8")
         (self.out / "facts.csv").write_text(text.replace("1250000000", "1250000001", 1), encoding="utf-8")
         with self.assertRaises(en.NormalizeError):
             en.normalize(self.raw, self.out, self.rules)
 
-    def test_editing_a_normalized_value_afterwards_is_detected(self):
-        en.normalize(self.raw, self.out, self.rules)
-        with open(self.out / "facts.csv", newline="", encoding="utf-8") as f:
-            rows = list(csv.DictReader(f))
-        for r in rows:
-            if r["value"]:
-                r["value"] = str(int(r["value"]) + 1)
-                break
-        with open(self.out / "facts.csv", "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=list(rows[0]))
-            w.writeheader()
-            w.writerows(rows)
-        self.assertTrue(any("value" in m for m in ec.verify_trace(self.raw, self.out)))
 
-
-class ImportAndReconcileTests(Base):
-    def setUp(self):
-        super().setUp()
-        en.normalize(self.raw, self.out, self.rules)
-
+class ReconcileTests(Base):
     def test_import_filing_checks_name_and_timezone(self):
         wrong = self.tmp / "autre.htm"
         wrong.write_text("x", encoding="utf-8")
@@ -215,62 +183,78 @@ class ImportAndReconcileTests(Base):
         self.assertEqual(doc["local_sha256"], sha)
         self.assertEqual(ec.verify_trace(self.raw, self.out), [])
 
-    def test_reconcile_matches_non_dimensional_facts_only(self):
-        self.import_doc()
-        rep = en.reconcile_ixbrl(self.out, K10, self.raw)
-        self.assertEqual((rep["rapproches"], rep["echecs"]), (3, []))
-        rec = {r["period_end"] + r["normalized_concept"]: r for r in self.normalized().values() if r["reconciled"]}
-        rev = rec["2024-12-31total_revenue"]
-        self.assertEqual((rev["source_context"], rev["decimals"], rev["reconciled"]), ("c-1", "-6", "auto"))
-        self.assertIn("« 1,250 »", rev["reconciled_note"])
-        self.assertEqual(rec["2025-02-14shares_outstanding"]["decimals"], "INF")
+    def test_document_establishes_context_and_dimensions(self):
+        rep = self.reconcile()
+        self.assertEqual((rep["rapproches"], rep["echecs"]), (2, []))
+        f24 = self.fact(K10, "2024-12-31")
+        self.assertEqual((f24["normalized_concept"], f24["value"], f24["source_context"], f24["source_dimensions"],
+                          f24["decimals"], f24["reconciled"]),
+                         ("total_revenue", "1250000000", "c-1", "", "-6", "auto"))
+        self.assertIn("« 1,250 »", f24["reconciled_note"])
+        q = self.fact(Q10, "2024-09-30")
+        self.assertEqual(q["normalized_concept"], "")
+        self.assertTrue(q["normalization_justification"].startswith("NON NORMALISÉ : en attente"))
         self.assertEqual(ec.verify_trace(self.raw, self.out), [])
         res = audit_folder(self.out)
-        self.assertEqual((res.errors, res.reconciled_auto, res.to_reconcile), ([], 3, 4))
+        self.assertEqual((res.errors, res.reconciled_auto, res.to_reconcile), ([], 2, 2))
+        self.assertIn("RAPPROCHEMENT AUTOMATIQUE", res.verdict)
         docs, facts = load_audit(self.out)
         s = select_fact(docs, facts, "0000000123", "total_revenue", "monnaie", "2024-01-01", "2024-12-31",
                         date(2025, 3, 1), concept_field="normalized_concept", currency="USD")
         self.assertTrue(s.usable)
         self.assertEqual(s.reconciliation, "auto")
-        q = select_fact(docs, facts, "0000000123", "total_revenue", "monnaie", "2024-07-01", "2024-09-30",
-                        date(2025, 3, 1), concept_field="normalized_concept", currency="USD")
-        self.assertFalse(q.usable)  # 10-Q non rapproché
 
-    def test_displayed_value_mismatch_is_not_reconciled(self):
+    def test_value_mismatch_is_not_normalized(self):
         bad = [GOOD[0][:3] + ("1,249",) + GOOD[0][4:], *GOOD[1:]]
-        self.import_doc(ixbrl(bad))
-        rep = en.reconcile_ixbrl(self.out, K10, self.raw)
-        self.assertEqual(rep["rapproches"], 2)
-        self.assertTrue(any("≠ companyfacts" in e for e in rep["echecs"]))
+        rep = self.reconcile(ixbrl(bad))
+        self.assertEqual(rep["rapproches"], 1)
+        f24 = self.fact(K10, "2024-12-31")
+        self.assertEqual(f24["normalized_concept"], "")
+        self.assertIn("≠ companyfacts", f24["normalization_justification"])
+        self.assertEqual(audit_folder(self.out).errors, [])
 
-    def test_only_dimensional_fact_refutes_d1(self):
-        self.import_doc(ixbrl([GOOD[2], GOOD[1], GOOD[3]]))
-        rep = en.reconcile_ixbrl(self.out, K10, self.raw)
-        self.assertTrue(any("D1 réfutée" in e for e in rep["echecs"]))
+    def test_only_dimensional_fact_is_not_normalized(self):
+        rep = self.reconcile(ixbrl([GOOD[2], GOOD[1], GOOD[3]]))
+        self.assertEqual(rep["rapproches"], 1)
+        self.assertIn("ventilé", self.fact(K10, "2024-12-31")["normalization_justification"])
 
-    def test_other_entity_and_negative_sign_are_handled(self):
-        self.import_doc(ixbrl(GOOD, cik="0000000999"))
-        self.assertEqual(en.reconcile_ixbrl(self.out, K10, self.raw)["rapproches"], 0)
-        self.assertEqual(en._ix_value(__import__("xml.etree.ElementTree").etree.ElementTree.fromstring(
-            '<x sign="-" scale="3" format="ixt:num-dot-decimal">1,5</x>'.replace("1,5", "1,500"))), -1500000)
+    def test_other_entity_normalizes_nothing(self):
+        rep = self.reconcile(ixbrl(GOOD, cik="0000000999"))
+        self.assertEqual(rep["rapproches"], 0)
+        self.assertFalse(any(r["normalized_concept"] for r in self.facts().values()))
+
+    def test_sign_and_scale(self):
+        el = ET.fromstring('<x sign="-" scale="3" format="ixt:num-dot-decimal">1,500</x>')
+        self.assertEqual(en._ix_value(el), -1500000)
+        with self.assertRaises(ValueError):
+            en._ix_value(ET.fromstring('<x format="ixt-sec:numwordsen">five</x>'))
 
     def test_tampered_local_copy_is_refused(self):
+        en.normalize(self.raw, self.out, self.rules)
         self.import_doc()
         with open(self.out / "documents.csv", newline="", encoding="utf-8") as f:
             doc = next(r for r in csv.DictReader(f) if r["doc_id"] == K10)
         (self.out / doc["local_copy"]).write_text(ixbrl(GOOD) + " ", encoding="utf-8")
-        with self.assertRaises(en.NormalizeError):
-            en.reconcile_ixbrl(self.out, K10, self.raw)
+        with self.assertRaisesRegex(en.NormalizeError, "empreinte différente de local_sha256"):
+            en.reconcile_ixbrl(self.out, K10, self.raw, self.rules)
 
-    def test_auto_reconciliation_needs_note_and_local_copy(self):
+    def test_failed_checks_write_nothing(self):
+        bad = _rules(self.tmp, name="mauvaises.json")
+        data = json.loads(bad.read_text(encoding="utf-8"))
+        data["regles"][0]["normalized_concept"] = "concept_inexistant"
+        bad.write_text(json.dumps(data), encoding="utf-8")
+        en.normalize(self.raw, self.out, bad)
         self.import_doc()
-        en.reconcile_ixbrl(self.out, K10, self.raw)
+        snapshot = {p.name: p.read_bytes() for p in self.out.iterdir() if p.is_file()}
+        with self.assertRaises(en.NormalizeError):
+            en.reconcile_ixbrl(self.out, K10, self.raw, bad)
+        self.assertEqual({p.name: p.read_bytes() for p in self.out.iterdir() if p.is_file()}, snapshot)
+
+    def test_auto_reconciliation_needs_note(self):
+        self.reconcile()
         with open(self.out / "facts.csv", newline="", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
-        for r in rows:
-            if r["reconciled"] == "auto":
-                r["reconciled_note"] = "vu"
-                break
+        next(r for r in rows if r["reconciled"] == "auto")["reconciled_note"] = "vu"
         with open(self.out / "facts.csv", "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=list(rows[0]))
             w.writeheader()
@@ -302,39 +286,35 @@ def _forge(audit: Path, table: str, key: str, col: str, value: str, author: str,
 
 
 class VerifyNormalisationTests(Base):
-    """Un fait normalisé faux mais « cohérent » (journal à jour) passe verify-trace et l'audit : verify-normalisation
-    refait la normalisation avec les règles et le détecte."""
-
     def setUp(self):
         super().setUp()
-        en.normalize(self.raw, self.out, self.rules)
-        self.author = en.normalize_author(self.rules)
-        self.rev = next(k for k, r in self.normalized().items() if r["normalized_concept"] == "total_revenue")
+        self.reconcile()
+        self.author = f"{en.TOOL} reconcile-ixbrl ({en.rules_tag(self.rules)}, automatique)"
+        self.f24 = self.fact(K10, "2024-12-31")["fact_id"]
+        self.q = self.fact(Q10, "2024-09-30")["fact_id"]
 
     def test_clean_folder_verifies(self):
         self.assertEqual(en.verify_normalisation(self.raw, self.out, self.rules), ([], []))
 
     def test_forged_concept_attributed_to_the_tool_is_detected(self):
-        _forge(self.out, "facts", self.rev, "normalized_concept", "total_assets", self.author, "doc:" + K10)
-        _forge(self.out, "concept_map", "us-gaap:Revenues", "normalized_concept", "total_assets", self.author,
+        _forge(self.out, "facts", self.f24, "normalized_concept", "total_assets", self.author, "doc:" + K10)
+        _forge(self.out, "concept_map", REV, "normalized_concept", "total_assets", self.author,
                "url:https://data.sec.gov/companyfacts")
-        # le faux passe les contrôles de forme…
-        self.assertTrue(all("total_assets" not in m for m in ec.verify_trace(self.raw, self.out)))
-        # …mais pas la comparaison avec les règles
-        problems, human = en.verify_normalisation(self.raw, self.out, self.rules)
+        self.assertEqual(ec.verify_trace(self.raw, self.out), [])  # la forme et l'historique sont cohérents…
+        problems, human = en.verify_normalisation(self.raw, self.out, self.rules)  # …pas le fond
         self.assertTrue(any("normalized_concept" in m and "total_assets" in m for m in problems))
         self.assertEqual(human, [])
 
-    def test_forged_value_with_consistent_transformation_is_detected(self):
-        _forge(self.out, "facts", self.rev, "transformation", "multiplié par 1,1 (correction)", self.author,
-               "doc:" + K10)
-        _forge(self.out, "facts", self.rev, "value", "1375000000", self.author, "doc:" + K10)
+    def test_forged_normalization_of_a_fact_without_document_is_detected(self):
+        for col, val in (("normalized_concept", "total_revenue"), ("transformation", "aucune"),
+                         ("value", "300000000"), ("source_context", "c-9"), ("source_dimensions", ""),
+                         ("normalization_justification", "Règle T1")):
+            _forge(self.out, "facts", self.q, col, val, self.author, "doc:" + Q10)
         problems, _ = en.verify_normalisation(self.raw, self.out, self.rules)
-        self.assertTrue(any("value" in m for m in problems))
+        self.assertTrue(any(self.q in m and "normalized_concept" in m for m in problems))
 
     def test_human_override_is_listed_not_hidden(self):
-        _forge(self.out, "facts", self.rev, "share_class", "", "Relecteur B", "doc:" + K10)
-        _forge(self.out, "facts", self.rev, "normalization_justification", "Revu à la main : identique, page 3",
+        _forge(self.out, "facts", self.f24, "normalization_justification", "Revu à la main : identique, page 3",
                "Relecteur B", "doc:" + K10)
         problems, human = en.verify_normalisation(self.raw, self.out, self.rules)
         self.assertEqual(problems, [])
@@ -348,121 +328,73 @@ class VerifyNormalisationTests(Base):
         problems, _ = en.verify_normalisation(self.raw, self.out, other)
         self.assertTrue(any("autres règles" in m for m in problems))
 
-    def test_forged_auto_reconciliation_is_detected(self):
-        src = self.tmp / "fxei-10k.htm"
-        src.write_text(ixbrl(GOOD), encoding="utf-8")
-        en.import_filing(self.out, K10, src, "2026-09-28T14:05:00+02:00", self.raw)
-        en.reconcile_ixbrl(self.out, K10, self.raw)
-        self.assertEqual(en.verify_normalisation(self.raw, self.out, self.rules)[0], [])
-        q10 = next(k for k, r in self.normalized().items() if not r["reconciled"])  # fait du 10-Q, sans copie
-        with open(self.out / "facts.csv", newline="", encoding="utf-8") as f:
-            note = next(r for r in csv.DictReader(f) if r["reconciled"] == "auto")["reconciled_note"]
-        _forge(self.out, "facts", q10, "reconciled", "auto", f"{en.TOOL} reconcile-ixbrl (automatique)", "doc:" + K10)
-        _forge(self.out, "facts", q10, "reconciled_note", note, f"{en.TOOL} reconcile-ixbrl (automatique)",
-               "doc:" + K10)
+    def test_tampered_proposals_file_is_detected(self):
+        p = self.out / en.PROPOSALS_FILE
+        p.write_text(p.read_text(encoding="utf-8").replace("total_revenue", "total_assets", 1), encoding="utf-8")
         problems, _ = en.verify_normalisation(self.raw, self.out, self.rules)
-        self.assertTrue(any(q10 in m and "reconciled" in m for m in problems))
+        self.assertTrue(any(en.PROPOSALS_FILE in m for m in problems))
 
 
-@unittest.skipUnless(APPLE.exists() and APPLE_RAW.exists(), "dossier Apple absent")
-class AppleNormalizedTests(unittest.TestCase):
-    """Dossier réel Apple normalisé avec edgar_v1 (valeurs vérifiables dans docs/EXEMPLE_NORMALISATION.md)."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.docs, cls.facts = load_audit(APPLE)
-
-    def sel(self, concept, unit, start, end, day, currency=None):
-        return select_fact(self.docs, self.facts, "0000320193", concept, unit, start, end,
-                           date.fromisoformat(day), concept_field="normalized_concept", currency=currency)
-
-    def test_counts_and_audit(self):
-        rep = json.loads((APPLE / "rapport_normalisation.json").read_text(encoding="utf-8"))
-        self.assertEqual(rep["normalises"], {"shares_outstanding": 132, "total_assets": 88, "total_revenue": 117})
-        self.assertEqual(rep["conflits"], [])
-        res = audit_folder(APPLE)
-        self.assertEqual((res.errors, res.to_reconcile), ([], 337))
-
-    def test_known_values(self):
-        self.assertEqual(self.sel("total_revenue", "monnaie", "2024-09-29", "2025-09-27", "2025-11-01", "USD")
-                         .fact["value"], "416161000000")
-        self.assertEqual(self.sel("total_revenue", "monnaie", "2025-03-30", "2025-06-28", "2025-08-02", "USD")
-                         .fact["value"], "94036000000")
-        self.assertEqual(self.sel("shares_outstanding", "actions", "", "2025-09-27", "2025-11-01").fact["value"],
-                         "14773260000")
-        self.assertEqual(self.sel("shares_outstanding", "actions", "", "2025-10-17", "2025-11-01").fact["value"],
-                         "14776353000")
-        self.assertIsNone(self.sel("total_revenue", "monnaie", "2024-09-29", "2025-09-27", "2025-10-31", "USD").fact)
-
-    def test_published_example_matches_the_data(self):
-        sys.path.insert(0, str(ROOT / "tools"))
-        import exemple_normalisation as ex
-        doc = (ROOT / "docs" / "EXEMPLE_NORMALISATION.md").read_text(encoding="utf-8")
-        for folder, accn in ((APPLE, "0000320193-25-000079"), (APPLE, "0000320193-25-000073"),
-                             (ROOT / "data" / "audit_edgar_microsoft", "0001193125-26-323660"),
-                             (ROOT / "data" / "audit_edgar_alphabet", "0001652044-26-000018")):
-            self.assertIn(ex.table(folder, accn).strip(), doc)
-
-    def test_not_usable_until_reconciled(self):
-        s = self.sel("total_revenue", "monnaie", "2024-09-29", "2025-09-27", "2025-11-01", "USD")
-        self.assertFalse(s.usable)
-
-    def test_rules_file_is_the_one_applied_and_rerun_is_a_no_op(self):
-        tmp = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, tmp)
-        cp = tmp / "cp"
-        shutil.copytree(APPLE, cp)
-        self.assertEqual(en.normalize(APPLE_RAW, cp, RULES_V1)["saisies"], 0)
-
-    def test_apple_folder_matches_the_rules_exactly(self):
-        self.assertEqual(en.verify_normalisation(APPLE_RAW, APPLE, RULES_V1), ([], []))
+REAL = {"apple": ("0000320193", {"total_assets": 88, "total_revenue": 117}),
+        "microsoft": ("0000789019", {"total_assets": 48, "total_revenue": 78}),
+        "alphabet": ("0001652044", {"total_assets": 26, "total_revenue": 26})}
+REVENUE = "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"
 
 
-if __name__ == "__main__":
-    unittest.main()
+class RealIssuersTests(unittest.TestCase):
+    """Dossiers réels : propositions seulement (documents inaccessibles d'ici), contrôles à 0."""
 
-
-class OtherRealIssuersTests(unittest.TestCase):
-    """Microsoft (catégorie unique) et Alphabet (plusieurs titres cotés : C1 exclut les nombres d'actions)."""
-
-    CASES = {"microsoft": ("0000789019", {"shares_outstanding": 84, "total_assets": 48, "total_revenue": 78},
-                           ("2024-07-01", "2025-06-30", "281724000000")),
-             "alphabet": ("0001652044", {"total_assets": 26, "total_revenue": 26},
-                          ("2024-01-01", "2024-12-31", "350018000000"))}
-
-    def _paths(self, name):
+    def paths(self, name):
         audit, raw = ROOT / "data" / f"audit_edgar_{name}", ROOT / "collecte" / name
         if not (audit.exists() and raw.exists()):
             self.skipTest(f"dossier {name} absent")
         return audit, raw
 
-    def test_counts_audit_and_rule_conformity(self):
-        for name, (cik, counts, _) in self.CASES.items():
+    def sel(self, name, start, end, day):
+        audit, _ = self.paths(name)
+        docs, facts = load_audit(audit)
+        return docs, select_fact(docs, facts, REAL[name][0], REVENUE, "USD", start, end, date.fromisoformat(day))
+
+    def test_proposals_only_and_all_checks_clean(self):
+        for name, (_, counts) in REAL.items():
             with self.subTest(name):
-                audit, raw = self._paths(name)
+                audit, raw = self.paths(name)
                 rep = json.loads((audit / "rapport_normalisation.json").read_text(encoding="utf-8"))
-                self.assertEqual(rep["normalises"], counts)
-                self.assertEqual(audit_folder(audit).errors, [])
-                self.assertEqual(ec.verify_trace(raw, audit), [])
-                self.assertEqual(en.verify_normalisation(raw, audit, RULES_V1), ([], []))
-
-    def test_annual_revenue(self):
-        for name, (cik, _, (start, end, value)) in self.CASES.items():
-            with self.subTest(name):
-                audit, _ = self._paths(name)
+                self.assertEqual((rep["propositions"], rep["conflits"]), (counts, []))
+                self.assertEqual(rep["regles_sha256"], en._sha(RULES_V2))
                 docs, facts = load_audit(audit)
-                s = select_fact(docs, facts, cik, "total_revenue", "monnaie", start, end, date(2026, 1, 1),
-                                concept_field="normalized_concept", currency="USD")
-                self.assertEqual(s.fact["value"], value)
-                self.assertEqual(docs[s.fact["doc_id"]]["doc_type"], "10-K")
+                self.assertFalse(any(f["normalized_concept"] for f in facts))
+                self.assertEqual(ec.verify_trace(raw, audit), [])
+                self.assertEqual(en.verify_normalisation(raw, audit, RULES_V2), ([], []))
+                res = audit_folder(audit)
+                self.assertEqual(res.errors, [])
+                self.assertIn("aucun fait normalisé", res.verdict)
 
-    def test_alphabet_share_counts_are_explicitly_excluded(self):
-        audit, _ = self._paths("alphabet")
-        with open(audit / "facts.csv", newline="", encoding="utf-8") as f:
-            rows = [r for r in csv.DictReader(f) if r["source_concept"] == "us-gaap:CommonStockSharesOutstanding"]
-        self.assertTrue(rows)
-        for r in rows:
-            self.assertEqual(r["normalized_concept"], "")
-            self.assertEqual(r["share_class"], "INCONNU")
-        # la catégorie n'étant pas établie, le concept n'est pas mappé : pas d'exclusion à motiver
-        self.assertFalse(any(r["normalization_justification"] for r in rows))
+    def test_known_values(self):
+        for name, start, end, day, value in (
+                ("apple", "2024-09-29", "2025-09-27", "2025-11-01", "416161000000"),
+                ("apple", "2025-03-30", "2025-06-28", "2025-08-02", "94036000000"),
+                ("microsoft", "2024-07-01", "2025-06-30", "2026-01-01", "281724000000"),
+                ("alphabet", "2024-01-01", "2024-12-31", "2025-03-01", "350018000000")):
+            with self.subTest(name=name, end=end):
+                self.assertEqual(self.sel(name, start, end, day)[1].fact["raw_value"], value)
+
+    def test_later_comparative_never_replaces_the_filing_available_at_the_decision(self):
+        docs, before = self.sel("microsoft", "2024-07-01", "2025-06-30", "2025-12-01")
+        _, after = self.sel("microsoft", "2024-07-01", "2025-06-30", "2026-09-01")
+        self.assertTrue(docs[before.fact["doc_id"]]["accepted_at"].startswith("2025"))
+        self.assertTrue(docs[after.fact["doc_id"]]["accepted_at"].startswith("2026"))
+        self.assertEqual(after.original["doc_id"], before.fact["doc_id"])
+        self.assertEqual((after.fact["raw_value"], after.revised_values), (before.fact["raw_value"], []))
+
+    def test_published_examples_match_the_data(self):
+        import exemple_normalisation as ex
+        doc = (ROOT / "docs" / "EXEMPLE_NORMALISATION.md").read_text(encoding="utf-8")
+        for name, accn in (("apple", "0000320193-25-000079"), ("apple", "0000320193-25-000073"),
+                           ("microsoft", "0001193125-26-323660"), ("alphabet", "0001652044-26-000018")):
+            audit, _ = self.paths(name)
+            self.assertIn(ex.table(audit, accn).strip(), doc)
+
+
+if __name__ == "__main__":
+    unittest.main()

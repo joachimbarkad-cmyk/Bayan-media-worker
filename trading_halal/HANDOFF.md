@@ -1,4 +1,4 @@
-# HANDOFF — simulateur de trading halal, V1.15 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.16 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
@@ -6,6 +6,49 @@ Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier
 **Merci de relire de façon critique** : lectures d'information future, ADMISSIBLE erronés, contrôles d'audit
 contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
 au document de fiqh fourni par l'utilisateur**.
+
+## V1.16 — Revue n° 13 : plus aucune normalisation sans le document
+
+La revue n° 13 a montré que deux inférences des V1.13–V1.15 n'étaient pas fondées ; **les normalisations publiées dans
+ces versions sont retirées** (dossiers régénérés depuis une conversion neuve) :
+
+- **C1 (catégorie d'actions par la liste des tickers) : fausse et lookahead.** La liste `tickers` de submissions est
+  l'état actuel (GOOGM/GOOGN introduits en 2026 : depositary shares de préférentielles convertibles, pas des actions
+  ordinaires) ; elle ignore les catégories non cotées (Alphabet classe B) ; un ticker n'identifie pas le type de titre
+  (notes cotées sous MSFT). ⇒ C1 retirée ; **les règles visant shares_outstanding ou market_cap sont refusées** par
+  l'outil ; les catégories d'actions ordinaires, cotées ou non, à la date du fait, relèvent d'une personne.
+- **D1 (aucune dimension si une seule valeur dans companyfacts) : non prouvée.** La SEC dit que ses API agrègent des
+  faits applicables à l'entité entière, pas que tout fait présent est sans dimension. ⇒ D1 et X1 retirées.
+
+Nouvelle conception (`config/normalisation/edgar_v2.json`, `tools/edgar_normalize.py`) :
+
+1. `normalize` ne fait que **proposer** : `propositions_normalisation.csv` (règle, période exacte, valeur brute, pointeur
+   et empreinte de l'entrée brute), conflits K1 exclus ; **aucun fait modifié**, aucun journal.
+2. `reconcile-ixbrl --raw --regles` recalcule les propositions (sans se fier au fichier), lit la copie locale du
+   document, et normalise un fait seulement s'il y trouve la même entité, la même période exacte, la même unité, un
+   contexte **sans segment ni scénario**, et une valeur affichée égale : contexte réel, « aucune dimension » établie par
+   le document (preuve = fichier + SHA-256), `decimals`, `reconciled = auto`. Échec ⇒ fait non normalisé, motif écrit
+   (« NON NORMALISÉ : document : … ») ; faits du même concept sans document ⇒ « NON NORMALISÉ : en attente … ».
+3. `verify-normalisation` refait propositions, import et rapprochement et compare cellules, concept_map et fichier de
+   propositions ; auteur des saisies = outil + empreinte des règles.
+
+État réel : Apple 205, Microsoft 126, Alphabet 52 propositions (chiffre d'affaires et total des actifs) ; **0 fait
+normalisé** (documents inaccessibles : `www.sec.gov` bloqué) ; verify-trace, verify-normalisation et audit à 0 ; verdict
+« aucun fait normalisé ». Montants principaux recoupés par le relecteur avec les dépôts (concordance, pas
+rapprochement).
+
+Autre point de la revue : un comparatif repris dans un dépôt ultérieur ne remplace jamais le dépôt disponible à la date
+de décision — déjà garanti par la sélection, désormais testé sur Microsoft (`test_later_comparative_never_replaces_…`).
+
+Tests : `tests/test_normalisation.py` réécrit (24 tests : propositions, rapprochement sur document FICTIF, falsifications,
+3 émetteurs réels). Mutations : 15, toutes détectées (dont une après avoir rendu un test plus précis : le refus pour
+copie altérée était aussi obtenu, plus tard, par l'audit ; le test exige désormais le bon motif). **204 tests.**
+
+Points nécessitant une revue indépendante : règles R1/R2 d'edgar_v2 ; `parse_ixbrl`/`_ix_value` sur un vrai 10-K dès
+qu'un document est disponible ; méthode d'établissement des catégories d'actions (humaine) pour réintroduire
+shares_outstanding.
+
+> Les sections V1.13 à V1.15 ci-dessous décrivent des normalisations **retirées** ; elles restent pour l'historique.
 
 ## V1.15 — Normalisation éprouvée sur trois émetteurs réels
 
@@ -235,9 +278,9 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 
 - Simulation de bout en bout (12 contrôles), avec `--ruleset` pour choisir le référentiel et `--db` pour la base.
 - `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE.
-- **209 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+- **204 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
   test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
-  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 29, test_ruleset_validation 10, test_screening 11.
+  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 24, test_ruleset_validation 10, test_screening 11.
 
 ## Limites connues (générales)
 

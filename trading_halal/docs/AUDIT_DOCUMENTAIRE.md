@@ -111,10 +111,16 @@ une contre-vérification humaine indépendante restent nécessaires.
 - Un fait dont le concept est mappé mais qui n'est pas normalisé doit porter une justification
   « NON NORMALISÉ : motif » (exclusion explicite) ; sinon, erreur bloquante.
 - Outil : `tools/edgar_normalize.py` (`normalize`, `import-filing`, `reconcile-ixbrl`), règles
-  `config/normalisation/edgar_v1.json`, exemples `docs/EXEMPLE_NORMALISATION.md`.
+  `config/normalisation/edgar_v2.json` (v1 retirée, revue n° 13), exemples `docs/EXEMPLE_NORMALISATION.md`.
 
 ## Conformité aux règles (V1.14)
 
 `verify-trace` et `audit-docs` vérifient la forme et l'historique, pas le fond. `verify-normalisation` refait la
 normalisation (et le rapprochement automatique) avec le fichier de règles fourni et compare chaque cellule : un écart
 attribué à l'outil est une erreur ; une saisie humaine différente est listée pour relecture.
+
+## Deux temps (revue n° 13)
+
+`normalize` ne fait que proposer (`propositions_normalisation.csv`) ; aucun fait n'est normalisé sans le document du
+dépôt. `reconcile-ixbrl` établit contexte et dimensions à partir de la copie locale XBRL en ligne, puis normalise et
+rapproche. Les nombres d'actions ne sont pas normalisés automatiquement (catégories à établir par une personne).

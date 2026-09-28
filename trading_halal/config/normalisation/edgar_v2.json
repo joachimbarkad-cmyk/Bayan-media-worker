@@ -1,0 +1,41 @@
+{
+  "version": "edgar_v2",
+  "date": "2026-09-28",
+  "statut": "PROPOSITION NON RELUE : règles écrites par l'assistant, à faire relire indépendamment (voir HANDOFF.md)",
+  "portee": "Faits companyfacts (SEC) en USD ; correspondance UN concept d'origine -> UN concept du projet, sans agrégation ni calcul. Aucune normalisation sans le document du dépôt.",
+  "regles": [
+    {
+      "id": "R1",
+      "source_concept": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+      "normalized_concept": "total_revenue",
+      "source_unit": "USD",
+      "period_type": "duration",
+      "justification": "Chiffre d'affaires tiré des contrats clients (ASC 606), hors taxes collectées pour des tiers : total des revenus de l'entité quand le fait est sans dimension. Définition de la taxonomie recopiée depuis companyfacts (champ description)."
+    },
+    {
+      "id": "R2",
+      "source_concept": "us-gaap:Assets",
+      "normalized_concept": "total_assets",
+      "source_unit": "USD",
+      "period_type": "instant",
+      "justification": "Total des actifs comptabilisés à la date du bilan. Définition de la taxonomie recopiée depuis companyfacts (champ description)."
+    }
+  ],
+  "principes": {
+    "P1_deux_temps": "normalize ne fait que proposer ; reconcile-ixbrl normalise et rapproche à partir de la copie locale du document XBRL en ligne.",
+    "P2_dimensions": "« aucune dimension » n'est inscrit que si le document contient le fait dans un contexte sans segment ni scénario, pour la même entité et la même période exacte (D1 retirée : une valeur unique dans companyfacts ne le prouve pas).",
+    "P3_contexte": "le contexte est l'identifiant XBRL du document (X1 retirée).",
+    "T1_transformation": "aucune : valeur normalisée = valeur brute, unité « monnaie » + devise USD.",
+    "K1_conflit": "si deux concepts d'origine proposés vers le même concept, pour le même dépôt et la même période, ont des valeurs différentes, aucun n'est proposé."
+  },
+  "non_normalises_volontairement": {
+    "us-gaap:Revenues": "Utilisé par Apple en 2018 à côté de RevenueFromContractWithCustomer... ; équivalence non établie.",
+    "us-gaap:SalesRevenueNet": "Concept retiré (2018), antérieur à ASC 606 : équivalence avec R1 à décider.",
+    "interest_bearing_debt": "Agrégat (LongTermDebt + CommercialPaper + autres ?) : périmètre à décider par le référentiel validé (locations, etc.).",
+    "cash_and_interest_bearing_investments": "Exige une qualification ligne à ligne dans les notes.",
+    "non_compliant_revenue": "Aucun concept direct ; NonoperatingIncomeExpense est un solde net.",
+    "market_cap": "Exige un cours non ajusté daté : source non établie.",
+    "dei:EntityCommonStockSharesOutstanding": "Catégorie d'actions non établissable automatiquement : C1 retirée (liste actuelle des tickers = information future ; catégories non cotées ignorées ; un ticker n'identifie pas le type de titre).",
+    "us-gaap:CommonStockSharesOutstanding": "Même raison : catégories d'actions ordinaires (cotées ou non) à établir sur le document, à la date du fait, par une personne."
+  }
+}

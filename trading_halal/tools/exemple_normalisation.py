@@ -13,19 +13,22 @@ from pathlib import Path
 def table(audit: Path, accn: str) -> str:
     with open(audit / "documents.csv", newline="", encoding="utf-8") as f:
         doc = next(r for r in csv.DictReader(f) if r["accession_number"] == accn)
-    with open(audit / "trace_source.csv", newline="", encoding="utf-8") as f:
-        trace = {r["fact_id"]: r for r in csv.DictReader(f)}
     with open(audit / "facts.csv", newline="", encoding="utf-8") as f:
-        facts = [r for r in csv.DictReader(f) if r["doc_id"] == doc["doc_id"] and r["normalized_concept"]]
-    facts.sort(key=lambda r: (r["normalized_concept"], r["period_end"], r["period_start"]))
+        facts = {r["fact_id"]: r for r in csv.DictReader(f)}
+    with open(audit / "propositions_normalisation.csv", newline="", encoding="utf-8") as f:
+        props = [r for r in csv.DictReader(f) if r["doc_id"] == doc["doc_id"]]
+    props.sort(key=lambda r: (r["normalized_concept"], r["period_end"], r["period_start"]))
     lines = [f"Dépôt {doc['doc_type']} {accn}, accepté le {doc['accepted_at']} ; document : {doc['url']}", "",
-             "| Concept du projet | Concept d'origine | Période | Valeur | Unité | Rapproché | Entrée brute (collecte) |",
-             "|---|---|---|---|---|---|---|"]
-    for r in facts:
+             "| Concept du projet | Concept d'origine | Période | Valeur | Statut | Entrée brute (collecte) |",
+             "|---|---|---|---|---|---|"]
+    for r in props:
         period = f"{r['period_start']} → {r['period_end']}" if r["period_start"] else f"au {r['period_end']}"
-        unit = r["currency"] or r["unit"]
-        lines.append(f"| {r['normalized_concept']} | {r['source_concept']} | {period} | {int(r['value']):,} | {unit} | "
-                     f"{r['reconciled'] or 'non'} | `{trace[r['fact_id']]['source_pointer']}` |".replace(",", " "))
+        fact = facts[r["fact_id"]]
+        status = ("normalisé, rapproché (auto)" if fact["reconciled"] == "auto" and fact["normalized_concept"]
+                  else "proposé (document non lu)")
+        value = f"{int(r['raw_value']):,}".replace(",", " ")
+        lines.append(f"| {r['normalized_concept']} | {r['source_concept']} | {period} | {value} {r['source_unit']} | "
+                     f"{status} | `{r['source_pointer']}` |")
     return "\n".join(lines) + "\n"
 
 

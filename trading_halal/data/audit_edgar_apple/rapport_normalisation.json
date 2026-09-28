@@ -1,12 +1,10 @@
 {
- "version": "edgar_v1",
- "regles_sha256": "f95d7e2287bb49a3ae00f40add53ec909ecb160e1e6fa5c608d45aeb491e25c0",
- "normalises": {
-  "shares_outstanding": 132,
+ "version": "edgar_v2",
+ "regles_sha256": "e3ae532930a60efe2acb08e3bb0c63149d86b2a4b0c879f16a44633444ad47c0",
+ "propositions": {
   "total_assets": 88,
   "total_revenue": 117
  },
  "ecartes": [],
- "conflits": [],
- "saisies": 2166
+ "conflits": []
 }

@@ -1,105 +1,89 @@
-# Exemples vérifiables : normalisation de faits réels (Apple, Microsoft, Alphabet ; règles edgar_v1)
+# Exemples vérifiables : normalisation de faits réels (règles edgar_v2)
 
-**Aucun de ces chiffres n'est encore rapproché du document d'origine** (colonne « Rapproché » = non) : ils ne sont
-donc pas utilisables pour un ratio. Ils sont normalisés, c'est-à-dire rattachés à un concept du projet par une règle
-écrite, avec leur provenance, et chaque étape est rejouable hors ligne.
+**Statut : propositions seulement.** Depuis la revue n° 13, aucun fait n'est normalisé sans son document : companyfacts
+ne prouve ni l'absence de dimensions, ni la catégorie d'actions. Les documents (`www.sec.gov`) sont inaccessibles
+depuis l'environnement ; tous les faits ci-dessous sont donc « proposés (document non lu) ». Les montants ont été
+recoupés par le relecteur avec les dépôts (revue n° 13), ce qui reste une concordance de chiffres affichés, pas un
+rapprochement contexte par contexte.
 
 ## Refaire et vérifier
 
 ```sh
 cd trading_halal
-# 1. le dossier converti correspond aux fichiers bruts, et chaque saisie est journalisée
+# fichiers bruts -> dossier converti, et journal des saisies (0 écart attendu)
 python3 tools/edgar_collect.py verify-trace --raw collecte/apple --audit data/audit_edgar_apple
-# 2. forme, chronologie, règles de normalisation
-python3 -m halal_sim audit-docs data/audit_edgar_apple
-# 3. rejouer la normalisation : 0 saisie nouvelle attendue (idempotente)
-cp -r data/audit_edgar_apple /tmp/copie && python3 tools/edgar_normalize.py normalize --raw collecte/apple \
-    --audit /tmp/copie --regles config/normalisation/edgar_v1.json
-# 4. chaque cellule normalisée est-elle exactement ce que donnent les règles ? (0 écart attendu)
+# propositions et éventuelles normalisations conformes aux règles (0 écart attendu)
 python3 tools/edgar_normalize.py verify-normalisation --raw collecte/apple --audit data/audit_edgar_apple \
-    --regles config/normalisation/edgar_v1.json
-# 5. régénérer les tableaux ci-dessous (un test vérifie qu'ils sont identiques)
+    --regles config/normalisation/edgar_v2.json
+# forme et chronologie (verdict attendu : aucun fait normalisé)
+python3 -m halal_sim audit-docs data/audit_edgar_apple
+# régénérer un tableau ci-dessous (un test vérifie qu'ils sont identiques)
 python3 tools/exemple_normalisation.py --audit data/audit_edgar_apple --accn 0000320193-25-000079
 ```
 
-Chaque « entrée brute » est un pointeur dans `collecte/apple/companyfacts_CIK0000320193.json` (SHA-256 dans
-`collecte/apple/journal_collecte.json`). Chaque cellule normalisée a ses saisies dans
-`data/audit_edgar_apple/journal_saisies.csv` (auteur : l'outil, règles edgar_v1).
+Quand le document d'un dépôt sera disponible (téléchargé à la main ou `www.sec.gov` autorisé) :
 
-## Rapport annuel 2025 (10-K)
+```sh
+python3 tools/edgar_normalize.py import-filing --audit data/audit_edgar_apple \
+    --doc-id 0000320193-0000320193-25-000079 --fichier aapl-20250927.htm \
+    --retrieved-at 2026-09-28T14:05:00+02:00 --raw collecte/apple
+python3 tools/edgar_normalize.py reconcile-ixbrl --audit data/audit_edgar_apple \
+    --doc-id 0000320193-0000320193-25-000079 --raw collecte/apple --regles config/normalisation/edgar_v2.json
+```
+
+## Apple — rapport annuel 2025 (10-K)
 
 Dépôt 10-K 0000320193-25-000079, accepté le 2025-10-31T10:01:26.000+00:00 ; document : https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm
 
-| Concept du projet | Concept d'origine | Période | Valeur | Unité | Rapproché | Entrée brute (collecte) |
-|---|---|---|---|---|---|---|
-| shares_outstanding | us-gaap:CommonStockSharesOutstanding | au 2024-09-28 | 15 116 786 000 | actions | non | `facts/us-gaap/CommonStockSharesOutstanding/units/shares/133` |
-| shares_outstanding | us-gaap:CommonStockSharesOutstanding | au 2025-09-27 | 14 773 260 000 | actions | non | `facts/us-gaap/CommonStockSharesOutstanding/units/shares/137` |
-| shares_outstanding | dei:EntityCommonStockSharesOutstanding | au 2025-10-17 | 14 776 353 000 | actions | non | `facts/dei/EntityCommonStockSharesOutstanding/units/shares/66` |
-| total_assets | us-gaap:Assets | au 2024-09-28 | 364 980 000 000 | USD | non | `facts/us-gaap/Assets/units/USD/135` |
-| total_assets | us-gaap:Assets | au 2025-09-27 | 359 241 000 000 | USD | non | `facts/us-gaap/Assets/units/USD/139` |
-| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2022-09-25 → 2023-09-30 | 383 285 000 000 | USD | non | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/88` |
-| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2023-10-01 → 2024-09-28 | 391 035 000 000 | USD | non | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/100` |
-| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2024-09-29 → 2025-09-27 | 416 161 000 000 | USD | non | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/111` |
-Contrôle à faire à la main sur le 10-K : le chiffre d'affaires 2025 (416 161 M$) a été confirmé par le relecteur
-(revue n° 10) ; les autres lignes restent à comparer au bilan, au compte de résultat et à la page de couverture.
+| Concept du projet | Concept d'origine | Période | Valeur | Statut | Entrée brute (collecte) |
+|---|---|---|---|---|---|
+| total_assets | us-gaap:Assets | au 2024-09-28 | 364 980 000 000 USD | proposé (document non lu) | `facts/us-gaap/Assets/units/USD/135` |
+| total_assets | us-gaap:Assets | au 2025-09-27 | 359 241 000 000 USD | proposé (document non lu) | `facts/us-gaap/Assets/units/USD/139` |
+| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2022-09-25 → 2023-09-30 | 383 285 000 000 USD | proposé (document non lu) | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/88` |
+| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2023-10-01 → 2024-09-28 | 391 035 000 000 USD | proposé (document non lu) | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/100` |
+| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2024-09-29 → 2025-09-27 | 416 161 000 000 USD | proposé (document non lu) | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/111` |
 
-## Troisième trimestre 2025 (10-Q) : trimestre et cumul ne se confondent pas
+## Apple — troisième trimestre 2025 (10-Q) : trimestre et cumul ne se confondent pas
 
 Dépôt 10-Q 0000320193-25-000073, accepté le 2025-08-01T10:00:42.000+00:00 ; document : https://www.sec.gov/Archives/edgar/data/320193/000032019325000073/aapl-20250628.htm
 
-| Concept du projet | Concept d'origine | Période | Valeur | Unité | Rapproché | Entrée brute (collecte) |
-|---|---|---|---|---|---|---|
-| shares_outstanding | us-gaap:CommonStockSharesOutstanding | au 2024-09-28 | 15 116 786 000 | actions | non | `facts/us-gaap/CommonStockSharesOutstanding/units/shares/132` |
-| shares_outstanding | us-gaap:CommonStockSharesOutstanding | au 2025-06-28 | 14 856 722 000 | actions | non | `facts/us-gaap/CommonStockSharesOutstanding/units/shares/136` |
-| shares_outstanding | dei:EntityCommonStockSharesOutstanding | au 2025-07-18 | 14 840 390 000 | actions | non | `facts/dei/EntityCommonStockSharesOutstanding/units/shares/65` |
-| total_assets | us-gaap:Assets | au 2024-09-28 | 364 980 000 000 | USD | non | `facts/us-gaap/Assets/units/USD/134` |
-| total_assets | us-gaap:Assets | au 2025-06-28 | 331 495 000 000 | USD | non | `facts/us-gaap/Assets/units/USD/138` |
-| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2023-10-01 → 2024-06-29 | 296 105 000 000 | USD | non | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/96` |
-| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2024-03-31 → 2024-06-29 | 85 777 000 000 | USD | non | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/98` |
-| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2024-09-29 → 2025-06-28 | 313 695 000 000 | USD | non | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/107` |
-| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2025-03-30 → 2025-06-28 | 94 036 000 000 | USD | non | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/109` |
-## Ce que la normalisation a décidé, et sur quelle base
+| Concept du projet | Concept d'origine | Période | Valeur | Statut | Entrée brute (collecte) |
+|---|---|---|---|---|---|
+| total_assets | us-gaap:Assets | au 2024-09-28 | 364 980 000 000 USD | proposé (document non lu) | `facts/us-gaap/Assets/units/USD/134` |
+| total_assets | us-gaap:Assets | au 2025-06-28 | 331 495 000 000 USD | proposé (document non lu) | `facts/us-gaap/Assets/units/USD/138` |
+| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2023-10-01 → 2024-06-29 | 296 105 000 000 USD | proposé (document non lu) | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/96` |
+| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2024-03-31 → 2024-06-29 | 85 777 000 000 USD | proposé (document non lu) | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/98` |
+| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2024-09-29 → 2025-06-28 | 313 695 000 000 USD | proposé (document non lu) | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/107` |
+| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2025-03-30 → 2025-06-28 | 94 036 000 000 USD | proposé (document non lu) | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/109` |
 
-| Élément | Valeur retenue | Base | Statut |
-|---|---|---|---|
-| Concept | 4 règles 1 → 1 (`config/normalisation/edgar_v1.json`) | Définitions de la taxonomie recopiées dans `concept_map.csv` | Proposition, à relire |
-| Dimensions | aucune | D1 : une seule valeur brute par concept, unité, période et dépôt | **Inférence** |
-| Contexte | décrit par son contenu (`companyfacts;entite=…;periode=…`) | X1 : l'identifiant XBRL n'est pas dans companyfacts | Provisoire |
-| Catégorie d'actions | ordinaire, titre coté unique AAPL | C1 : `tickers` de submissions | **Inférence** |
-| Transformation | aucune (valeur brute) | T1 | Vérifiée par l'audit |
-| Précision (decimals) | inconnue | absente de companyfacts | Inconnue signalée |
+## Microsoft — dernier 10-K
 
-## Autres émetteurs réels (même règles edgar_v1)
-
-Collectés le 28/09/2026 (`collecte/microsoft`, `collecte/alphabet`), convertis puis normalisés sans intervention.
-Microsoft : 210 faits normalisés. Alphabet : 52 ; ses nombres d'actions ne sont **pas** normalisés, car
-`submissions` liste 4 titres cotés (GOOGL, GOOG, GOOGM, GOOGN) : la règle C1 refuse d'établir une catégorie.
-
-Constat utile pour l'inférence D1 : Alphabet déclare son nombre d'actions de couverture **par catégorie** (fait
-ventilé), et ce concept est **absent** de son fichier companyfacts. C'est un indice (pas une preuve) que companyfacts
-ne contient que des faits non ventilés.
-
-### Microsoft — dernier 10-K
+Le comparatif de l'exercice 2025 dans ce 10-K 2026 ne remplace pas, pour une décision antérieure à sa
+publication, le 10-K 2025 déjà disponible (test `test_later_comparative_never_replaces_the_filing_available_at_the_decision`).
 
 Dépôt 10-K 0001193125-26-323660, accepté le 2026-07-29T20:08:01.000+00:00 ; document : https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm
 
-| Concept du projet | Concept d'origine | Période | Valeur | Unité | Rapproché | Entrée brute (collecte) |
-|---|---|---|---|---|---|---|
-| shares_outstanding | us-gaap:CommonStockSharesOutstanding | au 2023-06-30 | 7 432 000 000 | actions | non | `facts/us-gaap/CommonStockSharesOutstanding/units/shares/159` |
-| shares_outstanding | us-gaap:CommonStockSharesOutstanding | au 2024-06-30 | 7 434 000 000 | actions | non | `facts/us-gaap/CommonStockSharesOutstanding/units/shares/169` |
-| shares_outstanding | us-gaap:CommonStockSharesOutstanding | au 2025-06-30 | 7 434 000 000 | actions | non | `facts/us-gaap/CommonStockSharesOutstanding/units/shares/177` |
-| shares_outstanding | us-gaap:CommonStockSharesOutstanding | au 2026-06-30 | 7 427 000 000 | actions | non | `facts/us-gaap/CommonStockSharesOutstanding/units/shares/181` |
-| shares_outstanding | dei:EntityCommonStockSharesOutstanding | au 2026-07-23 | 7 425 545 491 | actions | non | `facts/dei/EntityCommonStockSharesOutstanding/units/shares/67` |
-| total_assets | us-gaap:Assets | au 2025-06-30 | 619 003 000 000 | USD | non | `facts/us-gaap/Assets/units/USD/137` |
-| total_assets | us-gaap:Assets | au 2026-06-30 | 758 376 000 000 | USD | non | `facts/us-gaap/Assets/units/USD/141` |
-| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2023-07-01 → 2024-06-30 | 245 122 000 000 | USD | non | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/115` |
-| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2024-07-01 → 2025-06-30 | 281 724 000 000 | USD | non | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/127` |
-| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2025-07-01 → 2026-06-30 | 331 839 000 000 | USD | non | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/133` |
-### Alphabet — dernier 10-K
+| Concept du projet | Concept d'origine | Période | Valeur | Statut | Entrée brute (collecte) |
+|---|---|---|---|---|---|
+| total_assets | us-gaap:Assets | au 2025-06-30 | 619 003 000 000 USD | proposé (document non lu) | `facts/us-gaap/Assets/units/USD/137` |
+| total_assets | us-gaap:Assets | au 2026-06-30 | 758 376 000 000 USD | proposé (document non lu) | `facts/us-gaap/Assets/units/USD/141` |
+| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2023-07-01 → 2024-06-30 | 245 122 000 000 USD | proposé (document non lu) | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/115` |
+| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2024-07-01 → 2025-06-30 | 281 724 000 000 USD | proposé (document non lu) | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/127` |
+| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2025-07-01 → 2026-06-30 | 331 839 000 000 USD | proposé (document non lu) | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/133` |
+
+## Alphabet — dernier 10-K
 
 Dépôt 10-K 0001652044-26-000018, accepté le 2026-02-05T02:56:03.000+00:00 ; document : https://www.sec.gov/Archives/edgar/data/1652044/000165204426000018/goog-20251231.htm
 
-| Concept du projet | Concept d'origine | Période | Valeur | Unité | Rapproché | Entrée brute (collecte) |
-|---|---|---|---|---|---|---|
-| total_assets | us-gaap:Assets | au 2024-12-31 | 450 256 000 000 | USD | non | `facts/us-gaap/Assets/units/USD/81` |
-| total_assets | us-gaap:Assets | au 2025-12-31 | 595 281 000 000 | USD | non | `facts/us-gaap/Assets/units/USD/85` |
+| Concept du projet | Concept d'origine | Période | Valeur | Statut | Entrée brute (collecte) |
+|---|---|---|---|---|---|
+| total_assets | us-gaap:Assets | au 2024-12-31 | 450 256 000 000 USD | proposé (document non lu) | `facts/us-gaap/Assets/units/USD/81` |
+| total_assets | us-gaap:Assets | au 2025-12-31 | 595 281 000 000 USD | proposé (document non lu) | `facts/us-gaap/Assets/units/USD/85` |
+
+## Ce qui n'est pas proposé
+
+- Nombres d'actions : les catégories d'actions ordinaires (cotées ou non) doivent être établies sur le document, à la
+  date du fait (Alphabet : classes A, B non cotée, C ; GOOGM/GOOGN sont des depositary shares de préférentielles
+  convertibles introduites en 2026). La règle C1 (liste des tickers) est retirée : information future.
+- Agrégats et postes à qualifier (dette à intérêt, placements à intérêt, revenus illicites) et capitalisation : voir
+  `config/normalisation/edgar_v2.json` (`non_normalises_volontairement`).
