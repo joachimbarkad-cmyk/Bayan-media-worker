@@ -52,7 +52,7 @@ def cmd_audit_docs(args) -> int:
     for u in res.unknowns:
         print(f"  INCONNUE {u}")
     print(f"{len(res.errors)} erreur(s) bloquante(s), {len(res.unknowns)} inconnue(s) signalée(s), "
-          f"{res.reconciled}/{res.to_reconcile} fait(s) normalisé(s) rapproché(s) de leur pièce.")
+          f"{res.reconciled} rapproché(s) à la main et {res.reconciled_auto} automatiquement, sur {res.to_reconcile} fait(s) normalisé(s).")
     print(f"VERDICT : {res.verdict}")
     print("Ce contrôle vérifie la forme, la chronologie et l'intégrité des copies locales ; il ne prouve pas l'exactitude "
           "des valeurs et ne produit aucun statut religieux.")

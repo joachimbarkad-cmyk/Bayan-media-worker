@@ -52,3 +52,22 @@ référentiel religieux n'a pas été validé par un sharia board nommé.
 `python3 tools/edgar_collect.py collect --cik 320193 --user-agent "Prénom Nom adresse@domaine" --out collecte/apple`
 télécharge directement, mais la SEC demande alors un nom et une adresse électronique de contact. Vous avez préféré ne
 pas la fournir pour l'instant : la voie manuelle ci-dessus s'en passe.
+
+## Rapprocher un chiffre de son document (V1.13)
+
+Le document principal d'un dépôt (ex. `aapl-20250927.htm` pour le 10-K 2025 d'Apple, adresse dans la colonne `url` de
+`documents.csv`) est sur `www.sec.gov`, encore bloqué dans l'environnement. Pour l'utiliser :
+
+1. l'ouvrir dans un navigateur et l'enregistrer tel quel (« page HTML uniquement ») sous son nom d'origine ;
+2. noter l'heure du téléchargement avec le fuseau ;
+3. me l'envoyer ; je lance :
+
+```sh
+python3 tools/edgar_normalize.py import-filing --audit data/audit_edgar_apple \
+    --doc-id 0000320193-0000320193-25-000079 --fichier aapl-20250927.htm \
+    --retrieved-at 2026-09-28T14:05:00+02:00 --raw collecte/apple
+python3 tools/edgar_normalize.py reconcile-ixbrl --audit data/audit_edgar_apple \
+    --doc-id 0000320193-0000320193-25-000079 --raw collecte/apple
+```
+
+Autre voie : ajouter `www.sec.gov` aux domaines autorisés de l'environnement.

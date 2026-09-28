@@ -1,0 +1,55 @@
+{
+  "version": "edgar_v1",
+  "date": "2026-09-28",
+  "statut": "PROPOSITION NON RELUE : règles écrites par l'assistant, à faire relire indépendamment (voir HANDOFF.md)",
+  "portee": "Faits companyfacts (SEC) d'émetteurs américains en USD ; correspondance UN concept d'origine -> UN concept du projet, sans agrégation ni calcul.",
+  "regles": [
+    {
+      "id": "R1",
+      "source_concept": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+      "normalized_concept": "total_revenue",
+      "source_unit": "USD",
+      "period_type": "duration",
+      "justification": "Chiffre d'affaires tiré des contrats clients (ASC 606), hors taxes collectées pour des tiers : total des revenus de l'entité quand le fait est sans dimension. Définition de la taxonomie recopiée depuis companyfacts (champ description)."
+    },
+    {
+      "id": "R2",
+      "source_concept": "us-gaap:Assets",
+      "normalized_concept": "total_assets",
+      "source_unit": "USD",
+      "period_type": "instant",
+      "justification": "Total des actifs comptabilisés à la date du bilan. Définition de la taxonomie recopiée depuis companyfacts (champ description)."
+    },
+    {
+      "id": "R3",
+      "source_concept": "dei:EntityCommonStockSharesOutstanding",
+      "normalized_concept": "shares_outstanding",
+      "source_unit": "shares",
+      "period_type": "instant",
+      "justification": "Nombre d'actions en circulation déclaré en page de couverture, à la date indiquée (postérieure à la clôture). Par catégorie d'actions : exige une catégorie unique établie (règle C1)."
+    },
+    {
+      "id": "R4",
+      "source_concept": "us-gaap:CommonStockSharesOutstanding",
+      "normalized_concept": "shares_outstanding",
+      "source_unit": "shares",
+      "period_type": "instant",
+      "justification": "Nombre d'actions ordinaires en circulation à la date du bilan. Exige une catégorie unique établie (règle C1)."
+    }
+  ],
+  "inferences": {
+    "D1_dimensions": "companyfacts ne fournit pas les dimensions. On retient « aucune dimension » UNIQUEMENT si, pour ce concept, cette unité, cette période et ce dépôt, le fichier brut ne contient qu'une seule valeur (des faits ventilés par produit, segment ou catégorie produiraient plusieurs valeurs). Inférence à confirmer sur l'instance XBRL du dépôt (commande reconcile-ixbrl).",
+    "X1_contexte": "Le contexte XBRL (identifiant) n'est pas fourni : il est décrit par son contenu (entité, période, segment déduit) avec le préfixe « companyfacts; ». reconcile-ixbrl le remplace par l'identifiant réel.",
+    "C1_categorie": "Catégorie d'actions établie seulement si l'émetteur n'a qu'un titre coté dans submissions (tickers) ; sinon le fait n'est pas normalisé. Ne prouve pas l'absence de catégorie non cotée : à confirmer sur la page de couverture.",
+    "T1_transformation": "Aucune : la valeur normalisée est la valeur brute ; unité « monnaie » + devise pour USD, « actions » sans devise pour shares.",
+    "K1_conflit": "Si deux faits normalisés vers le même concept, pour le même dépôt et la même période, ont des valeurs différentes, aucun des deux n'est normalisé (conflit journalisé)."
+  },
+  "non_normalises_volontairement": {
+    "us-gaap:Revenues": "Utilisé par Apple en 2018 à côté de RevenueFromContractWithCustomer... ; équivalence non établie.",
+    "us-gaap:SalesRevenueNet": "Concept retiré (2018), antérieur à ASC 606 : équivalence avec R1 à décider.",
+    "interest_bearing_debt": "Agrégat (LongTermDebt + CommercialPaper + autres ?) : périmètre à décider par le référentiel validé (locations, etc.).",
+    "cash_and_interest_bearing_investments": "Exige une qualification ligne à ligne dans les notes.",
+    "non_compliant_revenue": "Aucun concept direct ; NonoperatingIncomeExpense est un solde net.",
+    "market_cap": "Exige un cours non ajusté daté : source non établie."
+  }
+}

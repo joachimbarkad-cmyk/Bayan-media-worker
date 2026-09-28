@@ -47,6 +47,7 @@ SHARE_CONCEPTS = {"shares_outstanding", "market_cap"}
 # Nature de chaque concept normalisé : monétaire (unité « monnaie » + devise) ou nombre d'actions (sans devise).
 MONETARY_CONCEPTS = PROJECT_CONCEPTS - {"shares_outstanding"}
 MONETARY_UNIT = "monnaie"
+EXCLUSION_PREFIX = "NON NORMALISÉ :"  # exclusion explicite d'un fait dont le concept est mappé
 UNKNOWN = "INCONNU"   # valeur explicite « non établi » (distincte du vide, qui signifie « aucune » pour les dimensions)
 CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 
@@ -62,6 +63,7 @@ class AuditResult:
     errors: list[str] = field(default_factory=list)      # bloquants
     unknowns: list[str] = field(default_factory=list)    # inconnues signalées, non comblées
     reconciled: int = 0                                  # faits normalisés rapprochés à la main de leur pièce
+    reconciled_auto: int = 0                             # faits rapprochés automatiquement de la copie locale
     to_reconcile: int = 0                                # faits normalisés au total
 
     @property
@@ -75,9 +77,14 @@ class AuditResult:
             return "REJETE : contradictions détectées"
         if self.to_reconcile == 0:
             return "NON EXPLOITABLE : aucun fait normalisé"
-        if self.reconciled < self.to_reconcile:
-            return (f"NON EXPLOITABLE : {self.to_reconcile - self.reconciled} fait(s) normalisé(s) non rapproché(s) "
+        done = self.reconciled + self.reconciled_auto
+        if done < self.to_reconcile:
+            return (f"NON EXPLOITABLE : {self.to_reconcile - done} fait(s) normalisé(s) non rapproché(s) "
                     "de leur pièce")
+        if self.reconciled_auto:
+            return (f"RAPPROCHEMENT AUTOMATIQUE : {self.reconciled_auto} fait(s) rapproché(s) par programme de la copie "
+                    "locale du document (XBRL en ligne) ; concordance des chiffres seulement, le choix de concept et "
+                    "les inférences restent à relire par une personne")
         return ("RAPPROCHEMENT DECLARE : forme cohérente et chaque fait normalisé déclaré rapproché, avec une note ; "
                 "le logiciel ne vérifie pas ce rapprochement, l'exactitude repose sur la personne qui l'a déclaré "
                 "(à relire)")
@@ -285,7 +292,12 @@ def audit_folder(root: str | Path) -> AuditResult:
             elif mapped != norm:
                 E(f"{ctx} : concept normalisé {norm!r} contraire au mappage ({mapped!r})")
         elif mapped:
-            E(f"{ctx} : concept {r['source_concept']!r} mappé vers {mapped!r} mais non normalisé dans le fait")
+            if r["normalization_justification"].startswith(EXCLUSION_PREFIX) and \
+                    len(r["normalization_justification"]) > len(EXCLUSION_PREFIX) + 3:
+                U(f"{ctx} : concept mappé vers {mapped!r} mais exclu explicitement ({r['normalization_justification']})")
+            else:
+                E(f"{ctx} : concept {r['source_concept']!r} mappé vers {mapped!r} mais non normalisé dans le fait "
+                  f"(exclusion possible seulement avec une justification « {EXCLUSION_PREFIX} motif »)")
         else:
             U(f"{ctx} : concept {r['source_concept']!r} non normalisé (inutilisable par le projet en l'état)")
         if not r["source_unit"]:
@@ -319,14 +331,20 @@ def audit_folder(root: str | Path) -> AuditResult:
                     E(f"{ctx} : {norm} est monétaire : unité « {MONETARY_UNIT} » et devise obligatoires")
             elif r["unit"].lower() not in SHARE_UNITS or r["currency"]:
                 E(f"{ctx} : {norm} est un nombre d'actions : unité « actions », sans devise")
-            if r["reconciled"] == "oui":
+            if r["reconciled"] == "auto":
+                local = docs.get(r["doc_id"], {}).get("local_copy") if doc is not None else ""
+                if not r["reconciled_note"].startswith("AUTOMATIQUE") or not local:
+                    E(f"{ctx} : rapprochement automatique sans note « AUTOMATIQUE … » ou sans copie locale du document")
+                else:
+                    res.reconciled_auto += 1
+            elif r["reconciled"] == "oui":
                 if not r["reconciled_note"]:
                     E(f"{ctx} : rapprochement déclaré sans note (indiquer la pièce et l'endroit vérifiés : page, "
                       "section, tableau)")
                 else:
                     res.reconciled += 1
             elif r["reconciled"] not in ("", "non"):
-                E(f"{ctx} : reconciled doit valoir oui, non ou rester vide")
+                E(f"{ctx} : reconciled doit valoir oui, auto, non ou rester vide")
         if r["unit"] == MONETARY_UNIT and not r["currency"]:
             E(f"{ctx} : unité monétaire sans devise")
         if r["unit"].lower() in SHARE_UNITS and r["currency"]:

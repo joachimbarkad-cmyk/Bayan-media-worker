@@ -101,3 +101,14 @@ dimensions, catégorie d'actions, rapprochement, copie locale, rectificatif, lig
 Limites : le journal est **déclaratif**. Il rend les saisies traçables et cohérentes ; il ne prouve ni l'identité de
 l'auteur, ni que la preuve dit ce qu'on lui fait dire, ni que le choix de normalisation est juste. L'historique git et
 une contre-vérification humaine indépendante restent nécessaires.
+
+## Normalisation et rapprochement automatique (V1.13)
+
+- `reconciled` vaut `oui` (rapprochement humain, note obligatoire), `auto` (rapprochement par programme contre la
+  copie locale du document : note commençant par « AUTOMATIQUE » et `local_copy` obligatoires), `non` ou vide.
+- Verdict « RAPPROCHEMENT AUTOMATIQUE » : concordance des chiffres avec la copie locale seulement ; le choix du concept
+  et les inférences restent à relire.
+- Un fait dont le concept est mappé mais qui n'est pas normalisé doit porter une justification
+  « NON NORMALISÉ : motif » (exclusion explicite) ; sinon, erreur bloquante.
+- Outil : `tools/edgar_normalize.py` (`normalize`, `import-filing`, `reconcile-ixbrl`), règles
+  `config/normalisation/edgar_v1.json`, exemples `docs/EXEMPLE_NORMALISATION_APPLE.md`.

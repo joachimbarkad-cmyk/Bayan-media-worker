@@ -12,7 +12,8 @@ Règles (aucune inférence) :
 - la clé comprend l'ÉMETTEUR (via le document porteur) ; un fait monétaire normalisé exige en plus sa devise ;
 - la valeur publiée à l'origine (premier dépôt disponible) est conservée à côté de la valeur retenue, pour mesurer
   l'effet des retraitements ; une publication ultérieure ne modifie jamais une décision antérieure à sa disponibilité.
-La sélection ne rend un fait « utilisable » que s'il est normalisé et rapproché de sa pièce (reconciled = oui).
+La sélection ne rend un fait « utilisable » que s'il est normalisé et rapproché de sa pièce : à la main (reconciled =
+oui) ou automatiquement contre la copie locale du document (reconciled = auto, signalé dans `reconciliation`).
 """
 from __future__ import annotations
 
@@ -34,6 +35,7 @@ class Selection:
     original: dict | None = None      # fait du premier dépôt disponible (valeur publiée à l'origine)
     reason: str = ""
     usable: bool = False
+    reconciliation: str = ""          # « oui » (humain), « auto » (programme) ou vide
 
 
 def load_audit(root: str | Path) -> tuple[dict[str, dict], list[dict]]:
@@ -101,10 +103,12 @@ def select_fact(docs: dict[str, dict], facts: list[dict], issuer_id: str, concep
     sel.original = firsts[0] if len({f[val_field] for f in firsts}) == 1 else None
     sel.revised_values = sorted({f"{f[val_field]} ({docs[f['doc_id']]['accession_number']})"
                                  for _, f in same_period if f[val_field] != chosen[val_field]})
-    if chosen["reconciled"] != "oui" or not chosen["normalized_concept"]:
+    sel.reconciliation = chosen["reconciled"] if chosen["reconciled"] in ("oui", "auto") else ""
+    if not sel.reconciliation or not chosen["normalized_concept"]:
         sel.reason = "fait trouvé mais non normalisé ou non rapproché de sa pièce : inutilisable pour un ratio"
     else:
         sel.usable = True
-        sel.reason = "fait normalisé et rapproché"
+        sel.reason = ("fait normalisé et rapproché à la main" if sel.reconciliation == "oui" else
+                      "fait normalisé et rapproché AUTOMATIQUEMENT de la copie locale (à relire par une personne)")
     return sel
 

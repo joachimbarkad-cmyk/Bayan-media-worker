@@ -1,4 +1,4 @@
-# HANDOFF — simulateur de trading halal, V1.12 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.13 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
@@ -7,7 +7,73 @@ Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier
 contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
 au document de fiqh fourni par l'utilisateur**.
 
-## 0000. Suite donnée à la revue n° 12
+## V1.13 — Normalisation EDGAR sur données réelles (travail autonome demandé par l'utilisateur)
+
+Objectif : que la normalisation fonctionne sur les faits réels d'Apple, avec tests et exemples vérifiables, en restant
+en simulation (aucun ordre, aucun courtier, aucun service payant). **Atteint pour la normalisation ; le rapprochement
+avec le document d'origine est prêt et testé, mais n'a pas pu être exécuté sur un vrai document** (voir « Bloquant »).
+
+### Ce qui a été fait
+
+| Élément | Fichier | Résultat vérifiable |
+|---|---|---|
+| Règles versionnées (4 règles 1 → 1, inférences D1, X1, C1, T1, K1, liste de ce qui n'est volontairement pas normalisé) | `config/normalisation/edgar_v1.json` | — |
+| Outil hors ligne `normalize` : chaque cellule passe par le journal des saisies ; écriture « tout ou rien » après `verify-trace` + `audit-docs` sur une copie ; précondition : dossier déjà vérifié ; idempotent | `tools/edgar_normalize.py` | Apple : **337 faits normalisés** (total_revenue 117, total_assets 88, shares_outstanding 132), 0 conflit, 0 écarté, 2 166 saisies ; relance : 0 saisie |
+| Exclusion explicite `NON NORMALISÉ : motif` pour un fait d'un concept mappé non normalisé (conflit, catégorie…) ; l'audit l'accepte comme inconnue signalée, jamais en silence | `halal_sim/audit.py` | test du conflit K1 |
+| `import-filing` : copie locale du document principal téléchargé à la main (nom vérifié, heure déclarée avec fuseau, SHA-256, journalisé) | `tools/edgar_normalize.py` | tests fixture |
+| `reconcile-ixbrl` : lit le XBRL en ligne de la copie locale (contextes, unités, `ix:nonFraction`, échelle, signe, formats courants), ne retient que les faits de la même entité, même période, **sans segment**, compare à la valeur companyfacts ; remplace le contexte X1 par l'identifiant réel et renseigne `decimals` ; `reconciled = auto` avec note « AUTOMATIQUE … » | `tools/edgar_normalize.py` | 7 tests sur document XBRL en ligne FICTIF (concordance, écart de valeur, seul fait ventilé ⇒ D1 réfutée, autre entité, signe, copie altérée) |
+| Audit : `reconciled = auto` exige une note « AUTOMATIQUE » et une copie locale ; verdict distinct « RAPPROCHEMENT AUTOMATIQUE … à relire » | `halal_sim/audit.py` | test |
+| Sélection : utilisable si rapproché (`oui` ou `auto`), avec `Selection.reconciliation` | `halal_sim/selection.py` | tests |
+| Exemples vérifiables (10-K 2025 et 10-Q T3 2025), régénérables ; un test vérifie qu'ils correspondent aux données | `docs/EXEMPLE_NORMALISATION_APPLE.md`, `tools/exemple_normalisation.py` | test |
+
+Tests : `tests/test_normalisation.py` (19, dont 5 sur le dossier Apple réel). **199 tests** au total. Mutations :
+15 défauts réintroduits dans le nouveau code (K1, C1, D1, tout ou rien, précondition, segment, valeur, période,
+entité, empreinte, signe, nom du document, note automatique, exclusion motivée, sélection), **tous détectés**.
+
+### Décisions prises (réversibles, à relire)
+
+1. **Correspondance 1 → 1 uniquement** : aucun agrégat ni calcul. `interest_bearing_debt`,
+   `cash_and_interest_bearing_investments`, `non_compliant_revenue` et `market_cap` ne sont **pas** normalisés : leur
+   périmètre est une décision du référentiel religieux (locations, qualification des placements, revenus illicites) ou
+   exige un cours (source non établie).
+2. `us-gaap:Revenues` (2018) et `us-gaap:SalesRevenueNet` (avant 2018) **non mappés** vers total_revenue : équivalence
+   avec ASC 606 non établie. Conséquence : pas de chiffre d'affaires normalisé avant l'exercice 2018 d'Apple.
+3. Deux concepts d'actions mappés vers `shares_outstanding` (page de couverture et bilan) : dates de mesure différentes,
+   distinguées par la sélection à date exacte ; la convention de date pour la capitalisation reste ouverte.
+4. **Inférences** faute d'accès au document : D1 (aucune dimension si une seule valeur brute par clé), X1 (contexte
+   décrit par son contenu), C1 (catégorie unique si un seul titre coté). Elles sont écrites dans chaque justification
+   et sont vérifiées ou réfutées par `reconcile-ixbrl` dès qu'une copie du document existe.
+5. Rapprochement automatique distinct du rapprochement humain (`auto` ≠ `oui`) ; il prouve la **concordance des
+   chiffres** avec la copie locale, pas le bon choix de concept.
+6. L'auteur des saisies automatiques est l'outil (« edgar_normalize.py (règles edgar_v1, automatique) »), jamais une
+   personne.
+
+### Limites
+
+- **Bloquant pour le rapprochement réel** : `www.sec.gov` (où sont les documents) reste bloqué par le réseau de
+  l'environnement ; seul `data.sec.gov` est autorisé. Deux voies : ajouter `www.sec.gov` aux domaines autorisés, ou
+  télécharger le document principal dans un navigateur (ex. `aapl-20250927.htm`) puis `import-filing`.
+- `reconcile-ixbrl` n'a jamais tourné sur un vrai document SEC : formats `ixt` rares, `ix:continuation`,
+  `xsi:nil`, faits imbriqués, grands documents (mémoire) non éprouvés. Les formats non pris en charge produisent un
+  échec explicite, jamais une valeur.
+- `decimals` reste inconnu tant que le document n'est pas rapproché.
+- Un changement de version des règles ne « dé-normalise » pas les faits déjà normalisés : repartir d'une conversion
+  neuve (`convert --remplacer`) pour appliquer une nouvelle version.
+- Le journal est déclaratif ; l'empreinte d'une preuve ne prouve pas ce qu'elle dit.
+- Rien n'est « utilisable » pour un ratio aujourd'hui : 0 fait rapproché ; et le référentiel n'est pas validé.
+
+### Points nécessitant une revue indépendante
+
+1. Les 4 règles et leurs justifications (`concept_map.csv`) : le concept choisi est-il le bon total pour le projet ?
+2. L'inférence D1 : un fait companyfacts unique par clé est-il bien le total non ventilé ? (Réfutable par
+   `reconcile-ixbrl`.)
+3. L'inférence C1 pour Apple (une seule catégorie d'actions) et son usage pour d'autres émetteurs.
+4. Décision 2 (concepts de revenu antérieurs à 2018) et décision 3 (deux mesures d'actions).
+5. La lecture XBRL en ligne (`parse_ixbrl`, `_ix_value`) sur un vrai 10-K dès qu'il est disponible.
+6. Comparer à la main les lignes de `docs/EXEMPLE_NORMALISATION_APPLE.md` au 10-K 2025 (bilan, compte de résultat,
+   page de couverture).
+
+## Historique — revue n° 12
 
 - **Cas reproduit** sur b86400b : `public_available_at` du 10-K 2025 fixée au 03/11/2025 sans preuve ⇒ fait retiré de la
   sélection du 01/11, mais 0 écart à `verify-trace` et 0 erreur à `audit-docs`.
@@ -25,7 +91,7 @@ au document de fiqh fourni par l'utilisateur**.
 - Tests `tests/test_review12.py` (11) ; le test de la V1.11 qui laissait passer les colonnes humaines est inversé.
   Mutations : 9 défauts réintroduits, tous détectés. **180 tests.**
 
-## 000. Suite donnée à la revue n° 11
+## Historique — revue n° 11
 
 Les deux défauts signalés ont été reproduits sur c48d19d (chiffre de l'émetteur 2 renvoyé pour l'émetteur 1 ; date
 d'acceptation du 10-K 2025 avancée au 30/10 : 0 écart à `verify-trace`, 0 erreur à `audit-docs`), puis corrigés.
@@ -45,7 +111,7 @@ Source de cours (question c) : Massive Stocks Basic (gratuit, `adjusted=false`, 
 demande un **compte et une clé API** : décision laissée à l'utilisateur ; rien n'a été créé. Règles de capitalisation
 ajoutées à `docs/NORMALISATION_RATIOS.md`.
 
-## 00. Suite donnée à la revue n° 10 (collecte Apple)
+## Historique — revue n° 10 (collecte Apple)
 
 | Recommandation | Fait | Test |
 |---|---|---|
@@ -60,7 +126,7 @@ Défaut trouvé en chemin : la première version de la trace coupait les unités
 Mutations : 9 défauts réintroduits (J+1, plus récent, début de période, UTC, ambiguïté, échappement, contrôle de
 valeur, compte des exclusions, fait sans trace), tous détectés. **157 tests.**
 
-## 0 bis. Première collecte EDGAR réelle (Apple, CIK 320193)
+## Historique — première collecte EDGAR réelle (Apple, CIK 320193)
 
 Collecte faite le 2026-09-28 à 10:50 UTC par `collect` (accès à `data.sec.gov` ouvert par l'utilisateur ; l'identification
 envoyée à la SEC n'est écrite nulle part dans le dépôt). Fichiers bruts et empreintes : `collecte/apple/` ; dossier converti :
@@ -75,7 +141,7 @@ envoyée à la SEC n'est écrite nulle part dans le dépôt). Fichiers bruts et 
 - À vérifier par le relecteur : `acceptanceDateTime` de la SEC porte le suffixe `Z` ; est-ce vraiment de l'UTC ou de
   l'heure de New York mal étiquetée ? (valeurs observées : 10:01Z, soit 6 h 01 à New York.)
 
-## 0. Nouveau : référentiel tiré du document de fiqh de l'utilisateur
+## Historique — référentiel tiré du document de fiqh de l'utilisateur
 
 L'utilisateur a fourni son document « Actions, bourse et produits financiers en Islam : vérification et annotation de vos
 notes de cours » (PDF, 19 p.). J'en ai tiré `config/rulesets/AAOIFI_SS21_document_utilisateur.json` :
@@ -95,7 +161,7 @@ notes de cours » (PDF, 19 p.). J'en ai tiré `config/rulesets/AAOIFI_SS21_docum
 Sur les données fictives, ce référentiel donne les mêmes résultats que la démo (aucun titre fictif entre les seuils 20/20/3 %
 et 30/30/5 %).
 
-## 1. Suite donnée à la revue n° 9
+## Historique — revue n° 9
 
 Les 5 cas ont été reproduits sur 5751e76, corrigés et couverts par `tests/test_review9.py` ; chaque défaut réintroduit fait
 échouer au moins un test (6 variantes, dont l'avertissement de divergence).
@@ -110,22 +176,22 @@ Les 5 cas ont été reproduits sur 5751e76, corrigés et couverts par `tests/tes
 
 Question 4 (historique) : le premier dossier est explicitement limité aux dépôts récents ; le manifeste le dit.
 
-## 2. Collecte EDGAR sans identification : `import-files`
+## Historique — collecte EDGAR sans identification : `import-files`
 
 L'utilisateur préfère ne pas donner son adresse électronique, et sec.gov est inaccessible depuis l'environnement de
 développement. Nouvelle voie : l'utilisateur télécharge les deux JSON dans son navigateur et les transmet ;
 `import-files` les enregistre avec empreinte SHA-256 et heure de téléchargement **déclarée** (avec fuseau, jamais
 inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuite. Guide débutant : `docs/GUIDE_COLLECTE_EDGAR.md`.
 
-## 3. Ce qui fonctionne réellement (vérifié en lançant le code)
+## Ce qui fonctionne réellement (vérifié en lançant le code)
 
 - Simulation de bout en bout (12 contrôles), avec `--ruleset` pour choisir le référentiel et `--db` pour la base.
 - `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE.
-- **180 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+- **199 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
   test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
-  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_ruleset_validation 10, test_screening 11.
+  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 19, test_ruleset_validation 10, test_screening 11.
 
-## 4. Limites connues
+## Limites connues (générales)
 
 1. Données de simulation fictives ; référentiel réel non validé ; simulation sur données REEL refusée.
 2. Exécutions reconstruites, non prouvées.
@@ -133,7 +199,7 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 4. Le numérateur « dépôts à intérêt » doit exclure la trésorerie non rémunérée : à vérifier sur chaque donnée réelle.
 5. Purification, zakāt, filtre mālikite des actifs monétaires : non codés (décisions du board).
 
-## 5. Questions pour le relecteur
+## Questions pour le relecteur (anciennes)
 
 0. (V1.10) La règle « dépôt le plus récemment disponible » est-elle la bonne pour un backtest, ou faut-il garder la
    valeur telle que publiée à l'origine pour certains usages ? `verify-trace` laisse-t-il passer une altération ?

@@ -1,0 +1,11 @@
+{
+ "version": "edgar_v1",
+ "normalises": {
+  "shares_outstanding": 132,
+  "total_assets": 88,
+  "total_revenue": 117
+ },
+ "ecartes": [],
+ "conflits": [],
+ "saisies": 2166
+}
