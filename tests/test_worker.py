@@ -50,6 +50,17 @@ class MediaTest(unittest.TestCase):
         with patch.object(w.shutil,'disk_usage',return_value=type('Usage',(),{'free':100})()):
             with self.assertRaises(ValueError):w.ensure_space(1000)
         old=w.ROOT/'assets'/'expired';old.write_bytes(b'old');os.utime(old,(0,0));w.cleanup_expired();self.assertFalse(old.exists());self.assertTrue(self.source.exists())
+    def test_9_export_size_is_bounded(self):
+        meta={'duration':180,'height':1080,'videoBitrate':3_800_000}
+        rate=w.video_bitrate(meta,1080);self.assertLessEqual(rate,4_180_000);self.assertGreaterEqual(rate,1_500_000)
+        self.assertLess(w.video_bitrate(meta,720),rate)
+        long={'duration':3600,'height':1080,'videoBitrate':0}
+        self.assertLessEqual(w.video_bitrate(long,1080)*3600/8,w.MAX_BYTES*2)
+    def test_10_regeneration_replaces_previous_mp4(self):
+        ass=(pathlib.Path(__file__).parent/'fixtures/captions.ass').read_text();payload={'kind':'export','project':{'id':'p','title':'QA','segments':[]},'asset':self.source.name,'ass':ass,'quality':'original'}
+        first=w.new_job(payload);w.process_job(first['id'],payload);self.assertTrue((w.ROOT/first['id']/'export.mp4').exists())
+        second=w.new_job(payload);w.process_job(second['id'],payload);self.assertEqual(w.job_state(second['id'])['status'],'complete')
+        self.assertFalse((w.ROOT/first['id']/'export.mp4').exists());self.assertTrue((w.ROOT/second['id']/'export.mp4').exists())
     def test_8_youtube_guard(self):
         for url in ['http://localhost/admin','https://youtube.com.evil.test/watch?v=abcdefghijk','file:///etc/passwd']:
             with self.assertRaises(ValueError):w.valid_youtube(url)

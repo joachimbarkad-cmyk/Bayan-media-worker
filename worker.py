@@ -96,7 +96,9 @@ def probe(file):
     if not video:
         if any(s['codec_type']=='audio' for s in data['streams']):return {'duration':float(data['format'].get('duration',0)),'audioOnly':True}
         raise ValueError('Le fichier ne contient pas de piste audio ou vidéo exploitable.')
-    return {'duration':float(data['format'].get('duration',0)),'width':video.get('width',1920),'height':video.get('height',1080),'fps':video.get('avg_frame_rate','25/1')}
+    audio=sum(int(s.get('bit_rate') or 0) for s in data['streams'] if s['codec_type']=='audio')
+    rate=int(video.get('bit_rate') or 0) or max(0,int(data['format'].get('bit_rate') or 0)-audio)
+    return {'duration':float(data['format'].get('duration',0)),'width':video.get('width',1920),'height':video.get('height',1080),'fps':video.get('avg_frame_rate','25/1'),'videoBitrate':rate}
 
 def valid_youtube(url):
     u=parse.urlparse(url)
@@ -253,16 +255,37 @@ def translate(id,segments,project,glossary,instruction='',ids=None):
         update(id,result={**(job_state(id).get('result') or {}),'segments':list(result.values())},progress=round(min(len(targets),offset+30)/len(targets)*100,1))
     return list(result.values())
 
+AUDIO_BPS=192_000
+HEIGHT_CAPS=((480,2_500_000),(720,5_000_000),(1080,8_000_000))
+
+def video_bitrate(meta,height):
+    """CRF alone lets grainy footage balloon to 2x the upload; cap it by the source and a size budget."""
+    cap=next((b for h,b in HEIGHT_CAPS if height<=h),16_000_000)
+    if meta.get('videoBitrate'):cap=min(cap,max(1_500_000,int(meta['videoBitrate']*1.1*min(1,(height/max(1,meta['height']))**2))))
+    budget=int(MAX_BYTES*2*8*.9/max(1,meta['duration']))-AUDIO_BPS
+    return max(300_000,min(cap,budget))
+
+def drop_superseded_exports(id,asset):
+    """A new render of the same media replaces older MP4s; they can be regenerated from the studio."""
+    with database() as db:
+        rows=db.execute("SELECT id,payload FROM jobs WHERE id<>? AND status NOT IN ('queued','running')",(id,)).fetchall()
+    for r in rows:
+        if json.loads(r['payload']).get('asset')==asset:(ROOT/r['id']/'export.mp4').unlink(missing_ok=True)
+
 def render_video(id,source,ass,quality,folder):
     if not ass.strip().startswith('[Script Info]') or '\x00' in ass:raise ValueError('Sous-titres ASS invalides.')
     meta=probe(source)
     if meta.get('audioOnly'):raise ValueError('Associez une vidéo pour exporter un MP4. Ce projet contient uniquement de l’audio.')
-    ensure_space(max(MAX_BYTES,source.stat().st_size*2))
+    height=min(meta['height'],int(quality)) if quality in ('720','1080') else meta['height']
+    rate=video_bitrate(meta,height)
+    with STORAGE_LOCK:
+        if source.parent==ROOT/'assets':drop_superseded_exports(id,source.name)
+        ensure_space(int(meta['duration']*(rate+AUDIO_BPS)/8*1.1)+1024**2)
     sub=folder/'captions.ass';sub.write_text(ass,encoding='utf-8');output=folder/'export.mp4'
     filters=[]
     if quality in ('720','1080'):filters.append(f"scale=w=-2:h='min(ih,{quality})'")
     filters.append("ass=filename='captions.ass'")
-    args=['ffmpeg','-nostdin','-y','-v','error','-i',str(source),'-vf',','.join(filters),'-map','0:v:0','-map','0:a:0?','-c:v','libx264','-preset','medium','-crf','20','-pix_fmt','yuv420p','-c:a','aac','-b:a','192k','-movflags','+faststart','-progress','pipe:1','-nostats',str(output)]
+    args=['ffmpeg','-nostdin','-y','-v','error','-i',str(source),'-vf',','.join(filters),'-map','0:v:0','-map','0:a:0?','-c:v','libx264','-preset','medium','-crf','20','-maxrate',str(rate),'-bufsize',str(rate*2),'-pix_fmt','yuv420p','-c:a','aac','-b:a',str(AUDIO_BPS),'-movflags','+faststart','-progress','pipe:1','-nostats',str(output)]
     log=folder/'ffmpeg-error.log';update(id,stage='Incrustation des sous-titres — H.264 / AAC',progress=0)
     with log.open('w') as errors:
         process=subprocess.Popen(args,cwd=folder,stdout=subprocess.PIPE,stderr=errors,text=True)
