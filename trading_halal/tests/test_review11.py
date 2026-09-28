@@ -104,7 +104,7 @@ class ReconversionTests(unittest.TestCase):
         _rewrite_csv(self.out / "documents.csv", lambda rows: rows[1:])
         self.assertTrue(any("absente du dossier" in m for m in ec.verify_trace(self.raw, self.out)))
 
-    def test_human_columns_are_not_flagged(self):
+    def test_human_columns_without_journal_are_flagged_since_review_12(self):
         def human(rows):
             rows[0]["public_available_at"] = "2030-01-01T00:00:00+00:00"
             rows[0]["local_copy"] = "copies/x.htm"
@@ -115,7 +115,11 @@ class ReconversionTests(unittest.TestCase):
             rows[0]["reconciled"] = "oui"
             return rows
         _rewrite_csv(self.out / "facts.csv", norm)
-        self.assertEqual(ec.verify_trace(self.raw, self.out), [])
+        problems = ec.verify_trace(self.raw, self.out)
+        for col in ("public_available_at", "local_copy", "normalized_concept", "reconciled"):
+            self.assertTrue(any(col in m and "sans saisie" in m for m in problems), col)
+        self.assertFalse(any("reconversion" in m and ("public_available_at" in m or "reconciled" in m)
+                             for m in problems))
 
 
 class VerifySourceTests(unittest.TestCase):

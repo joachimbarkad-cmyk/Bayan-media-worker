@@ -397,6 +397,122 @@ def verify_trace(raw: Path, audit: Path) -> list[str]:
     return problems
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# Saisies humaines : chaque cellule qui diffère de la conversion automatique doit être justifiée, dans l'ordre, par le
+# journal des saisies (auteur, horodatage avec fuseau, preuve). Le journal est déclaratif : il rend les saisies
+# traçables et cohérentes, il ne prouve ni l'identité de l'auteur ni l'exactitude du choix (contrôle humain).
+SAISIES_FILE = "journal_saisies.csv"
+SAISIES_HEADERS = ["n", "fichier", "cle", "colonne", "ancienne_valeur", "nouvelle_valeur", "auteur", "saisi_le",
+                   "preuve", "note"]
+# Clé de ligne de chaque table ; les tables absentes de CONVERTER_OWNED sont entièrement humaines.
+ROW_KEYS = {"issuers": ["issuer_id"], "documents": ["doc_id"], "facts": ["fact_id"], "securities": ["security_id"],
+            "concept_map": ["source_concept"], "activities": ["issuer_id", "proposed_code", "evidence_doc_id"]}
+# Colonnes qui décident de ce qui était connaissable à une date : preuve documentaire obligatoire (fichier ou URL).
+AVAILABILITY_COLUMNS = {("documents", "public_available_at"), ("activities", "available_at"),
+                        ("securities", "valid_from"), ("securities", "valid_to")}
+_SHA_RE = re.compile(r"^fichier:(?P<path>[^#]+)#sha256=(?P<sha>[0-9a-f]{64})$")
+
+
+def _row_key(name: str, row: dict) -> str:
+    return "|".join(row.get(k, "") for k in ROW_KEYS[name])
+
+
+def _check_proof(audit: Path, proof: str, docs: set[str], strong: bool) -> str | None:
+    m = _SHA_RE.match(proof)
+    if m:
+        target = (audit / m["path"]).resolve()
+        try:
+            target.relative_to(audit.resolve())
+        except ValueError:
+            return f"preuve hors du dossier audité ({m['path']})"
+        if not target.is_file():
+            return f"fichier de preuve absent ({m['path']})"
+        if hashlib.sha256(target.read_bytes()).hexdigest() != m["sha"]:
+            return f"empreinte du fichier de preuve différente ({m['path']})"
+        return None
+    if re.match(r"^url:https://\S+$", proof):
+        return None
+    if strong:
+        return "une date de disponibilité exige une preuve « fichier:chemin#sha256=… » ou « url:https://… »"
+    if proof.startswith("doc:"):
+        return None if proof[4:] in docs else f"document de preuve inconnu ({proof[4:]})"
+    return "preuve attendue : « doc:<doc_id> », « fichier:chemin#sha256=… » ou « url:https://… »"
+
+
+def verify_saisies(audit: Path, ref: Path) -> list[str]:
+    """Compare chaque cellule humaine à la reconversion `ref`, en rejouant le journal des saisies."""
+    problems: list[str] = []
+    tables = {}
+    for name in ROW_KEYS:
+        def load(folder):
+            path = folder / f"{name}.csv"
+            if not path.exists():
+                return {}
+            with open(path, newline="", encoding="utf-8") as f:
+                return {_row_key(name, r): r for r in csv.DictReader(f)}
+        tables[name] = (load(audit), load(ref))
+    owned = {n: set(cols) for n, (_, cols) in CONVERTER_OWNED.items()}
+    state: dict[tuple, str] = {}  # (fichier, clé, colonne) -> valeur après rejeu
+
+    def baseline(name, key, col):
+        return tables[name][1].get(key, {}).get(col, "")
+
+    entries = []
+    jpath = audit / SAISIES_FILE
+    if jpath.exists():
+        with open(jpath, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            if list(reader.fieldnames or []) != SAISIES_HEADERS:
+                return [f"{SAISIES_FILE} : colonnes attendues {SAISIES_HEADERS}"]
+            entries = list(reader)
+    docs = set(tables["documents"][0])
+    last_n, last_ts = 0, None
+    for e in entries:
+        ctx = f"{SAISIES_FILE} n° {e['n']}"
+        if not e["n"].isdigit() or int(e["n"]) != last_n + 1:
+            problems.append(f"{ctx} : numérotation non continue (attendu {last_n + 1})")
+        last_n = int(e["n"]) if e["n"].isdigit() else last_n + 1
+        name, key, col = e["fichier"], e["cle"], e["colonne"]
+        if name not in ROW_KEYS:
+            problems.append(f"{ctx} : fichier inconnu {name!r}")
+            continue
+        if col in owned.get(name, set()):
+            problems.append(f"{ctx} : {name}.{col} est produit par la conversion et ne se saisit pas à la main")
+            continue
+        if not e["auteur"].strip():
+            problems.append(f"{ctx} : auteur manquant")
+        try:
+            ts = datetime.fromisoformat(e["saisi_le"])
+            if ts.tzinfo is None:
+                raise ValueError
+        except ValueError:
+            problems.append(f"{ctx} : saisi_le doit être un horodatage avec fuseau")
+            ts = None
+        if ts is not None:
+            if last_ts is not None and ts < last_ts:
+                problems.append(f"{ctx} : horodatage antérieur à la saisie précédente")
+            last_ts = ts
+        err = _check_proof(audit, e["preuve"].strip(), docs, (name, col) in AVAILABILITY_COLUMNS)
+        if err:
+            problems.append(f"{ctx} : {err}")
+        cell = (name, key, col)
+        current = state.get(cell, baseline(name, key, col))
+        if e["ancienne_valeur"] != current:
+            problems.append(f"{ctx} : ancienne valeur {e['ancienne_valeur']!r} ≠ valeur en vigueur {current!r} "
+                            "(historique discontinu)")
+        state[cell] = e["nouvelle_valeur"]
+    for name, (mine, theirs) in tables.items():
+        for key, row in mine.items():
+            for col, val in row.items():
+                if col in owned.get(name, set()):
+                    continue  # comparé strictement par la reconversion
+                expected = state.get((name, key, col), baseline(name, key, col))
+                if val != expected:
+                    problems.append(f"{name}.csv {key} : {col} = {val!r} sans saisie journalisée correspondante "
+                                    f"(attendu {expected!r})")
+    return problems
+
+
 # Colonnes produites par la conversion. Les autres (normalisation, rapprochement, copie locale, diffusion publique,
 # rectificatif désigné à la main) relèvent du travail humain et ne sont pas comparées.
 CONVERTER_OWNED = {
@@ -436,6 +552,7 @@ def _compare_with_reconversion(raw: Path, audit: Path) -> list[str]:
                     if mine[k].get(c, "") != theirs[k].get(c, ""):
                         problems.append(f"{name}.csv {k} : {c} = {mine[k].get(c, '')!r}, reconversion "
                                         f"{theirs[k].get(c, '')!r}")
+        problems += verify_saisies(audit, ref)
         for fname in (TRACE_FILE, JOURNAL_FILE):
             if (audit / fname).read_bytes() != (ref / fname).read_bytes():
                 problems.append(f"{fname} différent de la reconversion")
@@ -548,7 +665,7 @@ def main(argv=None) -> int:
         problems = verify_trace(a.raw, a.audit)
         for msg in problems[:50]:
             print("  ÉCART", msg)
-        print(f"{len(problems)} écart(s) entre le dossier converti et les entrées brutes.")
+        print(f"{len(problems)} écart(s) (entrées brutes, reconversion, journal des saisies).")
         return 1 if problems else 0
     elif a.cmd == "verify-source":
         problems, unverifiable = verify_source(a.raw, a.fresh, a.audit)

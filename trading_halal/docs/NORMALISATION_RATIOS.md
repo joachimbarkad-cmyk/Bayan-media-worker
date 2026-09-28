@@ -38,9 +38,14 @@ pas qu'il manque au rapport. Contexte XBRL, dimensions et précision (`decimals`
 - Ne jamais associer un cours historique à un nombre d'actions publié plus tard (même règle J+1 que les autres faits).
 - La convention de date (fin d'exercice, date de décision, moyenne) est une décision du référentiel, encore ouverte.
 
-## Source de cours non ajustés : décision en attente
+## Source de cours non ajustés : NON ÉTABLIE
 
 Proposée par le relecteur : **Massive Stocks Basic** (gratuit ; barres journalières avec `adjusted=false` ; deux ans
 d'historique ; cinq appels par minute). Elle exige la création d'un **compte** et d'une **clé API** : c'est à
 l'utilisateur de décider ; rien n'a été créé. Deux ans d'historique ne couvrent pas un backtest depuis 2021. Aucune
 autre source gratuite offrant à la fois la profondeur et une garantie explicite de cours non ajustés n'a été vérifiée.
+
+Revue n° 12 : aucune source gratuite, sans compte, avec au moins cinq ans d'historique **et** une garantie explicite de
+cours non ajustés n'a été vérifiée (Nasdaq : ajustement non précisé sur la page historique ; Alpha Vantage : clé API et
+historique complet payant). La source de prix reste donc « non établie » : aucune série ne sera qualifiée de non
+ajustée sans garantie écrite du fournisseur.

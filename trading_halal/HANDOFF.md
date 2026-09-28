@@ -1,4 +1,4 @@
-# HANDOFF — simulateur de trading halal, V1.11 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.12 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
@@ -6,6 +6,24 @@ Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier
 **Merci de relire de façon critique** : lectures d'information future, ADMISSIBLE erronés, contrôles d'audit
 contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
 au document de fiqh fourni par l'utilisateur**.
+
+## 0000. Suite donnée à la revue n° 12
+
+- **Cas reproduit** sur b86400b : `public_available_at` du 10-K 2025 fixée au 03/11/2025 sans preuve ⇒ fait retiré de la
+  sélection du 01/11, mais 0 écart à `verify-trace` et 0 erreur à `audit-docs`.
+- **Correction** : `journal_saisies.csv` (format dans `docs/AUDIT_DOCUMENTAIRE.md`). `verify-trace` rejoue le journal
+  sur la reconversion : toute cellule humaine qui diffère de la conversion doit résulter d'une saisie journalisée
+  (numérotation continue, auteur, horodatage avec fuseau et ordonné, ancienne valeur = valeur en vigueur, preuve).
+  Une date de disponibilité exige un fichier du dossier avec empreinte SHA-256 vérifiée, ou une URL. Effacer, avancer
+  ou modifier après coup une valeur journalisée est signalé. Les colonnes produites par la conversion ne se
+  « saisissent » pas. Les lignes de `concept_map`, `activities` et `securities` sont couvertes.
+- **Limite dite** : journal déclaratif (identité de l'auteur non prouvée ; contenu de la preuve non interprété).
+- **verify-source rejouable** : la seconde copie SEC est dans `collecte/apple_controle/` (téléchargée le 28/09/2026 à
+  11:22 UTC) : `verify-source --raw collecte/apple --fresh collecte/apple_controle --audit data/audit_edgar_apple`
+  ⇒ 0 écart, 0 invérifiable.
+- **Prix** : source « non établie » (`docs/NORMALISATION_RATIOS.md`).
+- Tests `tests/test_review12.py` (11) ; le test de la V1.11 qui laissait passer les colonnes humaines est inversé.
+  Mutations : 9 défauts réintroduits, tous détectés. **180 tests.**
 
 ## 000. Suite donnée à la revue n° 11
 
@@ -103,9 +121,9 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 
 - Simulation de bout en bout (12 contrôles), avec `--ruleset` pour choisir le référentiel et `--db` pour la base.
 - `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE.
-- **169 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+- **180 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
   test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
-  test_review9 9, test_review10 15, test_review11 12, test_ruleset_validation 10, test_screening 11.
+  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_ruleset_validation 10, test_screening 11.
 
 ## 4. Limites connues
 

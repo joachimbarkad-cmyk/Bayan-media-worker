@@ -81,3 +81,23 @@ que l'information n'a pas été établie à partir du document. `source_context`
 - `import-files` enregistre des fichiers téléchargés à la main : aucune requête, aucune identification ; l'heure de
   téléchargement est déclarée (avec fuseau), jamais inventée. Guide : `docs/GUIDE_COLLECTE_EDGAR.md`.
 - Dans l'audit, un fait normalisé sans contexte d'origine est refusé.
+
+## Journal des saisies humaines (revue n° 12)
+
+Toute cellule qu'un humain remplit ou modifie dans un dossier converti (diffusion publique, normalisation, contexte,
+dimensions, catégorie d'actions, rapprochement, copie locale, rectificatif, lignes de `concept_map`, `activities`,
+`securities`) doit être justifiée, dans l'ordre, par `journal_saisies.csv` :
+
+`n, fichier, cle, colonne, ancienne_valeur, nouvelle_valeur, auteur, saisi_le, preuve, note`
+
+- `n` continu à partir de 1 ; `saisi_le` avec fuseau, jamais antérieur à la saisie précédente ; `auteur` obligatoire ;
+- `ancienne_valeur` doit être la valeur en vigueur (conversion, puis saisies précédentes) : historique continu ;
+- `preuve` : `doc:<doc_id>`, `fichier:<chemin dans le dossier>#sha256=<empreinte>` ou `url:https://…` ; une **date de
+  disponibilité** (`public_available_at`, `activities.available_at`, `securities.valid_from/valid_to`) exige un fichier
+  ou une URL ;
+- une colonne produite par la conversion (ex. `accepted_at`) ne peut pas être « saisie » ;
+- `verify-trace` rejoue le journal sur la reconversion et signale toute cellule qui ne correspond pas.
+
+Limites : le journal est **déclaratif**. Il rend les saisies traçables et cohérentes ; il ne prouve ni l'identité de
+l'auteur, ni que la preuve dit ce qu'on lui fait dire, ni que le choix de normalisation est juste. L'historique git et
+une contre-vérification humaine indépendante restent nécessaires.
