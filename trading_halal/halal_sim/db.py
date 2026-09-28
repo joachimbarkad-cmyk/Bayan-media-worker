@@ -96,7 +96,8 @@ def snapshot_database(path: Path) -> Path:
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(path)
-    src = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    # URI construite à partir du chemin ENCODÉ (?, #, % et espaces), sinon « old?name » serait lu comme « old ».
+    src = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
     version = src.execute("PRAGMA user_version").fetchone()[0]
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     n = 0

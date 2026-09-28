@@ -1,64 +1,73 @@
-# HANDOFF — simulateur de trading halal, V1.8 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.9 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
 
 **Merci de relire de façon critique** : lectures d'information future, ADMISSIBLE erronés, contrôles d'audit
-contournables, informations inventées par la conversion, opérations destructives, affirmations non justifiées.
+contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
+au document de fiqh fourni par l'utilisateur**.
 
-**Le logiciel n'implémente encore aucun référentiel religieux réel complet.** Les règles de fiqh de l'utilisateur sont
-dans une conversation séparée **non accessible ici** ; aucune n'a été reprise (`docs/REFERENTIEL_ET_SOURCES.md` § 9).
+## 0. Nouveau : référentiel tiré du document de fiqh de l'utilisateur
 
-## 0. Suite donnée à la revue n° 8
+L'utilisateur a fourni son document « Actions, bourse et produits financiers en Islam : vérification et annotation de vos
+notes de cours » (PDF, 19 p.). J'en ai tiré `config/rulesets/AAOIFI_SS21_document_utilisateur.json` :
 
-Tous les cas ont été reproduits sur 4fdca20 (le dernier plus gravement que décrit : après l'archivage, la connexion
-restée ouverte ne pouvait plus écrire, la base ayant été supprimée sous elle). Chaque défaut réintroduit fait échouer
-au moins un test (7 variantes).
+- dette à intérêt ≤ 30 % de la capitalisation (AAOIFI SS 21 §3/4/2), dépôts à intérêt ≤ 30 % de la capitalisation
+  (§3/4/3), revenus illicites ≤ 5 % du revenu total (§3/4/4), **tels que cités au § 5.1 du document** ; chaque seuil
+  renvoie au paragraphe du document ;
+- activités exclues par consensus selon le document (Synthèse A.1) ; tabac, armement, médias, hôtellerie : INCERTAIN
+  (non traités par le document) ;
+- avertissement de divergence affiché dans chaque rapport (Synthèse C.1 : l'OCI, Makka et la Lajna Dāʾima interdisent
+  les sociétés « mêlées ») ;
+- **non validé** : le document exige une validation par un sharia board nommé et signale des copies secondaires ; le
+  moteur refuse donc les données réelles (seuls manquent `validated`, `validated_by`, `validated_on`) ;
+- points ouverts listés dans `open_questions` et `docs/REFERENTIEL_ET_SOURCES.md` § 9 (états « vérifiés » §3/4/5,
+  date de la capitalisation, filtre mālikite des actifs monétaires, purification, délai de cession, etc.).
+
+Sur les données fictives, ce référentiel donne les mêmes résultats que la démo (aucun titre fictif entre les seuils 20/20/3 %
+et 30/30/5 %).
+
+## 1. Suite donnée à la revue n° 9
+
+Les 5 cas ont été reproduits sur 5751e76, corrigés et couverts par `tests/test_review9.py` ; chaque défaut réintroduit fait
+échouer au moins un test (6 variantes, dont l'avertissement de divergence).
 
 | Cas signalé | Correction | Test |
 |---|---|---|
-| JSON companyfacts d'un autre CIK rattaché à l'émetteur 123 | Le champ `cik` de chaque JSON (submissions et companyfacts) doit correspondre au CIK du journal, sinon arrêt | `test_review8_cik_mismatch_is_refused_even_with_consistent_journal` |
-| `reconciled=oui` sans note ⇒ verdict « RAPPROCHE » | Un « oui » exige `reconciled_note` (pièce et endroit vérifiés) ; verdict renommé **RAPPROCHEMENT DECLARE** : déclaration humaine enregistrée, non vérifiée par le logiciel, à relire | `test_review_case_reconciliation_without_note_is_refused` |
-| `filings.files` ignoré (historique incomplet sans avertissement) | Signalé : `incomplete_history` dans le résultat et **HISTORIQUE INCOMPLET** dans l'avertissement du manifeste (non collecté) | `test_review8_older_filings_reported_as_incomplete_history` |
-| Contexte décrit par une phrase ; dimensions vides = « aucune » ; catégorie « non établie » | `source_context` vide (non fourni) ; `source_dimensions=INCONNU` ; `share_class=INCONNU`. Dans l'audit, `INCONNU` est signalé et **bloque toute normalisation** tant que l'information n'est pas établie | `test_review8_unknowns_stay_unknown`, `test_unknown_dimensions_or_share_class_block_normalization` |
-| « valeur inconnue » alors que la valeur brute est connue | Message distinct : « valeur brute connue (x), valeur normalisée absente » | `test_raw_value_known_is_reported_distinctly` |
-| Doublon contradictoire gardé silencieusement | Même dépôt, concept, unité et période avec valeurs différentes ⇒ **arrêt** citant les deux entrées brutes ; doublon identique regroupé et compté | `test_review8_contradictory_duplicate_stops_conversion` |
-| Archivage qui supprime l'original pendant qu'une connexion écrit | **Plus aucune suppression ni déplacement.** Base d'ancien schéma refusée (code 2) ; nouvelle base via `--db CHEMIN` ; commande `snapshot-db` : instantané vérifié (API de sauvegarde, source ouverte en lecture seule, nom exclusif, `integrity_check`), présenté comme ne contenant pas les écritures postérieures | `test_review8_writer_keeps_working_after_snapshot`, `test_snapshot_includes_wal_content_and_never_touches_original`, `test_review7_two_snapshots_in_the_same_second_never_overwrite`, `test_cli_runs_on_another_path_and_leaves_old_database_untouched`, `test_review7_old_database_refused_by_default` |
+| Fait marqué `10-K/A`, déposé en 2026, attribué au 10-K de 2025 | `form` et `filed` de chaque fait doivent correspondre au dépôt de son numéro d'accès, sinon arrêt | `test_review_case_fact_form_or_filing_date_must_match_its_filing` |
+| 10-K sans `reportDate` écarté en silence | Dépôt écarté nommé dans `selected_but_skipped` ; manifeste : périmètre exact (formulaires, retenus, écartés, rectificatifs à rattacher) | `test_review_case_selected_filing_without_report_date_is_named` |
+| `collect` et `convert` écrasent sans prévenir | Refus d'écrire dans un dossier existant non vide sans `--remplacer` | `test_review_case_no_silent_overwrite` |
+| Fait normalisé avec contexte vide ⇒ 0 erreur | Normalisation refusée sans contexte d'origine | `test_review_case_normalized_fact_without_context_is_refused` |
+| `snapshot-db` sur `old?name.sqlite` : instantané vide et fichier `old` créé | URI construite depuis le chemin encodé (`Path.as_uri()`) ; testé avec `?`, `#`, `%`, espace et accent | `test_review_case_reserved_characters_in_path` |
 
-Hypothèses EDGAR : merci pour les confirmations (URL, CIK sur 10 chiffres, présentation en colonnes, faits par unité,
-10 requêtes/s). L'en-tête du script reprend désormais que companyfacts n'est qu'un sous-ensemble des faits du dépôt et
-que l'absence de contexte ne prouve pas l'absence de dimensions. Les noms exacts des champs restent **non éprouvés** sur
-une vraie réponse SEC (sec.gov inaccessible depuis l'environnement de développement).
+Question 4 (historique) : le premier dossier est explicitement limité aux dépôts récents ; le manifeste le dit.
 
-## 1. Ce qui fonctionne réellement (vérifié en lançant le code)
+## 2. Collecte EDGAR sans identification : `import-files`
 
-- Simulation de bout en bout, rapport depuis SQLite (12 contrôles), base versionnée, refus non destructif d'un ancien schéma.
-- `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE (0/4 fait rapproché).
-- Collecte EDGAR testée hors ligne uniquement (jeu fictif).
-- **133 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+L'utilisateur préfère ne pas donner son adresse électronique, et sec.gov est inaccessible depuis l'environnement de
+développement. Nouvelle voie : l'utilisateur télécharge les deux JSON dans son navigateur et les transmet ;
+`import-files` les enregistre avec empreinte SHA-256 et heure de téléchargement **déclarée** (avec fuseau, jamais
+inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuite. Guide débutant : `docs/GUIDE_COLLECTE_EDGAR.md`.
+
+## 3. Ce qui fonctionne réellement (vérifié en lançant le code)
+
+- Simulation de bout en bout (12 contrôles), avec `--ruleset` pour choisir le référentiel et `--db` pour la base.
+- `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE.
+- **142 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
   test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
-  test_ruleset_validation 10, test_screening 11.
+  test_review9 9, test_ruleset_validation 10, test_screening 11.
 
-## 2. Résultats de la démonstration (FICTIFS, modèle d'exécution rétrospectif, sans valeur probante)
+## 4. Limites connues
 
-Inchangés : stratégie +25,86 % ; référence achat-conservation −8,07 % ; référence réinvestie +4,43 %.
-
-## 3. Limites connues
-
-1. Données de simulation fictives ; aucun référentiel réel complet ; simulation sur données REEL refusée.
+1. Données de simulation fictives ; référentiel réel non validé ; simulation sur données REEL refusée.
 2. Exécutions reconstruites, non prouvées.
-3. Collecte EDGAR non éprouvée sur l'API réelle ; companyfacts partiel ; dépôts anciens non collectés.
-4. Le rapprochement est une déclaration humaine ; le logiciel ne vérifie que forme, chronologie et cohérence.
-5. Pas de passerelle audit → simulation ; fiche titre de simulation non historisée.
-
-## 4. Prochaines décisions (utilisateur)
-
-- **Fiqh** : coller les passages de la conversation où figurent les règles (texte, références, autorité).
-- **Collecte EDGAR** : quand l'utilisateur le souhaitera, sur sa machine, avec sa propre identification SEC.
+3. Collecte EDGAR non éprouvée sur de vraies réponses SEC ; companyfacts partiel ; dépôts récents seulement.
+4. Le numérateur « dépôts à intérêt » doit exclure la trésorerie non rémunérée : à vérifier sur chaque donnée réelle.
+5. Purification, zakāt, filtre mālikite des actifs monétaires : non codés (décisions du board).
 
 ## 5. Questions pour le relecteur
 
-1. Reste-t-il une information inventée ou perdue par la conversion EDGAR, ou un dossier incohérent à 0 erreur ?
-2. Le traitement `INCONNU` / vide est-il cohérent partout (dimensions, catégorie, contexte, diffusion publique) ?
-3. La gestion non destructive des bases (refus, `--db`, `snapshot-db`) te paraît-elle sûre ?
-4. Faut-il collecter aussi les fichiers `filings.files` dès la première version, ou le signalement suffit-il pour un premier dossier ?
+1. Le référentiel `AAOIFI_SS21_document_utilisateur.json` reflète-t-il fidèlement le § 5.1 du document (seuils,
+   dénominateurs, comparateur « ≤ », sources) ? Y manque-t-il une règle que le document présente comme consensuelle ?
+2. La conversion EDGAR peut-elle encore perdre ou inventer une information, ou produire un dossier incohérent à 0 erreur ?
+3. `import-files` (heure déclarée, empreinte, aucune requête) est-il une base honnête pour un premier dossier réel ?

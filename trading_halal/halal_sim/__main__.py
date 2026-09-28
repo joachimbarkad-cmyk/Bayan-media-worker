@@ -92,7 +92,7 @@ def cmd_run(args) -> int:
 
     cfg = load_config(args.config)
     ds = load_dataset(_path(cfg["dataset_dir"]))
-    ruleset = load_ruleset(_path(cfg["ruleset"]))
+    ruleset = load_ruleset(_path(args.ruleset or cfg["ruleset"]))
     db_path = _path(args.db) if args.db else _path(cfg["db_path"])
     store = _open_store(db_path)
     capital = args.capital or cfg["initial_capital"]
@@ -131,6 +131,7 @@ def main(argv=None) -> int:
     r.add_argument("--capital", type=float, help="Capital initial (remplace la configuration)")
     r.add_argument("--no-sensitivity", action="store_true", help="Ne pas lancer les simulations de sensibilité au capital")
     r.add_argument("--db", help="Base SQLite à utiliser (remplace db_path de la configuration)")
+    r.add_argument("--ruleset", help="Référentiel à appliquer (remplace ruleset de la configuration)")
     c = sub.add_parser("check-data", help="Valider les fichiers de données")
     c.add_argument("--dataset", help="Dossier du jeu de données (défaut : celui de la configuration)")
     s = sub.add_parser("snapshot-db", help="Instantané vérifié d'une base SQLite (l'original n'est jamais modifié)")

@@ -90,7 +90,40 @@ def _get(url: str, ua: str) -> bytes:
         return resp.read()
 
 
-def collect(ciks: list[str], out: Path, ua: str | None, dry_run: bool = False, fetch=_get) -> list[dict]:
+def _require_fresh_dir(out: Path, replace: bool, what: str) -> None:
+    """Jamais d'écrasement silencieux : un dossier existant non vide n'est réutilisé qu'avec --remplacer."""
+    if out.exists() and any(out.iterdir()) and not replace:
+        raise SystemExit(f"REFUS : {out} existe déjà et n'est pas vide ({what}). Choisissez un dossier neuf, ou "
+                         "ajoutez --remplacer en connaissance de cause (un rapprochement humain y serait perdu).")
+
+
+def import_files(cik: str, submissions: Path, companyfacts: Path, retrieved_at: str, out: Path,
+                 replace: bool = False) -> list[dict]:
+    """Enregistre des JSON téléchargés À LA MAIN (navigateur) : aucune requête réseau, aucune identification.
+    L'heure de téléchargement est DÉCLARÉE par l'utilisateur (avec fuseau), jamais inventée."""
+    try:
+        when = datetime.fromisoformat(retrieved_at)
+    except ValueError:
+        when = None
+    if when is None or when.tzinfo is None:
+        raise SystemExit("REFUS : --retrieved-at doit être une date-heure avec fuseau, ex. 2026-09-28T14:05:00+02:00")
+    _require_fresh_dir(out, replace, "collecte brute")
+    out.mkdir(parents=True, exist_ok=True)
+    c10 = cik10(cik)
+    log = []
+    for kind, src, url in (("submissions", submissions, SUBMISSIONS_URL.format(cik=c10)),
+                           ("companyfacts", companyfacts, FACTS_URL.format(cik=c10))):
+        body = Path(src).read_bytes()
+        name = f"{kind}_CIK{c10}.json"
+        (out / name).write_bytes(body)
+        log.append({"kind": kind, "cik": c10, "url": url, "file": name, "retrieved_at": when.isoformat(),
+                    "sha256": hashlib.sha256(body).hexdigest(), "method": "téléchargement manuel déclaré"})
+    (out / "journal_collecte.json").write_text(json.dumps(log, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return log
+
+
+def collect(ciks: list[str], out: Path, ua: str | None, dry_run: bool = False, fetch=_get,
+            replace: bool = False) -> list[dict]:
     targets = []
     for c in ciks:
         c10 = cik10(c)
@@ -100,6 +133,7 @@ def collect(ciks: list[str], out: Path, ua: str | None, dry_run: bool = False, f
             print(f"[simulation] {kind:12} {c10} {url}")
         return []
     ua = check_user_agent(ua)
+    _require_fresh_dir(out, replace, "collecte brute")
     out.mkdir(parents=True, exist_ok=True)
     log = []
     for i, (kind, c10, url) in enumerate(targets):
@@ -123,14 +157,15 @@ def _need(obj: dict, key: str, ctx: str):
     return obj[key]
 
 
-def convert(raw: Path, out: Path, forms: set[str]) -> dict:
+def convert(raw: Path, out: Path, forms: set[str], replace: bool = False) -> dict:
+    _require_fresh_dir(out, replace, "dossier d'audit")
     journal = json.loads((raw / "journal_collecte.json").read_text(encoding="utf-8"))
     retrieved = {(e["kind"], e["cik"]): e for e in journal}
     for e in journal:  # intégrité des fichiers bruts depuis la collecte
         if hashlib.sha256((raw / e["file"]).read_bytes()).hexdigest() != e["sha256"]:
             raise EdgarFormatError(f"{e['file']} modifié depuis sa collecte (SHA-256 différent)")
     rows = {k: [] for k in AUDIT_HEADERS}
-    amendments_to_link, skipped_facts, incomplete, merged = [], 0, [], 0
+    amendments_to_link, skipped_facts, incomplete, merged, skipped_docs = [], 0, [], 0, []
     seen: dict[str, tuple] = {}
     for (kind, c10), entry in sorted(retrieved.items()):
         if kind != "submissions":
@@ -150,7 +185,7 @@ def convert(raw: Path, out: Path, forms: set[str]) -> dict:
         n = len(cols["accessionNumber"])
         if any(len(v) != n for v in cols.values()):
             raise EdgarFormatError(f"{entry['file']} : listes filings.recent de longueurs différentes")
-        docs_by_accn = {}
+        docs_by_accn, meta_by_accn = {}, {}
         for i in range(n):
             form = cols["form"][i]
             base = form[:-2] if form.endswith("/A") else form
@@ -161,9 +196,11 @@ def convert(raw: Path, out: Path, forms: set[str]) -> dict:
                 amendments_to_link.append(f"{c10} {form} {accn} (période {cols['reportDate'][i]})")
                 continue  # le document rectifié doit être désigné à la main : pas d'inférence
             if not cols["reportDate"][i]:
+                skipped_docs.append(f"{c10} {form} {accn} : fin de période (reportDate) absente")
                 continue
             doc_id = f"{c10}-{accn}"
             docs_by_accn[accn] = doc_id
+            meta_by_accn[accn] = (form, cols["filingDate"][i])
             rows["documents"].append({
                 "doc_id": doc_id, "issuer_id": c10, "doc_type": form, "accession_number": accn,
                 "url": ARCHIVE_URL.format(cik_int=int(c10), acc_nodash=accn.replace("-", ""),
@@ -185,6 +222,12 @@ def convert(raw: Path, out: Path, forms: set[str]) -> dict:
                         if doc_id is None:
                             skipped_facts += 1
                             continue
+                        accn = it["accn"]
+                        f_form, f_filed = _need(it, "form", concept), _need(it, "filed", concept)
+                        if (f_form, f_filed) != meta_by_accn[accn]:
+                            raise EdgarFormatError(
+                                f"{taxonomy}:{concept} : fait rattaché au dépôt {accn} ({meta_by_accn[accn][0]}, déposé le "
+                                f"{meta_by_accn[accn][1]}) mais déclaré {f_form} déposé le {f_filed} ; conversion arrêtée")
                         start = it.get("start", "")
                         fid = f"{doc_id}-{taxonomy}:{concept}-{unit}-{start}-{_need(it, 'end', concept)}".replace("/", "_")
                         val = _need(it, "val", concept)
@@ -214,6 +257,9 @@ def convert(raw: Path, out: Path, forms: set[str]) -> dict:
     warning = ("Données SEC EDGAR converties automatiquement (companyfacts : sous-ensemble des faits du dépôt). "
                "Contexte, dimensions et catégorie d'actions INCONNUS. Aucun fait normalisé ni rapproché : dossier "
                "NON EXPLOITABLE tant qu'un humain n'a pas établi, mappé, justifié et rapproché chaque fait.")
+    warning += (f" PÉRIMÈTRE : dépôts récents (filings.recent) des formulaires {sorted(forms)} ; "
+                f"{len(rows['documents'])} document(s) retenu(s), {len(skipped_docs)} écarté(s), "
+                f"{len(amendments_to_link)} rectificatif(s) à rattacher à la main.")
     if incomplete:
         warning += " HISTORIQUE INCOMPLET : " + " ; ".join(incomplete)
     (out / "manifest.json").write_text(json.dumps({
@@ -226,7 +272,8 @@ def convert(raw: Path, out: Path, forms: set[str]) -> dict:
             w.writerows(rows[name])
     return {"documents": len(rows["documents"]), "facts": len(rows["facts"]),
             "amendments_to_link": amendments_to_link, "facts_skipped_other_documents": skipped_facts,
-            "identical_duplicates_merged": merged, "incomplete_history": incomplete}
+            "identical_duplicates_merged": merged, "incomplete_history": incomplete,
+            "selected_but_skipped": skipped_docs}
 
 
 def _check_cik(obj: dict, c10: str, ctx: str) -> None:
@@ -247,15 +294,27 @@ def main(argv=None) -> int:
     c.add_argument("--user-agent")
     c.add_argument("--out", required=True, type=Path)
     c.add_argument("--dry-run", action="store_true")
+    c.add_argument("--remplacer", action="store_true")
+    i = sub.add_parser("import-files", help="Enregistrer des JSON téléchargés à la main (aucun réseau, aucune identification)")
+    i.add_argument("--cik", required=True)
+    i.add_argument("--submissions", required=True, type=Path)
+    i.add_argument("--companyfacts", required=True, type=Path)
+    i.add_argument("--retrieved-at", required=True, help="Date-heure du téléchargement avec fuseau")
+    i.add_argument("--out", required=True, type=Path)
+    i.add_argument("--remplacer", action="store_true")
     v = sub.add_parser("convert")
     v.add_argument("--raw", required=True, type=Path)
     v.add_argument("--out", required=True, type=Path)
     v.add_argument("--forms", default="10-K,10-Q")
+    v.add_argument("--remplacer", action="store_true")
     a = p.parse_args(argv)
     if a.cmd == "collect":
-        collect(a.cik, a.out, a.user_agent, a.dry_run)
+        collect(a.cik, a.out, a.user_agent, a.dry_run, replace=a.remplacer)
+    elif a.cmd == "import-files":
+        import_files(a.cik, a.submissions, a.companyfacts, a.retrieved_at, a.out, a.remplacer)
+        print(f"Fichiers enregistrés dans {a.out}. Étape suivante : convert --raw {a.out} --out <dossier d'audit>")
     else:
-        res = convert(a.raw, a.out, set(a.forms.split(",")))
+        res = convert(a.raw, a.out, set(a.forms.split(",")), a.remplacer)
         print(json.dumps(res, ensure_ascii=False, indent=2))
         print(f"Vérifiez ensuite : python3 -m halal_sim audit-docs {a.out}")
     return 0

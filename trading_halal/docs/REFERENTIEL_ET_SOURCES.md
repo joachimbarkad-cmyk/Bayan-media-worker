@@ -106,9 +106,36 @@ réelles, il faudra dater le nombre d'actions et préciser la définition de cap
 La devise de chaque état financier est comparée à celle de la cotation : sans conversion datée, une différence
 donne INCERTAIN.
 
-## 9. Règles de fiqh fournies par l'utilisateur (en attente)
+## 9. Règles de fiqh fournies par l'utilisateur
 
-L'utilisateur indique que ses règles de fiqh figurent dans une conversation séparée (avec un autre assistant).
-Cette conversation **n'est pas accessible** au développement : aucune règle n'en a été reprise. Dès que les passages
-pertinents seront fournis (texte, références, auteur ou comité), ils seront consignés ici avec leur source, puis codés
-dans un référentiel daté, testés, et soumis à validation humaine avant tout usage sur données réelles.
+**Source** : document fourni par l'utilisateur le 2026-09-28, « Actions, bourse et produits financiers en Islam :
+vérification et annotation de vos notes de cours » (PDF, 19 pages). Ce document est lui-même une synthèse de recherche ;
+il signale que plusieurs textes ont été lus dans des **copies secondaires** (notamment une copie de la norme AAOIFI 21
+publiée par la Bourse des Philippines) et demande de vérifier chaque citation sur l'édition imprimée.
+
+**Ce qui en a été codé** : `config/rulesets/AAOIFI_SS21_document_utilisateur.json`, **non validé**.
+
+| Règle | Valeur | Référence dans le document |
+|---|---|---|
+| Emprunts à intérêt / capitalisation boursière | ≤ 30 % | § 5.1, AAOIFI SS 21 §3/4/2 (« does not exceed 30% of the market capitalization ») |
+| Dépôts à intérêt / capitalisation boursière | ≤ 30 % | § 5.1, AAOIFI SS 21 §3/4/3 |
+| Revenus illicites / revenu total | ≤ 5 % | § 5.1, AAOIFI SS 21 §3/4/4 (toute source, intérêts perçus compris) |
+| Activité principale illicite (banque et assurance conventionnelles, alcool, porc, jeux…) | EXCLU | Synthèse A.1, § 3.1 |
+| Vente à découvert, marge à intérêt, options, futures, CFD, indices, Forex à levier, obligations à intérêt | interdits | Synthèse A.2-A.3, § 9 — déjà exclus par le périmètre du logiciel |
+| Liquidités non investies non rémunérées | — | § 9 — déjà le cas dans la simulation |
+
+Le comparateur « ≤ » suit la formulation « does not exceed » citée. Le choix de l'AAOIFI suit la recommandation du
+document (« le plus strict et le plus documenté »), sans prendre le verdict le plus favorable titre par titre (§ 5.3).
+
+**Divergence affichée dans chaque rapport** (document, Synthèse C.1) : le projet suit l'avis permissif sous conditions ;
+les Académies de l'OCI (rés. 63 (1/7)) et de Makka, ainsi que la Lajna Dāʾima, interdisent les sociétés « mêlées ».
+
+**Pourquoi le référentiel reste non validé** : le document demande lui-même une validation écrite par un sharia board
+nommé (Synthèse D). Le logiciel refuse donc toute simulation sur données réelles tant que `validated_by` et
+`validated_on` sont vides.
+
+**Points ouverts tirés du document (non codés)** : états financiers « vérifiés » (§3/4/5) non distingués des autres ;
+date de la capitalisation retenue ; filtre mālikite des actifs monétaires (liquidités + créances ≤ ⅔, à valider par un
+mufti mālikite, § 7) ; tabac, armement, médias, hôtellerie (non traités) ; délai de cession d'un titre devenu non
+conforme ; purification (méthode AAOIFI 3/4/6/4, détenteur en fin de période ou prorata FCNA, plus-values) ; revente
+avant règlement-livraison ; zakāt (mudīr / muḥtakir). La liste complète figure dans `open_questions` du référentiel.

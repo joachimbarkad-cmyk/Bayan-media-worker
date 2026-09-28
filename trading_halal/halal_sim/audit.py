@@ -275,6 +275,8 @@ def audit_folder(root: str | Path) -> AuditResult:
             E(f"{ctx} : concept d'origine, définition ou unité manquant")
         if not r["source_context"]:
             U(f"{ctx} : contexte d'origine (ex. contexte XBRL) non renseigné")
+            if r["normalized_concept"]:
+                E(f"{ctx} : normalisation impossible sans contexte d'origine (entité et période non établies)")
         norm = r["normalized_concept"]
         mapped = cmap.get(r["source_concept"])
         if norm:

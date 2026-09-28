@@ -71,3 +71,13 @@ que l'information n'a pas été établie à partir du document. `source_context`
   conversion l'indique (`HISTORIQUE INCOMPLET` dans le manifeste) ; ils ne sont pas collectés.
 - Le CIK de chaque fichier doit correspondre à celui du journal ; un doublon contradictoire (même dépôt, concept,
   unité et période, valeurs différentes) arrête la conversion ; un doublon identique est regroupé et compté.
+
+## Garde-fous ajoutés (revue n° 9)
+
+- `form` et `filed` de chaque fait companyfacts doivent correspondre au dépôt désigné par son numéro d'accès, sinon arrêt.
+- Un dépôt sélectionné mais écarté (fin de période absente) est nommé dans le résultat et compté dans le manifeste,
+  qui décrit aussi le périmètre exact (formulaires, documents retenus, écartés, rectificatifs à rattacher).
+- `collect`, `import-files` et `convert` refusent d'écrire dans un dossier existant non vide sans `--remplacer`.
+- `import-files` enregistre des fichiers téléchargés à la main : aucune requête, aucune identification ; l'heure de
+  téléchargement est déclarée (avec fuseau), jamais inventée. Guide : `docs/GUIDE_COLLECTE_EDGAR.md`.
+- Dans l'audit, un fait normalisé sans contexte d'origine est refusé.

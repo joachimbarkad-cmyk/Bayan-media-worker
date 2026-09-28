@@ -94,6 +94,8 @@ def build_report(conn: sqlite3.Connection, run_id: int, sensitivity_run_ids: lis
              "ADMISSIBLE ne signifie pas « 100 % halal ».\n")
     if not rs.get("validated"):
         L.append(f"> **Référentiel non validé** (`{rs['id']}`) : {rs.get('warning', '')}\n")
+    if rs.get("divergence_notice"):
+        L.append(f"> **Divergence entre savants.** {rs['divergence_notice']}\n")
 
     L.append("## Paramètres\n")
     c = cfg["costs"]

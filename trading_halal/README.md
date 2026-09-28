@@ -23,8 +23,9 @@ Depuis la racine du dépôt :
 cd trading_halal
 python3 -m halal_sim check-data                 # valide les fichiers de données de démonstration
 python3 -m halal_sim run                        # simulation complète + rapport + sensibilité au capital
-python3 -m unittest discover -s tests -v        # 133 vérifications automatiques
+python3 -m unittest discover -s tests -v        # 142 vérifications automatiques
 python3 -m halal_sim audit-docs                  # contrôle du dossier d'audit documentaire d'exemple (FICTIF)
+python3 -m halal_sim run --ruleset config/rulesets/AAOIFI_SS21_document_utilisateur.json --no-sensitivity   # référentiel tiré de votre document (non validé)
 python3 tools/edgar_collect.py collect --cik 320193 --dry-run --out collecte_brute   # collecte EDGAR (voir docs/AUDIT_DOCUMENTAIRE.md)
 ```
 
@@ -95,3 +96,12 @@ Le schéma de la base est versionné. Une base créée par une version antérieu
 intacte** (jamais déplacée ni supprimée). Pour continuer : `python3 -m halal_sim run --db output/nouvelle.sqlite`.
 Pour garder une copie : `python3 -m halal_sim snapshot-db output/simulation.sqlite` (instantané vérifié ; l'original
 n'est pas modifié ; fermez les autres programmes qui l'utilisent pour que la copie soit complète).
+
+## Référentiels disponibles
+
+- `config/rulesets/demo_fictif.json` : seuils arbitraires de démonstration (par défaut).
+- `config/rulesets/AAOIFI_SS21_document_utilisateur.json` : seuils AAOIFI SS 21 tels que cités par le document de
+  fiqh fourni par l'utilisateur ; **non validé** (refusé sur données réelles jusqu'à validation par un sharia board).
+- `config/rulesets/TEMPLATE_a_valider.json` : modèle vide.
+
+Collecte de données réelles : voir `docs/GUIDE_COLLECTE_EDGAR.md`.
