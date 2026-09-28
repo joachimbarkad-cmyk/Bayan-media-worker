@@ -33,6 +33,7 @@ Cette variante installe `faster-whisper`. Prévoir de la mémoire et du disque p
 
 - `BAYAN_ALLOW_PAID_AI=0` par défaut. La présence d’une clé OpenAI n’active jamais la facturation. Un appel API historique n’est possible que si le serveur autorise explicitement le payant **et** si le job porte `costPolicy=paid`. Le studio transmet toujours `free` et refuse les anciens appels directs de traduction.
 - Maximum 100 Mo par upload, marge disque de 150 Mo, vérification de capacité avant téléchargement/rendu.
+- Le débit du MP4 est plafonné (≈ débit de la source, 8 Mbit/s max en 1080p) : un export reste proche de la taille de l’upload. Un nouvel export du même média remplace le MP4 précédent. Test du parcours complet : `docs/test-parcours-3min.md` et `tests/e2e_parcours.py`.
 - Les copies YouTube téléchargées et les fragments audio sont supprimés après traitement. Les MP4 temporaires et les médias inutilisés de plus de 24 h sont supprimés lors des nouvelles tâches ou des nouveaux uploads ; les jobs actifs sont protégés.
 - Les projets et leurs sous-titres restent dans le studio. Les vidéos sont renvoyées au service depuis le studio si nécessaire.
 - SQLite conserve la file et les états réels ; les jobs interrompus ne sont pas relancés silencieusement.
