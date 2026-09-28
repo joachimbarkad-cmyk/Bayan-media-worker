@@ -19,7 +19,7 @@ Même règles edgar_v1, sans aucune adaptation : Microsoft (CIK 789019) et Alpha
 | Alphabet | 13 | 6 333 | 52 | 26 (C1 : 4 titres cotés) | 0 / 0 / 0 |
 
 - Chiffres d'affaires annuels sélectionnés : Microsoft exercice clos le 30/06/2025 = 281 724 M$, Alphabet 2024 =
-  350 018 M$ (à comparer aux 10-K) ; tests .
+  350 018 M$ (à comparer aux 10-K) ; tests `OtherRealIssuersTests`.
 - **Indice pour D1** : Alphabet déclare ses actions de couverture par catégorie (fait ventilé) et ce concept est absent
   de son companyfacts ; cela suggère que companyfacts ne contient que des faits non ventilés (à confirmer dans la
   documentation SEC, inaccessible d'ici).
@@ -27,7 +27,7 @@ Même règles edgar_v1, sans aucune adaptation : Microsoft (CIK 789019) et Alpha
   la règle compte tout titre coté. Point de revue.
 - Exemple d'application de la règle UTC : le 10-K d'Alphabet est accepté le 05/02/2026 à 02:56 UTC (04/02 au soir à
   New York) ; il n'est utilisable qu'à partir du 06/02.
-- Exemples vérifiables regroupés dans  (4 dépôts ; un test vérifie les tableaux).
+- Exemples vérifiables regroupés dans `docs/EXEMPLE_NORMALISATION.md` (4 dépôts ; un test vérifie les tableaux).
 - Décision : pas de chaînage du journal des saisies par empreintes (un auteur malveillant pourrait recalculer la
   chaîne) ; l'ancrage est l'historique git. Un horodatage externe serait nécessaire pour mieux faire.
 - **209 tests.**
