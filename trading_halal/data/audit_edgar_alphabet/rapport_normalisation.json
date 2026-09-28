@@ -1,0 +1,38 @@
+{
+ "version": "edgar_v1",
+ "regles_sha256": "f95d7e2287bb49a3ae00f40add53ec909ecb160e1e6fa5c608d45aeb491e25c0",
+ "normalises": {
+  "total_assets": 26,
+  "total_revenue": 26
+ },
+ "ecartes": [
+  "0001652044-0001652044-23-000070-us-gaap:CommonStockSharesOutstanding-shares--2022-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-23-000094-us-gaap:CommonStockSharesOutstanding-shares--2022-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-24-000022-us-gaap:CommonStockSharesOutstanding-shares--2022-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-23-000070-us-gaap:CommonStockSharesOutstanding-shares--2023-06-30 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-23-000094-us-gaap:CommonStockSharesOutstanding-shares--2023-09-30 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-24-000022-us-gaap:CommonStockSharesOutstanding-shares--2023-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-24-000053-us-gaap:CommonStockSharesOutstanding-shares--2023-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-24-000079-us-gaap:CommonStockSharesOutstanding-shares--2023-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-24-000118-us-gaap:CommonStockSharesOutstanding-shares--2023-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-25-000014-us-gaap:CommonStockSharesOutstanding-shares--2023-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-24-000053-us-gaap:CommonStockSharesOutstanding-shares--2024-03-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-24-000079-us-gaap:CommonStockSharesOutstanding-shares--2024-06-30 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-24-000118-us-gaap:CommonStockSharesOutstanding-shares--2024-09-30 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-25-000014-us-gaap:CommonStockSharesOutstanding-shares--2024-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-25-000043-us-gaap:CommonStockSharesOutstanding-shares--2024-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-25-000062-us-gaap:CommonStockSharesOutstanding-shares--2024-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-25-000091-us-gaap:CommonStockSharesOutstanding-shares--2024-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-26-000018-us-gaap:CommonStockSharesOutstanding-shares--2024-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-25-000043-us-gaap:CommonStockSharesOutstanding-shares--2025-03-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-25-000062-us-gaap:CommonStockSharesOutstanding-shares--2025-06-30 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-25-000091-us-gaap:CommonStockSharesOutstanding-shares--2025-09-30 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-26-000018-us-gaap:CommonStockSharesOutstanding-shares--2025-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-26-000048-us-gaap:CommonStockSharesOutstanding-shares--2025-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-26-000071-us-gaap:CommonStockSharesOutstanding-shares--2025-12-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-26-000048-us-gaap:CommonStockSharesOutstanding-shares--2026-03-31 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)",
+  "0001652044-0001652044-26-000071-us-gaap:CommonStockSharesOutstanding-shares--2026-06-30 : 4 titre(s) coté(s) ['GOOGL', 'GOOG', 'GOOGM', 'GOOGN'] : catégorie non établie (C1)"
+ ],
+ "conflits": [],
+ "saisies": 318
+}

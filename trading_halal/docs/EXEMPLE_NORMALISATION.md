@@ -1,4 +1,4 @@
-# Exemple vérifiable : normalisation des faits réels d'Apple (règles edgar_v1)
+# Exemples vérifiables : normalisation de faits réels (Apple, Microsoft, Alphabet ; règles edgar_v1)
 
 **Aucun de ces chiffres n'est encore rapproché du document d'origine** (colonne « Rapproché » = non) : ils ne sont
 donc pas utilisables pour un ratio. Ils sont normalisés, c'est-à-dire rattachés à un concept du projet par une règle
@@ -68,3 +68,38 @@ Dépôt 10-Q 0000320193-25-000073, accepté le 2025-08-01T10:00:42.000+00:00 ; d
 | Catégorie d'actions | ordinaire, titre coté unique AAPL | C1 : `tickers` de submissions | **Inférence** |
 | Transformation | aucune (valeur brute) | T1 | Vérifiée par l'audit |
 | Précision (decimals) | inconnue | absente de companyfacts | Inconnue signalée |
+
+## Autres émetteurs réels (même règles edgar_v1)
+
+Collectés le 28/09/2026 (`collecte/microsoft`, `collecte/alphabet`), convertis puis normalisés sans intervention.
+Microsoft : 210 faits normalisés. Alphabet : 52 ; ses nombres d'actions ne sont **pas** normalisés, car
+`submissions` liste 4 titres cotés (GOOGL, GOOG, GOOGM, GOOGN) : la règle C1 refuse d'établir une catégorie.
+
+Constat utile pour l'inférence D1 : Alphabet déclare son nombre d'actions de couverture **par catégorie** (fait
+ventilé), et ce concept est **absent** de son fichier companyfacts. C'est un indice (pas une preuve) que companyfacts
+ne contient que des faits non ventilés.
+
+### Microsoft — dernier 10-K
+
+Dépôt 10-K 0001193125-26-323660, accepté le 2026-07-29T20:08:01.000+00:00 ; document : https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/msft-20260630.htm
+
+| Concept du projet | Concept d'origine | Période | Valeur | Unité | Rapproché | Entrée brute (collecte) |
+|---|---|---|---|---|---|---|
+| shares_outstanding | us-gaap:CommonStockSharesOutstanding | au 2023-06-30 | 7 432 000 000 | actions | non | `facts/us-gaap/CommonStockSharesOutstanding/units/shares/159` |
+| shares_outstanding | us-gaap:CommonStockSharesOutstanding | au 2024-06-30 | 7 434 000 000 | actions | non | `facts/us-gaap/CommonStockSharesOutstanding/units/shares/169` |
+| shares_outstanding | us-gaap:CommonStockSharesOutstanding | au 2025-06-30 | 7 434 000 000 | actions | non | `facts/us-gaap/CommonStockSharesOutstanding/units/shares/177` |
+| shares_outstanding | us-gaap:CommonStockSharesOutstanding | au 2026-06-30 | 7 427 000 000 | actions | non | `facts/us-gaap/CommonStockSharesOutstanding/units/shares/181` |
+| shares_outstanding | dei:EntityCommonStockSharesOutstanding | au 2026-07-23 | 7 425 545 491 | actions | non | `facts/dei/EntityCommonStockSharesOutstanding/units/shares/67` |
+| total_assets | us-gaap:Assets | au 2025-06-30 | 619 003 000 000 | USD | non | `facts/us-gaap/Assets/units/USD/137` |
+| total_assets | us-gaap:Assets | au 2026-06-30 | 758 376 000 000 | USD | non | `facts/us-gaap/Assets/units/USD/141` |
+| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2023-07-01 → 2024-06-30 | 245 122 000 000 | USD | non | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/115` |
+| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2024-07-01 → 2025-06-30 | 281 724 000 000 | USD | non | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/127` |
+| total_revenue | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2025-07-01 → 2026-06-30 | 331 839 000 000 | USD | non | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/133` |
+### Alphabet — dernier 10-K
+
+Dépôt 10-K 0001652044-26-000018, accepté le 2026-02-05T02:56:03.000+00:00 ; document : https://www.sec.gov/Archives/edgar/data/1652044/000165204426000018/goog-20251231.htm
+
+| Concept du projet | Concept d'origine | Période | Valeur | Unité | Rapproché | Entrée brute (collecte) |
+|---|---|---|---|---|---|---|
+| total_assets | us-gaap:Assets | au 2024-12-31 | 450 256 000 000 | USD | non | `facts/us-gaap/Assets/units/USD/81` |
+| total_assets | us-gaap:Assets | au 2025-12-31 | 595 281 000 000 | USD | non | `facts/us-gaap/Assets/units/USD/85` |

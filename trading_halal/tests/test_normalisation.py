@@ -366,7 +366,7 @@ class VerifyNormalisationTests(Base):
 
 @unittest.skipUnless(APPLE.exists() and APPLE_RAW.exists(), "dossier Apple absent")
 class AppleNormalizedTests(unittest.TestCase):
-    """Dossier réel Apple normalisé avec edgar_v1 (valeurs vérifiables dans docs/EXEMPLE_NORMALISATION_APPLE.md)."""
+    """Dossier réel Apple normalisé avec edgar_v1 (valeurs vérifiables dans docs/EXEMPLE_NORMALISATION.md)."""
 
     @classmethod
     def setUpClass(cls):
@@ -397,9 +397,11 @@ class AppleNormalizedTests(unittest.TestCase):
     def test_published_example_matches_the_data(self):
         sys.path.insert(0, str(ROOT / "tools"))
         import exemple_normalisation as ex
-        doc = (ROOT / "docs" / "EXEMPLE_NORMALISATION_APPLE.md").read_text(encoding="utf-8")
-        for accn in ("0000320193-25-000079", "0000320193-25-000073"):
-            self.assertIn(ex.table(APPLE, accn).strip(), doc)
+        doc = (ROOT / "docs" / "EXEMPLE_NORMALISATION.md").read_text(encoding="utf-8")
+        for folder, accn in ((APPLE, "0000320193-25-000079"), (APPLE, "0000320193-25-000073"),
+                             (ROOT / "data" / "audit_edgar_microsoft", "0001193125-26-323660"),
+                             (ROOT / "data" / "audit_edgar_alphabet", "0001652044-26-000018")):
+            self.assertIn(ex.table(folder, accn).strip(), doc)
 
     def test_not_usable_until_reconciled(self):
         s = self.sel("total_revenue", "monnaie", "2024-09-29", "2025-09-27", "2025-11-01", "USD")
@@ -418,3 +420,49 @@ class AppleNormalizedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OtherRealIssuersTests(unittest.TestCase):
+    """Microsoft (catégorie unique) et Alphabet (plusieurs titres cotés : C1 exclut les nombres d'actions)."""
+
+    CASES = {"microsoft": ("0000789019", {"shares_outstanding": 84, "total_assets": 48, "total_revenue": 78},
+                           ("2024-07-01", "2025-06-30", "281724000000")),
+             "alphabet": ("0001652044", {"total_assets": 26, "total_revenue": 26},
+                          ("2024-01-01", "2024-12-31", "350018000000"))}
+
+    def _paths(self, name):
+        audit, raw = ROOT / "data" / f"audit_edgar_{name}", ROOT / "collecte" / name
+        if not (audit.exists() and raw.exists()):
+            self.skipTest(f"dossier {name} absent")
+        return audit, raw
+
+    def test_counts_audit_and_rule_conformity(self):
+        for name, (cik, counts, _) in self.CASES.items():
+            with self.subTest(name):
+                audit, raw = self._paths(name)
+                rep = json.loads((audit / "rapport_normalisation.json").read_text(encoding="utf-8"))
+                self.assertEqual(rep["normalises"], counts)
+                self.assertEqual(audit_folder(audit).errors, [])
+                self.assertEqual(ec.verify_trace(raw, audit), [])
+                self.assertEqual(en.verify_normalisation(raw, audit, RULES_V1), ([], []))
+
+    def test_annual_revenue(self):
+        for name, (cik, _, (start, end, value)) in self.CASES.items():
+            with self.subTest(name):
+                audit, _ = self._paths(name)
+                docs, facts = load_audit(audit)
+                s = select_fact(docs, facts, cik, "total_revenue", "monnaie", start, end, date(2026, 1, 1),
+                                concept_field="normalized_concept", currency="USD")
+                self.assertEqual(s.fact["value"], value)
+                self.assertEqual(docs[s.fact["doc_id"]]["doc_type"], "10-K")
+
+    def test_alphabet_share_counts_are_explicitly_excluded(self):
+        audit, _ = self._paths("alphabet")
+        with open(audit / "facts.csv", newline="", encoding="utf-8") as f:
+            rows = [r for r in csv.DictReader(f) if r["source_concept"] == "us-gaap:CommonStockSharesOutstanding"]
+        self.assertTrue(rows)
+        for r in rows:
+            self.assertEqual(r["normalized_concept"], "")
+            self.assertEqual(r["share_class"], "INCONNU")
+        # la catégorie n'étant pas établie, le concept n'est pas mappé : pas d'exclusion à motiver
+        self.assertFalse(any(r["normalization_justification"] for r in rows))

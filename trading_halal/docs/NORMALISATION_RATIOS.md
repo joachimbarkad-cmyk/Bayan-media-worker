@@ -1,7 +1,7 @@
 # Normalisation des faits pour les trois ratios : ordre de travail (Apple, exercice clos le 27/09/2025)
 
 > V1.13 : total_revenue, total_assets et shares_outstanding sont normalisés par les règles `edgar_v1`
-> (`docs/EXEMPLE_NORMALISATION_APPLE.md`), sans rapprochement. Les autres lignes ci-dessous restent à faire.
+> (`docs/EXEMPLE_NORMALISATION.md`), sans rapprochement. Les autres lignes ci-dessous restent à faire.
 
 Rien ici n'est encore normalisé ni rapproché : ces chiffres sont des **faits d'origine** du dossier
 `data/audit_edgar_apple/`, retrouvés avec `halal_sim.selection.select_fact` (période exacte, dépôt disponible au

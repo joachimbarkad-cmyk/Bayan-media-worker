@@ -1,4 +1,4 @@
-# HANDOFF — simulateur de trading halal, V1.14 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.15 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
@@ -6,6 +6,31 @@ Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier
 **Merci de relire de façon critique** : lectures d'information future, ADMISSIBLE erronés, contrôles d'audit
 contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
 au document de fiqh fourni par l'utilisateur**.
+
+## V1.15 — Normalisation éprouvée sur trois émetteurs réels
+
+Même règles edgar_v1, sans aucune adaptation : Microsoft (CIK 789019) et Alphabet (CIK 1652044) collectés le
+28/09/2026 sur data.sec.gov, convertis puis normalisés.
+
+| Émetteur | Documents | Faits convertis | Normalisés | Exclus | Contrôles (verify-trace, verify-normalisation, audit) |
+|---|---|---|---|---|---|
+| Apple | 44 | 15 068 | 337 | 0 | 0 / 0 / 0 |
+| Microsoft | 24 | 11 179 | 210 | 0 | 0 / 0 / 0 |
+| Alphabet | 13 | 6 333 | 52 | 26 (C1 : 4 titres cotés) | 0 / 0 / 0 |
+
+- Chiffres d'affaires annuels sélectionnés : Microsoft exercice clos le 30/06/2025 = 281 724 M$, Alphabet 2024 =
+  350 018 M$ (à comparer aux 10-K) ; tests .
+- **Indice pour D1** : Alphabet déclare ses actions de couverture par catégorie (fait ventilé) et ce concept est absent
+  de son companyfacts ; cela suggère que companyfacts ne contient que des faits non ventilés (à confirmer dans la
+  documentation SEC, inaccessible d'ici).
+- C1 est prudente, peut-être trop : GOOGM et GOOGN sont vraisemblablement des titres de dette cotés, pas des actions ;
+  la règle compte tout titre coté. Point de revue.
+- Exemple d'application de la règle UTC : le 10-K d'Alphabet est accepté le 05/02/2026 à 02:56 UTC (04/02 au soir à
+  New York) ; il n'est utilisable qu'à partir du 06/02.
+- Exemples vérifiables regroupés dans  (4 dépôts ; un test vérifie les tableaux).
+- Décision : pas de chaînage du journal des saisies par empreintes (un auteur malveillant pourrait recalculer la
+  chaîne) ; l'ancrage est l'historique git. Un horodatage externe serait nécessaire pour mieux faire.
+- **209 tests.**
 
 ## V1.14 — Un fait normalisé faux ne passe plus inaperçu
 
@@ -47,7 +72,7 @@ avec le document d'origine est prêt et testé, mais n'a pas pu être exécuté 
 | `reconcile-ixbrl` : lit le XBRL en ligne de la copie locale (contextes, unités, `ix:nonFraction`, échelle, signe, formats courants), ne retient que les faits de la même entité, même période, **sans segment**, compare à la valeur companyfacts ; remplace le contexte X1 par l'identifiant réel et renseigne `decimals` ; `reconciled = auto` avec note « AUTOMATIQUE … » | `tools/edgar_normalize.py` | 7 tests sur document XBRL en ligne FICTIF (concordance, écart de valeur, seul fait ventilé ⇒ D1 réfutée, autre entité, signe, copie altérée) |
 | Audit : `reconciled = auto` exige une note « AUTOMATIQUE » et une copie locale ; verdict distinct « RAPPROCHEMENT AUTOMATIQUE … à relire » | `halal_sim/audit.py` | test |
 | Sélection : utilisable si rapproché (`oui` ou `auto`), avec `Selection.reconciliation` | `halal_sim/selection.py` | tests |
-| Exemples vérifiables (10-K 2025 et 10-Q T3 2025), régénérables ; un test vérifie qu'ils correspondent aux données | `docs/EXEMPLE_NORMALISATION_APPLE.md`, `tools/exemple_normalisation.py` | test |
+| Exemples vérifiables (10-K 2025 et 10-Q T3 2025), régénérables ; un test vérifie qu'ils correspondent aux données | `docs/EXEMPLE_NORMALISATION.md`, `tools/exemple_normalisation.py` | test |
 
 Tests : `tests/test_normalisation.py` (19, dont 5 sur le dossier Apple réel). **199 tests** au total. Mutations :
 15 défauts réintroduits dans le nouveau code (K1, C1, D1, tout ou rien, précondition, segment, valeur, période,
@@ -93,7 +118,7 @@ entité, empreinte, signe, nom du document, note automatique, exclusion motivée
 3. L'inférence C1 pour Apple (une seule catégorie d'actions) et son usage pour d'autres émetteurs.
 4. Décision 2 (concepts de revenu antérieurs à 2018) et décision 3 (deux mesures d'actions).
 5. La lecture XBRL en ligne (`parse_ixbrl`, `_ix_value`) sur un vrai 10-K dès qu'il est disponible.
-6. Comparer à la main les lignes de `docs/EXEMPLE_NORMALISATION_APPLE.md` au 10-K 2025 (bilan, compte de résultat,
+6. Comparer à la main les lignes de `docs/EXEMPLE_NORMALISATION.md` au 10-K 2025 (bilan, compte de résultat,
    page de couverture).
 
 ## Historique — revue n° 12
@@ -210,9 +235,9 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 
 - Simulation de bout en bout (12 contrôles), avec `--ruleset` pour choisir le référentiel et `--db` pour la base.
 - `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE.
-- **206 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+- **209 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
   test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
-  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 26, test_ruleset_validation 10, test_screening 11.
+  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 29, test_ruleset_validation 10, test_screening 11.
 
 ## Limites connues (générales)
 

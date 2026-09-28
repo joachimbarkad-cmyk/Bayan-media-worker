@@ -1,0 +1,18 @@
+[
+  {
+    "kind": "submissions",
+    "cik": "0000789019",
+    "url": "https://data.sec.gov/submissions/CIK0000789019.json",
+    "file": "submissions_CIK0000789019.json",
+    "retrieved_at": "2026-09-28T13:10:00+00:00",
+    "sha256": "551ff75d16e89942b05b48835f3548be1276d59159bf86f009468b99542a94b9"
+  },
+  {
+    "kind": "companyfacts",
+    "cik": "0000789019",
+    "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json",
+    "file": "companyfacts_CIK0000789019.json",
+    "retrieved_at": "2026-09-28T13:10:01+00:00",
+    "sha256": "f8aae2965b20ad0df44bdf7ccbedf797d275b6b8dc030154a7a311361bb7246f"
+  }
+]
