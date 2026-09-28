@@ -23,6 +23,10 @@
     "topup_held_positions": false,
     "_commentaire": "Même règle pour la stratégie et la référence réinvestie : compléter ou non une ligne détenue sous sa part cible."
   },
+  "execution": {
+    "max_volume_participation": 0.05,
+    "_commentaire": "Hypothèse : un ordre ne dépasse pas 5 % du volume de la veille ; jour à volume nul = pas d'exécution."
+  },
   "sensitivity_capitals": [
     500,
     2000,

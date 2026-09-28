@@ -65,7 +65,7 @@ class PaperBroker:
     positions: dict[str, int] = field(default_factory=dict)
     fills: list[Fill] = field(default_factory=list)
     # Titres radiés sans contrepartie documentée : ni vendables ni valorisables avec certitude.
-    # ticker -> {"qty", "last_close", "date"} ; le rapport les montre à 0 (borne basse) ET au dernier cours (borne haute).
+    # ticker -> {"qty", "last_close", "date"} ; le rapport donne deux scénarios (à 0 et au dernier cours), pas des bornes.
     frozen: dict[str, dict] = field(default_factory=dict)
 
     def freeze(self, ticker: str, last_close: float, d: date) -> int:
@@ -74,9 +74,9 @@ class PaperBroker:
         self.frozen[ticker] = {"qty": prev["qty"] + qty, "last_close": last_close, "date": d}
         return qty
 
-    def cash_out(self, ticker: str, cash_per_share: float) -> tuple[int, float]:
-        """Radiation avec contrepartie en espèces DOCUMENTÉE (opération sur titres) : pas de frais ni de glissement."""
-        qty = self.positions.pop(ticker)
+    def release_frozen(self, ticker: str, cash_per_share: float) -> tuple[int, float]:
+        """Contrepartie en espèces DOCUMENTÉE, publiée et payée, d'un titre radié gelé : pas de frais ni de glissement."""
+        qty = self.frozen.pop(ticker)["qty"]
         self.cash += qty * cash_per_share
         return qty, qty * cash_per_share
 

@@ -10,7 +10,7 @@ from .safety import network_blocked, scan_package
 
 METRIC_LABELS = [
     ("valeur_finale", "Valeur finale"),
-    ("rendement_total_pct", "Rendement total (%)"),
+    ("rendement_total_pct", "Rendement total, scénario « radiés à zéro » (%)"),
     ("rendement_annualise_pct", "Rendement annualisé (%)"),
     ("volatilite_annualisee_pct", "Volatilité annualisée (%)"),
     ("baisse_max_pct", "Baisse maximale (%)"),
@@ -21,8 +21,8 @@ METRIC_LABELS = [
     ("frais_total", "Frais de courtage simulés"),
     ("glissement_total", "Coût de glissement simulé"),
     ("couts_total_pct_capital", "Coûts totaux (% du capital initial)"),
-    ("valeur_titres_radies_au_dernier_cours", "Titres radiés gelés, au dernier cours (non compris ci-dessus)"),
-    ("rendement_total_pct_si_radies_au_dernier_cours", "Rendement total si les radiés valaient leur dernier cours (%)"),
+    ("valeur_titres_radies_au_dernier_cours", "Titres radiés gelés, valorisés au dernier cours (exclus ci-dessus)"),
+    ("rendement_total_pct_si_radies_au_dernier_cours", "Rendement total, scénario « radiés au dernier cours » (%)"),
 ]
 
 
@@ -198,8 +198,9 @@ def build_report(conn: sqlite3.Connection, run_id: int, sensitivity_run_ids: lis
              "—" if r["value_per_share"] is None else f"{r['value_per_share']:.2f}", f"{r['cash_received']:.2f}", r["source"]]
             for r in conn.execute("SELECT * FROM corporate_events WHERE run_id=? ORDER BY date, portfolio", (run_id,))]
     L.append("Aucune vente n'est simulée faute de prix négociable. Sans contrepartie documentée, la position est gelée "
-             "à valeur **inconnue** : les résultats principaux la comptent à 0 (borne basse) ; la ligne « si les radiés "
-             "valaient leur dernier cours » donne la borne haute. Ni l'une ni l'autre n'est une estimation fiable.\n")
+             "à valeur **inconnue**. Deux scénarios sont affichés : « à zéro » (résultats principaux) et « au dernier "
+             "cours ». Ce ne sont **pas des bornes** : une contrepartie ultérieure peut dépasser le dernier cours, et un "
+             "titre radié peut encore se négocier hors cote comme ne plus rien valoir.\n")
     L.append(_table(["Date", "Portefeuille", "Titre", "Événement", "Qté", "Dernier cours / contrepartie", "Espèces reçues",
                      "Source"], rows) if rows else "Aucune.")
 
@@ -222,7 +223,8 @@ def build_report(conn: sqlite3.Connection, run_id: int, sensitivity_run_ids: lis
              "- Frais fictifs : à remplacer par la grille réelle du courtier choisi.\n"
              "- Activités lues depuis un historique daté, mais aucune durée de validité maximale d'une fiche d'activité.\n"
              "- Pas de conversion de devises : tous les titres doivent être dans la devise du portefeuille (sinon refus).\n"
-             "- Titre radié sans contrepartie documentée : valeur inconnue, résultats donnés à 0 et au dernier cours.\n"
+             "- Titre radié sans contrepartie publiée et payée : valeur inconnue, deux scénarios (0, dernier cours), pas des bornes.\n"
+             "- Exécution : prix d'ouverture du fichier, volume du jour non nul, au plus 5 % du volume de la veille (hypothèses).\n"
              "- Capitalisation vérifiée par nombre d'actions x cours : écarte une valeur aberrante, pas une donnée fausse mais cohérente.\n"
              "- Le référentiel religieux s'applique rétroactivement à toute la période simulée.\n")
     return "\n".join(L) + "\n"
@@ -251,10 +253,11 @@ def run_checks(conn: sqlite3.Connection, run_id: int, ds=None) -> list[tuple[str
                              "status='EXECUTE_SIMULE'", (run_id,)).fetchall()
         for r in fills:
             bar = ds.bar_on(r["ticker"], date.fromisoformat(r["execution_date"]))
-            if bar is None or abs(bar.open - r["ref_price"]) > 1e-9:
+            if bar is None or bar.volume <= 0 or abs(bar.open - r["ref_price"]) > 1e-9:
                 bad.append(f"{r['ticker']} {r['execution_date']}")
-        open_check = [("Chaque exécution simulée a lieu à un cours d'ouverture réellement coté ce jour-là", not bad,
-                       "; ".join(bad[:5]) or f"{len(fills)} exécutions vérifiées")]
+        open_check = [("Chaque exécution simulée correspond à un cours d'ouverture présent dans le fichier, un jour de volume non nul", not bad,
+                       ("; ".join(bad[:5]) or f"{len(fills)} exécutions vérifiées")
+                       + " (ne prouve pas qu'une transaction à ce prix et cette quantité était possible)")]
     return open_check + [
         ("Aucun achat d'un titre non ADMISSIBLE (statut enregistré)", bad_buys == 0, f"{bad_buys} cas"),
         ("Aucun achat d'un titre non ADMISSIBLE (recoupement avec le filtrage)", bad_buys2 == 0, f"{bad_buys2} cas"),

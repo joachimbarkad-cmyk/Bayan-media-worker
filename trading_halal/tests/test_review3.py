@@ -86,24 +86,26 @@ class DelistingValuationTests(unittest.TestCase):
 
     def test_documented_cash_consideration_is_credited(self):
         ds = fresh_copy(demo_dataset())
-        ds.securities["FXMU"].update(delisting_cash_per_share=5.0, delisting_source="Offre de rachat fictive (test)")
+        ds.securities["FXMU"].update(delisting_cash_per_share=5.0, delisting_source="Offre de rachat fictive (test)",
+                                     delisting_source_date=date(2024, 6, 10), delisting_cash_date=date(2024, 7, 15))
         res, store = run(ds=ds)
-        rows = store.conn.execute("SELECT portfolio, event, qty, cash_received FROM corporate_events").fetchall()
+        rows = store.conn.execute("SELECT portfolio, event, qty, cash_received, date FROM corporate_events "
+                                  "WHERE event='RADIATION_CONTREPARTIE_DOCUMENTEE'").fetchall()
         self.assertTrue(rows)
         for r in rows:
-            self.assertEqual(r[1], "RADIATION_CONTREPARTIE_DOCUMENTEE")
             self.assertAlmostEqual(r[3], r[2] * 5.0)
+            self.assertEqual(r[4], "2024-07-15")  # créditée au paiement, pas à la radiation
         for br in res.brokers.values():
             self.assertEqual(br.frozen, {})
 
     def test_every_fill_matches_a_real_opening_price(self):
         _, store = run()
         checks = {n: ok for n, ok, _ in run_checks(store.conn, 1, demo_dataset())}
-        self.assertTrue(checks["Chaque exécution simulée a lieu à un cours d'ouverture réellement coté ce jour-là"])
+        self.assertTrue(checks["Chaque exécution simulée correspond à un cours d'ouverture présent dans le fichier, un jour de volume non nul"])
         store.conn.execute("UPDATE orders SET ref_price = ref_price * 1.01 WHERE rowid = "
                            "(SELECT MIN(rowid) FROM orders WHERE status='EXECUTE_SIMULE')")
         checks = {n: ok for n, ok, _ in run_checks(store.conn, 1, demo_dataset())}
-        self.assertFalse(checks["Chaque exécution simulée a lieu à un cours d'ouverture réellement coté ce jour-là"])
+        self.assertFalse(checks["Chaque exécution simulée correspond à un cours d'ouverture présent dans le fichier, un jour de volume non nul"])
 
 
 class SameTopUpRuleTests(unittest.TestCase):

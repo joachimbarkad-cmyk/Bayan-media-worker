@@ -141,12 +141,12 @@ def main() -> None:
         # known_from : date à partir de laquelle la fiche (type d'instrument, devise) est connue et le titre coté.
         # delisting_cash_per_share / delisting_source : contrepartie documentée d'une radiation (vide = inconnue).
         w.writerow(["ticker", "name", "instrument_type", "country", "currency", "known_from", "delisted_date",
-                    "delisting_cash_per_share", "delisting_source"])
+                    "delisting_cash_per_share", "delisting_source", "delisting_source_date", "delisting_cash_date"])
         for ticker, name, itype, *_ in SECURITIES:
-            w.writerow([ticker, name, itype, "XX", "EUR", "2021-01-01", "", "", ""])
+            w.writerow([ticker, name, itype, "XX", "EUR", "2021-01-01", "", "", "", "", ""])
         for ticker, name, itype, _c, _d, _p, _dr, _b, start, delisted in LATE_SECURITIES:
             w.writerow([ticker, name, itype, "XX", "EUR", (start - timedelta(days=1)).isoformat(),
-                        delisted.isoformat() if delisted else "", "", ""])
+                        delisted.isoformat() if delisted else "", "", "", "", ""])
 
     # Historique daté des activités : une fiche initiale par titre, puis les changements.
     with open(OUT / "activities_FICTIF.csv", "w", newline="", encoding="utf-8") as f:

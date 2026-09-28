@@ -218,6 +218,9 @@ def screen_security(view: PointInTimeView, ticker: str, ruleset: dict) -> Screen
         ref = {"period_end": fund["period_end"].isoformat(), "available_date": fund["available_date"].isoformat(),
                "source": fund["source"]}
         invalid = fundamentals_problems(fund)  # défense en profondeur : déjà refusé à l'import
+        if fund.get("currency") != sec["currency"]:  # aucune conversion : unités incomparables
+            invalid = invalid + [f"devise des états financiers {fund.get('currency')!r} différente de la devise de "
+                                 f"cotation {sec['currency']!r} (conversion non modélisée)"]
         for msg in invalid:
             findings.append((INCERTAIN, f"Donnée financière invalide : {msg}", CAUSE_DONNEE_INVALIDE))
         if not invalid and any(r["denominator"] == "market_cap" for r in ruleset["financial_ratios"]):

@@ -96,3 +96,12 @@ du dénominateur doit venir du texte retenu.
 La capitalisation publiée est confrontée à nombre d'actions x cours de clôture à la fin de période (écart toléré
 5 %, contrôle de cohérence des données et non seuil religieux). Cela écarte une valeur aberrante isolée, pas une
 série de données fausses mais cohérentes entre elles : la provenance des données reste à contrôler.
+
+## 8. Limites du contrôle de capitalisation (revue n° 4)
+
+Le contrôle « nombre d'actions x cours de fin de période » peut produire de **faux INCERTAIN** : suspension ou
+longue fermeture (pas de cours à moins de 7 jours de la fin de période), variation du nombre d'actions entre la date
+du chiffre et la fin de période, plusieurs catégories d'actions, cours ajustés des divisions. Avant des données
+réelles, il faudra dater le nombre d'actions et préciser la définition de capitalisation du référentiel retenu.
+La devise de chaque état financier est comparée à celle de la cotation : sans conversion datée, une différence
+donne INCERTAIN.

@@ -35,15 +35,18 @@ Chaque dernier jour de bourse du mois, avec les seules données alors disponible
 6. **Jamais de vente pour rééquilibrer** une ligne au-dessus de sa cible.
 
 Ce qu'elle mesure : un investisseur discipliné qui reste investi dans l'univers admissible, sans règle de tendance.
-L'écart entre la stratégie et cette référence est l'estimation la plus juste de l'apport de la moyenne mobile ;
-l'écart avec la référence achat-conservation inclut aussi l'effet du réinvestissement.
+L'écart entre la stratégie et cette référence mesure l'effet de **l'ensemble de la politique de tendance** (ventes,
+achats différés, exposition réduite et frais qui en résultent), pas un effet isolé de la formule SMA. Sur une seule
+période et des prix inventés, il ne permet aucune conclusion de performance. L'écart avec la référence
+achat-conservation inclut aussi l'effet du réinvestissement.
 
 ## Radiations (les trois portefeuilles)
 
 Au début du jour de radiation : si la fiche titre documente une contrepartie en espèces (`delisting_cash_per_share`
 et `delisting_source`), elle est créditée sans frais ; sinon la position est **gelée à valeur inconnue**. Les
-résultats principaux la comptent à 0 (borne basse) et le rapport donne séparément le résultat au dernier cours
-coté (borne haute). Aucune vente n'est simulée sans prix d'ouverture négociable.
+résultats principaux la comptent à 0 et le rapport donne séparément un scénario au dernier cours coté ; ce ne sont
+pas des bornes. Une contrepartie documentée n'est créditée qu'une fois sa source publiée (règle J+1) et son paiement
+effectué ; d'ici là, la position reste gelée. Aucune vente n'est simulée sans prix d'ouverture ni volume.
 
 ## Historique des révisions
 
@@ -54,3 +57,6 @@ coté (borne haute). Aucune vente n'est simulée sans prix d'ouverture négociab
   lors d'une radiation est remplacée par le gel à valeur inconnue. Ces révisions répondent à des objections de
   méthode formulées par le relecteur ; les résultats de la V1.2 étaient connus au moment de la révision, ce que
   je signale par transparence.
+- **V1.4** (revue n° 4) : une contrepartie de radiation n'est créditée qu'après publication de sa source (J+1) et
+  à sa date de paiement ; aucun achat possible le jour de la radiation ou après ; exécution refusée sans volume et
+  plafonnée à 5 % du volume de la veille. Les deux scénarios de radiation ne sont plus présentés comme des bornes.

@@ -39,7 +39,7 @@ class Bar:
 
 
 SECURITY_COLS = ["ticker", "name", "instrument_type", "country", "currency", "known_from", "delisted_date",
-                 "delisting_cash_per_share", "delisting_source"]
+                 "delisting_cash_per_share", "delisting_source", "delisting_source_date", "delisting_cash_date"]
 # Champs de la fiche titre lisibles par une décision. delisted_date n'en fait partie qu'une fois la radiation passée.
 SECURITY_PUBLIC_FIELDS = ("ticker", "name", "instrument_type", "country", "currency", "known_from")
 PRICE_STALENESS_DAYS = 7
@@ -116,6 +116,12 @@ class Dataset:
         i = bisect.bisect_left(dates, d)
         return self.bars[ticker][i] if i < len(dates) and dates[i] == d else None
 
+    def last_bar_before(self, ticker: str, d: date) -> Bar | None:
+        """Dernière barre STRICTEMENT antérieure au jour d (connue avant l'ouverture de d)."""
+        dates = self._bar_dates.get(ticker, [])
+        i = bisect.bisect_left(dates, d)
+        return self.bars[ticker][i - 1] if i else None
+
     def last_close_on_or_before(self, ticker: str, d: date) -> float | None:
         dates = self._bar_dates.get(ticker, [])
         i = bisect.bisect_right(dates, d)
@@ -184,9 +190,18 @@ def load_dataset(root: str | Path) -> Dataset:
         if row["delisted_date"] and row["delisted_date"] <= row["known_from"]:
             raise DataError(f"{ctx} : radiation antérieure à known_from")
         row["delisting_cash_per_share"] = _num(row["delisting_cash_per_share"], ctx)
+        row["delisting_source_date"] = _date(row["delisting_source_date"], ctx) if row["delisting_source_date"] else None
+        row["delisting_cash_date"] = _date(row["delisting_cash_date"], ctx) if row["delisting_cash_date"] else None
         if row["delisting_cash_per_share"] is not None:
-            if row["delisting_cash_per_share"] < 0 or not row["delisting_source"] or not row["delisted_date"]:
-                raise DataError(f"{ctx} : contrepartie de radiation négative, sans source ou sans date de radiation")
+            # Une contrepartie n'est utilisable que datée : publication de la source ET date de paiement.
+            if (row["delisting_cash_per_share"] < 0 or not row["delisting_source"] or not row["delisted_date"]
+                    or row["delisting_source_date"] is None or row["delisting_cash_date"] is None):
+                raise DataError(f"{ctx} : contrepartie de radiation négative, ou sans source, date de publication "
+                                "de la source, date de paiement ou date de radiation")
+            if row["delisting_cash_date"] < row["delisted_date"]:
+                raise DataError(f"{ctx} : paiement de la contrepartie antérieur à la radiation")
+        elif row["delisting_source_date"] or row["delisting_cash_date"]:
+            raise DataError(f"{ctx} : dates de contrepartie sans montant")
         securities[t] = row
 
     activities: dict[str, list[dict]] = {t: [] for t in securities}
@@ -218,6 +233,10 @@ def load_dataset(root: str | Path) -> Dataset:
         d = _date(row["date"], ctx)
         if (t, d) in seen:
             raise DataError(f"{ctx} : doublon {t} {d}")
+        dl = securities[t]["delisted_date"]
+        if dl is not None and d >= dl:
+            raise DataError(f"{ctx} : cours de {t} le {d}, à partir de sa radiation du {dl} (un prix hors cote "
+                            "éventuel doit être traité comme un événement documenté, pas comme une cotation)")
         seen.add((t, d))
         o, h, lo, c = (_num(row[k], ctx) for k in ("open", "high", "low", "close"))
         if None in (o, h, lo, c) or min(o, h, lo, c) <= 0:

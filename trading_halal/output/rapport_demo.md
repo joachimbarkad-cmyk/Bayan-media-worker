@@ -21,14 +21,14 @@
 | Référence « réinvestie » | Chaque fin de mois : mêmes ventes imposées, puis liquidités réparties à parts cibles égales entre les titres admissibles du moment, sans moyenne mobile (docs/REFERENCES.md) |
 | Frais (fictifs) | 1.0 EUR fixe + 0 % (min 1.0 EUR) par ordre ; glissement 10 pb ; refus si coût aller-retour > 1.5 % |
 | Politique titres détenus | EXCLU → SELL, INCERTAIN → SELL |
-| Empreinte du code / des données | a329f3606f37 / 8973b58e3308 |
+| Empreinte du code / des données | 21a5bb0cb0b3 / 8973b58e3308 |
 
 ## Résultats : stratégie contre deux références
 
 | Indicateur | Stratégie | Réf. achat-conservation | Réf. réinvestie |
 |---|---|---|---|
 | Valeur finale | 2517.29 | 1838.52 | 2088.52 |
-| Rendement total (%) | 25.86 | -8.07 | 4.43 |
+| Rendement total, scénario « radiés à zéro » (%) | 25.86 | -8.07 | 4.43 |
 | Rendement annualisé (%) | 5.67 | -2 | 1.04 |
 | Volatilité annualisée (%) | 10.03 | 10.78 | 13.38 |
 | Baisse maximale (%) | -11.82 | -29.79 | -28.86 |
@@ -39,8 +39,8 @@
 | Frais de courtage simulés | 41 | 10 | 14 |
 | Coût de glissement simulé | 10.14 | 2.09 | 2.89 |
 | Coûts totaux (% du capital initial) | 2.56 | 0.6 | 0.84 |
-| Titres radiés gelés, au dernier cours (non compris ci-dessus) | 0 | 84.22 | 84.22 |
-| Rendement total si les radiés valaient leur dernier cours (%) | 25.86 | -3.86 | 8.64 |
+| Titres radiés gelés, valorisés au dernier cours (exclus ci-dessus) | 0 | 84.22 | 84.22 |
+| Rendement total, scénario « radiés au dernier cours » (%) | 25.86 | -3.86 | 8.64 |
 
 Les trois portefeuilles utilisent les mêmes données, le même univers daté, le même filtre, les mêmes frais et les mêmes règles d'exécution. Les liquidités ne sont pas rémunérées (pas d'intérêts). Dividendes non modélisés. La référence achat-conservation ne réinvestit pas le produit des ventes imposées ; la référence réinvestie, si.
 
@@ -141,7 +141,7 @@ Aucun.
 
 ## Radiations de titres détenus
 
-Aucune vente n'est simulée faute de prix négociable. Sans contrepartie documentée, la position est gelée à valeur **inconnue** : les résultats principaux la comptent à 0 (borne basse) ; la ligne « si les radiés valaient leur dernier cours » donne la borne haute. Ni l'une ni l'autre n'est une estimation fiable.
+Aucune vente n'est simulée faute de prix négociable. Sans contrepartie documentée, la position est gelée à valeur **inconnue**. Deux scénarios sont affichés : « à zéro » (résultats principaux) et « au dernier cours ». Ce ne sont **pas des bornes** : une contrepartie ultérieure peut dépasser le dernier cours, et un titre radié peut encore se négocier hors cote comme ne plus rien valoir.
 
 | Date | Portefeuille | Titre | Événement | Qté | Dernier cours / contrepartie | Espèces reçues | Source |
 |---|---|---|---|---|---|---|---|
@@ -172,7 +172,7 @@ Aucune vente n'est simulée faute de prix négociable. Sans contrepartie documen
 
 | Contrôle | Résultat | Détail |
 |---|---|---|
-| Chaque exécution simulée a lieu à un cours d'ouverture réellement coté ce jour-là | OK | 65 exécutions vérifiées |
+| Chaque exécution simulée correspond à un cours d'ouverture présent dans le fichier, un jour de volume non nul | OK | 65 exécutions vérifiées (ne prouve pas qu'une transaction à ce prix et cette quantité était possible) |
 | Aucun achat d'un titre non ADMISSIBLE (statut enregistré) | OK | 0 cas |
 | Aucun achat d'un titre non ADMISSIBLE (recoupement avec le filtrage) | OK | 0 cas |
 | Aucune décision n'a lu une donnée postérieure à sa date | OK | 0 cas |
@@ -193,7 +193,8 @@ Ces contrôles portent sur le code Python de ce projet et sur ce processus ; ils
 - Frais fictifs : à remplacer par la grille réelle du courtier choisi.
 - Activités lues depuis un historique daté, mais aucune durée de validité maximale d'une fiche d'activité.
 - Pas de conversion de devises : tous les titres doivent être dans la devise du portefeuille (sinon refus).
-- Titre radié sans contrepartie documentée : valeur inconnue, résultats donnés à 0 et au dernier cours.
+- Titre radié sans contrepartie publiée et payée : valeur inconnue, deux scénarios (0, dernier cours), pas des bornes.
+- Exécution : prix d'ouverture du fichier, volume du jour non nul, au plus 5 % du volume de la veille (hypothèses).
 - Capitalisation vérifiée par nombre d'actions x cours : écarte une valeur aberrante, pas une donnée fausse mais cohérente.
 - Le référentiel religieux s'applique rétroactivement à toute la période simulée.
 

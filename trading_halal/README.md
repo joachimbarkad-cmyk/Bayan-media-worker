@@ -23,7 +23,7 @@ Depuis la racine du dépôt :
 cd trading_halal
 python3 -m halal_sim check-data                 # valide les fichiers de données de démonstration
 python3 -m halal_sim run                        # simulation complète + rapport + sensibilité au capital
-python3 -m unittest discover -s tests -v        # 73 vérifications automatiques
+python3 -m unittest discover -s tests -v        # 81 vérifications automatiques
 ```
 
 Options utiles :
@@ -70,9 +70,12 @@ Tout achat dont le coût aller-retour estimé dépasse 1,5 % du montant est refu
 Créer un dossier avec un `manifest.json` (`"nature": "REEL"`) et les quatre CSV au même format que `data/demo/`
 (titres, prix, états financiers, fiches d'activité), chaque document ayant sa **date de publication** et sa **source**.
 Chaque fiche titre porte `known_from` (date à partir de laquelle son type d'instrument et sa devise sont connus)
-et, s'il y a lieu, `delisted_date` : inclure les titres **radiés** pour limiter le biais du survivant. Une radiation
-avec contrepartie en espèces se documente par `delisting_cash_per_share` et `delisting_source` ; sans elle, la
-position est gelée à valeur inconnue (résultats donnés à 0 et au dernier cours).
+et, s'il y a lieu, `delisted_date` : inclure les titres **radiés** pour limiter le biais du survivant. Aucun cours n'est
+accepté à partir de la date de radiation. Une contrepartie en espèces se documente par `delisting_cash_per_share`,
+`delisting_source`, `delisting_source_date` (publication) et `delisting_cash_date` (paiement) ; elle n'est créditée
+qu'une fois publiée et payée. D'ici là, ou sans elle, la position est gelée à valeur inconnue (deux scénarios : 0 et
+dernier cours, qui ne sont pas des bornes). La devise des états financiers doit être celle de la cotation, sinon le
+titre est INCERTAIN.
 Les états financiers portent `shares_outstanding` : la capitalisation publiée est vérifiée contre nombre d'actions
 x cours de fin de période quand un ratio l'utilise.
 Les valeurs non finies (`nan`, `inf`), négatives ou incohérentes sont refusées à l'import.

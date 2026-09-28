@@ -17,8 +17,8 @@ Trois portefeuilles, mêmes données, mêmes frais, même filtre religieux, mêm
 Univers : à chaque date, seuls les titres dont la fiche est connue (known_from < J) et non radiés sont
 filtrés. Radiation d'un titre détenu (traitée au début du jour de radiation) : aucune vente n'est simulée
 faute de prix négociable. Avec une contrepartie en espèces documentée (fiche titre), elle est créditée ;
-sinon la position est GELÉE à valeur inconnue et les résultats sont donnés à 0 (borne basse, valeur
-principale) et au dernier cours (borne haute).
+sinon la position est GELÉE à valeur inconnue ; les résultats sont donnés dans deux scénarios, à 0 (valeur
+principale) et au dernier cours. Ce ne sont pas des bornes : la valeur réelle peut sortir de cet intervalle.
 
 Compléments de lignes : une seule règle (`sizing.topup_held_positions`) pour la stratégie ET la référence
 réinvestie, afin que leur écart ne mesure que l'effet du filtre de tendance.
@@ -109,6 +109,10 @@ class Backtest:
                                       config=config, code_hash=code_hash(), capital=self.capital)
         self.bench_started = False
         self.topup = bool(config.get("sizing", {}).get("topup_held_positions", False))
+        # Part maximale du volume de la VEILLE (connu avant l'ouverture) qu'un ordre peut représenter.
+        self.max_participation = float(config.get("execution", {}).get("max_volume_participation", 0.05))
+        if not 0 < self.max_participation <= 1:
+            raise PolicyError("execution.max_volume_participation doit être dans ]0 ; 1]")
         self.delistings_done: set[str] = set()
 
     # --- dimensionnement d'un achat, décidé avec le cours de clôture de la date de décision ---
@@ -151,7 +155,9 @@ class Backtest:
         return orders, proceeds
 
     def _process_delistings(self, d: date) -> None:
-        """Au début du jour de radiation (fait survenu, pas anticipé) : contrepartie documentée ou gel."""
+        """Début de journée. (1) Radiation survenue ce jour : la position est toujours GELÉE (valeur inconnue).
+        (2) Contrepartie en espèces documentée : créditée seulement quand sa source est publiée (avant le jour,
+        règle J+1) ET qu'elle est payée (date de paiement atteinte). Jamais avant."""
         for t, sec in self.ds.securities.items():
             dl = sec["delisted_date"]
             if dl is None or d < dl or t in self.delistings_done:
@@ -160,16 +166,26 @@ class Backtest:
             for pf, br in self.brokers.items():
                 if not br.positions.get(t):
                     continue
+                last = self.ds.last_close_on_or_before(t, d)
+                qty = br.freeze(t, last, d)
+                self.store.add_corporate_event(self.run_id, pf, d, t, "RADIATION_VALEUR_INCONNUE", qty, last, 0.0,
+                                               "contrepartie non encore publiée et payée" if sec["delisting_cash_per_share"]
+                                               is not None else "aucune contrepartie documentée")
+        for pf, br in self.brokers.items():
+            for t in sorted(br.frozen):
+                sec = self.ds.securities[t]
                 cash = sec["delisting_cash_per_share"]
-                if cash is not None:
-                    qty, received = br.cash_out(t, cash)
-                    self.store.add_corporate_event(self.run_id, pf, d, t, "RADIATION_CONTREPARTIE_DOCUMENTEE", qty,
-                                                   cash, received, sec["delisting_source"])
-                else:
-                    last = self.ds.last_close_on_or_before(t, d)
-                    qty = br.freeze(t, last, d)
-                    self.store.add_corporate_event(self.run_id, pf, d, t, "RADIATION_VALEUR_INCONNUE", qty, last, 0.0,
-                                                   "aucune contrepartie documentée")
+                src_d, pay_d = sec["delisting_source_date"], sec["delisting_cash_date"]
+                if cash is None or src_d is None or pay_d is None or src_d >= d or pay_d > d:
+                    continue  # non documentée, pas encore publiée ou pas encore payée : reste gelée
+                qty, received = br.release_frozen(t, cash)
+                self.store.add_corporate_event(self.run_id, pf, d, t, "RADIATION_CONTREPARTIE_DOCUMENTEE", qty, cash,
+                                               received, f"{sec['delisting_source']} (publiée le "
+                                               f"{sec['delisting_source_date']}, payée le {sec['delisting_cash_date']})")
+
+    def _volume_cap(self, ticker: str, d: date) -> int:
+        prev = self.ds.last_bar_before(ticker, d)
+        return int(prev.volume * self.max_participation) if prev else 0
 
     def _forced_sells(self, br: PaperBroker, d: date, screenings: dict[str, ScreeningResult], universe: set[str]):
         """Ventes imposées (hors univers, EXCLU, INCERTAIN selon la politique) : mêmes règles pour les références."""
@@ -282,7 +298,9 @@ class Backtest:
             self._record(pf, d, ADMISSIBLE, dec, BUY, code_ok, f"{dec.detail} ; {detail}")
         return orders
 
-    def _execute(self, pf: str, orders: list[PendingOrder], d: date) -> list[PendingOrder]:
+    def _execute(self, pf: str, orders: list[PendingOrder], d: date, universe: set[str]) -> list[PendingOrder]:
+        """Exécution à l'ouverture de d. Un prix présent dans le fichier ne suffit pas : titre dans l'univers ce
+        jour-là (pas radié), volume du jour non nul, quantité plafonnée par le volume de la veille."""
         br, carry = self.brokers[pf], []
         for o in sorted(orders, key=lambda o: (o.side != "SELL", o.ticker)):
             bar = self.ds.bar_on(o.ticker, d)
@@ -295,12 +313,26 @@ class Backtest:
                 if o.side == "SELL" and not gone:
                     carry.append(o)
                 continue
+            if o.side == "BUY" and o.ticker not in universe:
+                self.store.add_rejected_order(self.run_id, pf, o.decision_date, d, o.ticker, "BUY", o.qty, o.status,
+                                              "HORS_UNIVERS_A_L_EXECUTION")
+                continue
+            cap = self._volume_cap(o.ticker, d)
+            if bar.volume <= 0 or cap < 1:
+                self.store.add_rejected_order(self.run_id, pf, o.decision_date, d, o.ticker, o.side, o.qty, o.status,
+                                              "VOLUME_NUL_OU_INSUFFISANT" + (" (vente reportée)" if o.side == "SELL" else ""))
+                if o.side == "SELL":
+                    carry.append(o)
+                continue
             if o.side == "SELL":
-                qty = br.positions.get(o.ticker, 0)
+                held = br.positions.get(o.ticker, 0)
+                qty = min(held, cap)
                 if qty:
                     self.store.add_fill(self.run_id, br.sell(o.ticker, qty, bar.open, o.decision_date, d, o.status, o.reason))
+                if held > qty:  # reliquat au-delà du volume permis : vente poursuivie le jour suivant
+                    carry.append(o)
                 continue
-            qty = min(o.qty, br.max_affordable_qty(bar.open))
+            qty = min(o.qty, br.max_affordable_qty(bar.open), cap)
             if qty < 1:
                 self.store.add_rejected_order(self.run_id, pf, o.decision_date, d, o.ticker, "BUY", o.qty, o.status,
                                               "LIQUIDITES_INSUFFISANTES_A_L_EXECUTION")
@@ -327,8 +359,9 @@ class Backtest:
         frozen_final: dict[str, float] = {}
         for d in cal:
             self._process_delistings(d)
+            today_universe = set(self.ds.universe_at(d))
             for pf in PORTFOLIOS:
-                pending[pf] = self._execute(pf, pending[pf], d)
+                pending[pf] = self._execute(pf, pending[pf], d, today_universe)
             if d >= start:
                 for pf, br in self.brokers.items():
                     pv = sum(q * self.ds.last_close_on_or_before(t, d) for t, q in br.positions.items())
