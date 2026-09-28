@@ -1,0 +1,14 @@
+[
+ {
+  "fichier": "duk-20251231.xsd",
+  "sha256": "94b4f3d82195bc6ff874d1e10671ac18bc995278b93b00bff567312f7ba6fb8b",
+  "url": "https://www.sec.gov/Archives/edgar/data/1326160/000132616026000014/duk-20251231.xsd",
+  "obtenu": "téléchargé automatiquement depuis https://www.sec.gov/Archives/edgar/data/1326160/000132616026000014/duk-20251231.htm, le 2026-09-28T17:51:26+00:00"
+ },
+ {
+  "fichier": "duk-20251231_cal.xml",
+  "sha256": "d21f87fc9364a2671fec2c63911a4b579f7f4bb6dce69b965705385b8f530064",
+  "url": "https://www.sec.gov/Archives/edgar/data/1326160/000132616026000014/duk-20251231_cal.xml",
+  "obtenu": "téléchargé automatiquement depuis https://www.sec.gov/Archives/edgar/data/1326160/000132616026000014/duk-20251231.htm, le 2026-09-28T17:51:26+00:00"
+ }
+]

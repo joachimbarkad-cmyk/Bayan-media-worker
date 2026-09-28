@@ -1,0 +1,11 @@
+{
+ "version": "edgar_v5",
+ "regles_sha256": "5e6b3f281d2e2a8269fcfee1dfae417c4620c8996e28aa6b926265a833148af9",
+ "propositions": {
+  "revenue_from_contracts_with_customers_including_assessed_tax": 92,
+  "total_assets": 68,
+  "total_revenue": 117
+ },
+ "ecartes": [],
+ "conflits": []
+}

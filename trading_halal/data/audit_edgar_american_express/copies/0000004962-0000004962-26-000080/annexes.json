@@ -1,0 +1,14 @@
+[
+ {
+  "fichier": "axp-20251231.xsd",
+  "sha256": "de608648c69acd7b1ad18c180c51ea87278ec808ace777d8f22b9a36e6fa3b8d",
+  "url": "https://www.sec.gov/Archives/edgar/data/4962/000000496226000080/axp-20251231.xsd",
+  "obtenu": "téléchargé automatiquement depuis https://www.sec.gov/Archives/edgar/data/4962/000000496226000080/axp-20251231.htm, le 2026-09-28T17:50:57+00:00"
+ },
+ {
+  "fichier": "axp-20251231_cal.xml",
+  "sha256": "fa79d3ba16b702d40494f9cb583236815264a8582fbd7554cd87957856a0160e",
+  "url": "https://www.sec.gov/Archives/edgar/data/4962/000000496226000080/axp-20251231_cal.xml",
+  "obtenu": "téléchargé automatiquement depuis https://www.sec.gov/Archives/edgar/data/4962/000000496226000080/axp-20251231.htm, le 2026-09-28T17:50:57+00:00"
+ }
+]

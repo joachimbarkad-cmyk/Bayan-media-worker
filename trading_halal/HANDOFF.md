@@ -1,4 +1,4 @@
-# HANDOFF — simulateur de trading halal, V1.19 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.20 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
@@ -6,6 +6,44 @@ Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier
 **Merci de relire de façon critique** : lectures d'information future, ADMISSIBLE erronés, contrôles d'audit
 contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
 au document de fiqh fourni par l'utilisateur**.
+
+## V1.20 — Revue n° 15 : un composant ne devient total que par une preuve positive
+
+Le relecteur a jugé l'heuristique de noms (V1.19) insuffisante comme **preuve** : elle peut rater des revenus
+(`FeeIncome`, `InvestmentIncomeNet`…) et un R1 ne doit pas devenir total « faute d'avoir trouvé autre chose ». Il a
+aussi établi que Ford utilise R1 pour son total présenté (187 267 M$, Ford Credit compris) et que Duke déclare son
+total sous `RegulatedAndUnregulatedOperatingRevenue` (32 237 M$ = 31 741 contrats clients + 496 autres).
+
+Correction (`config/normalisation/edgar_v5.json` ; v4 retirée) :
+- **Preuve positive tirée du dépôt lui-même** : `fetch-filing` télécharge aussi le schéma `.xsd` et le fichier
+  `_cal.xml` (calculs ; certains déposants, comme Microsoft, les placent dans le schéma), empreintes dans
+  `copies/<doc>/annexes.json`, vérifiées à chaque lecture et rejouées par `verify-normalisation`. Le repli R1 → total
+  exige que R1 soit, dans un rôle de catégorie EFM « Statement », l'enfant +1 de `GrossProfit` ou `OperatingIncomeLoss`
+  **sans autre élément positif** ; la preuve (rôle, équation, empreintes) est recopiée dans le « REPLI : ». Le bloqueur
+  par noms de la V1.19 reste en plus (fail-closed).
+- **R0b** `RegulatedAndUnregulatedOperatingRevenue` → total_revenue, exigé en première ligne d'un état financier ;
+  d'autres éléments positifs y sont admis (gain de cession chez Duke) car le concept est un total par définition — ce
+  relâchement est refusé par l'outil pour un repli.
+- **R1b** `RevenueFromContractWithCustomerIncludingAssessedTax` → nouveau concept
+  `revenue_from_contracts_with_customers_including_assessed_tax` : composant, jamais total, jamais interchangeable
+  avec R1.
+- Relations de calcul : arcrole classique (2003) et Calculation 1.1 (2023) acceptés ; concepts standard identifiés par
+  l'URL de taxonomie et l'identifiant « préfixe_Nom ».
+
+Résultats (sonde v5 sur 20 émetteurs, `docs/SONDE_REVENUS.md`) : repli prouvé pour Apple, Microsoft (marge brute),
+Visa, Ford (résultat d'exploitation) ; total direct réglementé pour Duke ; bloqué pour American Express ; `Revenues`
+pour les 14 autres. Dossiers réels régénérés (7 émetteurs, 8 documents, Duke et Ford ajoutés) : tous contrôles à 0.
+
+Tests : 11 nouveaux (repli prouvé, sans calculs, rôle Disclosure, élément positif voisin, mauvais parent, poids −1,
+Calculation 1.1, autres arcroles et schémas non FASB, total direct avec gain, annexe altérée, règles de repli
+laxistes refusées, Duke, Ford). Mutations : 10, toutes détectées (dont deux après ajout de tests : arcrole non
+sommatoire, concept « us-gaap » hors schéma FASB). **241 tests.** Limite : l'identification des concepts dans les calculs suit la convention « préfixe_Nom » des
+identifiants (pas de lecture du schéma FASB complet) ; l'intégrité des annexes repose sur leur empreinte locale
+(contrôle indépendant = nouveau téléchargement).
+
+Points nécessitant une revue indépendante : liste des parents acceptés (`GrossProfit`, `OperatingIncomeLoss`) ;
+admission d'éléments positifs voisins pour R0b ; un revenu déclaré sous un concept sans motif de nom **et** hors des
+calculs échapperait encore au bloqueur, mais pas à l'exigence de preuve positive.
 
 ## V1.19 — Sonde sur 20 émetteurs : le repli de v3 était encore trop permissif
 
@@ -385,9 +423,9 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 
 - Simulation de bout en bout (12 contrôles), avec `--ruleset` pour choisir le référentiel et `--db` pour la base.
 - `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE.
-- **231 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+- **241 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
   test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
-  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 51, test_ruleset_validation 10, test_screening 11.
+  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 62, test_ruleset_validation 10, test_screening 11.
 
 ## Limites connues (générales)
 

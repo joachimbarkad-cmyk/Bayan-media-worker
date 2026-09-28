@@ -111,7 +111,7 @@ une contre-vérification humaine indépendante restent nécessaires.
 - Un fait dont le concept est mappé mais qui n'est pas normalisé doit porter une justification
   « NON NORMALISÉ : motif » (exclusion explicite) ; sinon, erreur bloquante.
 - Outil : `tools/edgar_normalize.py` (`normalize`, `import-filing`, `reconcile-ixbrl`), règles
-  `config/normalisation/edgar_v4.json` (v1 à v3 retirées), exemples `docs/EXEMPLE_NORMALISATION.md`.
+  `config/normalisation/edgar_v5.json` (v1 à v4 retirées), exemples `docs/EXEMPLE_NORMALISATION.md`.
 
 ## Conformité aux règles (V1.14)
 
@@ -131,3 +131,12 @@ rapproche. Les nombres d'actions ne sont pas normalisés automatiquement (catég
 concept différent de son mappage **uniquement** pour le repli déclaré composant → total_revenue, avec une justification
 commençant par « REPLI : » ; toute autre divergence reste une erreur bloquante. La lecture XBRL en ligne résout les
 concepts et mesures par URI d'espace de noms, exige une devise ISO 4217 et un identifiant au schéma CIK de la SEC.
+
+## Preuve positive par les calculs du dépôt (revue n° 15)
+
+`fetch-filing` conserve, à côté du document, le schéma (`.xsd`) et le fichier de calcul (`_cal.xml`) du dépôt, avec
+leur empreinte dans `copies/<doc>/annexes.json` (vérifiée à chaque lecture). Un composant ne devient total que s'il est
+l'enfant +1 de `GrossProfit` ou `OperatingIncomeLoss` dans un rôle de catégorie EFM « Statement », sans autre élément
+positif ; un concept total par définition (`RegulatedAndUnregulatedOperatingRevenue`) doit seulement y être en première
+ligne. Nouveau concept : `revenue_from_contracts_with_customers_including_assessed_tax` (taxes incluses, jamais
+interchangeable avec la version hors taxes).

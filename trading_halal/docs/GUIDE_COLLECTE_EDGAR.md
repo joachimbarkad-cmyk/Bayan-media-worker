@@ -68,7 +68,7 @@ python3 tools/edgar_normalize.py import-filing --audit data/audit_edgar_apple \
     --doc-id 0000320193-0000320193-25-000079 --fichier aapl-20250927.htm \
     --retrieved-at 2026-09-28T14:05:00+02:00 --raw collecte/apple
 python3 tools/edgar_normalize.py reconcile-ixbrl --audit data/audit_edgar_apple \
-    --doc-id 0000320193-0000320193-25-000079 --raw collecte/apple --regles config/normalisation/edgar_v4.json
+    --doc-id 0000320193-0000320193-25-000079 --raw collecte/apple --regles config/normalisation/edgar_v5.json
 ```
 
 Autre voie : ajouter `www.sec.gov` aux domaines autorisés de l'environnement.

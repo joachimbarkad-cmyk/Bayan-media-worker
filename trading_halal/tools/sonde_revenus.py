@@ -19,8 +19,12 @@ import edgar_normalize as en  # noqa: E402
 
 R1 = "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"
 BLOCKERS = ["us-gaap:Revenues", "us-gaap:RevenueNotFromContractWithCustomer"]
-RULES = Path(__file__).resolve().parents[1] / "config" / "normalisation" / "edgar_v4.json"
-SPEC = next(r for r in json.loads(RULES.read_text(encoding="utf-8"))["regles"] if r["id"] == "R1")["repli_total"]["autres_revenus"]
+RULES = Path(__file__).resolve().parents[1] / "config" / "normalisation" / "edgar_v5.json"
+_R = {r["id"]: r for r in json.loads(RULES.read_text(encoding="utf-8"))["regles"]}
+SPEC = _R["R1"]["repli_total"]["autres_revenus"]
+PROOF_R1 = _R["R1"]["repli_total"]["preuve_position"]
+PROOF_R0B = _R["R0b"]["preuve_position"]
+R0B = "us-gaap:RegulatedAndUnregulatedOperatingRevenue"
 
 
 def revenue_like(name: str) -> bool:
@@ -36,10 +40,19 @@ def probe(cik: str, ua: str) -> dict:
     url = f"https://www.sec.gov/Archives/edgar/data/{int(c10)}/{accn.replace('-', '')}/{doc}"
     time.sleep(0.3)
     data = ec._get(url, ua)
+    base = url.rsplit("/", 1)[0] + "/"
+    names = [x["name"] for x in json.loads(ec._get(base + "index.json", ua))["directory"]["item"]]
     with tempfile.TemporaryDirectory() as tmp:
         p = Path(tmp) / doc
         p.write_bytes(data)
         contexts, _, facts = en.parse_ixbrl(p)
+        annexes = []
+        for n in names:
+            if n.endswith(".xsd") or n.endswith("_cal.xml"):
+                time.sleep(0.2)
+                (Path(tmp) / n).write_bytes(ec._get(base + n, ua))
+                annexes.append(Path(tmp) / n)
+        roles, arcs = en.parse_calculations(annexes)
     rows = {}
     for f in facts:
         ctx = contexts.get(f["context"])
@@ -55,30 +68,42 @@ def probe(cik: str, ua: str) -> dict:
     concepts = {n: v for n, v in concepts.items() if v and revenue_like(n)}
     has_r1 = R1 in concepts
     blocked = [b for b in BLOCKERS if b in concepts]
-    others = sorted(n for n in concepts if n not in BLOCKERS + [R1])
-    decision = ("Revenues -> total" if "us-gaap:Revenues" in concepts else
-                "repli R1 bloqué" if has_r1 and (blocked or others) else
-                "REPLI R1 -> total" if has_r1 else "aucun total (ni Revenues ni R1)")
+    others = sorted(n for n in concepts if n not in BLOCKERS + [R1, R0B])
+    proof_r1 = en.position_proof(R1, roles, arcs, PROOF_R1)
+    proof_r0b = en.position_proof(R0B, roles, arcs, PROOF_R0B) if R0B in concepts else None
+    if "us-gaap:Revenues" in concepts:
+        decision = "Revenues -> total"
+    elif proof_r0b:
+        decision = "RegulatedAndUnregulatedOperatingRevenue -> total"
+    elif has_r1 and (blocked or others):
+        decision = "repli R1 bloqué (autres revenus)"
+    elif has_r1 and not proof_r1:
+        decision = "repli R1 bloqué (aucune preuve positive)"
+    elif has_r1:
+        decision = "REPLI R1 -> total (preuve positive)"
+    else:
+        decision = "aucun total"
     return {"cik": c10, "nom": sub.get("name"), "accn": accn, "exercice": f"{fy_start} → {end}", "decision": decision,
             "autres": {n: concepts[n][0] for n in others}, "r1": concepts.get(R1, [None])[0],
-            "revenues": concepts.get("us-gaap:Revenues", [None])[0]}
+            "revenues": concepts.get("us-gaap:Revenues", [None])[0],
+            "r0b": concepts.get(R0B, [None])[0], "preuve": proof_r1 or proof_r0b or ""}
 
 
 def markdown(results: list[dict]) -> str:
-    lines = ["# Sonde : que ferait la règle du revenu total (edgar_v4) sur de vrais 10-K ?", "",
+    lines = ["# Sonde : que ferait la règle du revenu total (edgar_v5) sur de vrais 10-K ?", "",
              "Générée par `tools/sonde_revenus.py` (dernier 10-K de chaque émetteur à la date d'exécution, faits de l'entité",
              "entière, exercice complet, USD). Données brutes : `docs/SONDE_REVENUS.json`. Ni rapprochement ni",
              "normalisation : un repérage des cas où le repli R1 → total serait juste ou faux. Montants tels qu'affichés",
              "(souvent en millions).", "",
-             "| Émetteur | Dépôt | Décision edgar_v4 | Revenues | R1 (contrats clients) | Autres concepts de revenu déclarés |",
-             "|---|---|---|---|---|---|"]
+             "| Émetteur | Dépôt | Décision edgar_v5 | Revenues | R0b (réglementé) | R1 (contrats clients) | Autres concepts de revenu déclarés |",
+             "|---|---|---|---|---|---|---|"]
     for x in results:
         if "erreur" in x:
-            lines.append(f"| CIK {x['cik']} | — | ERREUR : {x['erreur'][:80]} | | | |")
+            lines.append(f"| CIK {x['cik']} | — | ERREUR : {x['erreur'][:80]} | | | | |")
             continue
         autres = ", ".join(n.split("}")[-1] for n in x["autres"]) or "—"
         lines.append(f"| {x['nom']} | {x['accn']} | {x['decision']} | {x['revenues'][0] if x['revenues'] else '—'} | "
-                     f"{x['r1'][0] if x['r1'] else '—'} | {autres} |")
+                     f"{x['r0b'][0] if x.get('r0b') else '—'} | {x['r1'][0] if x['r1'] else '—'} | {autres} |")
     return "\n".join(lines) + "\n"
 
 

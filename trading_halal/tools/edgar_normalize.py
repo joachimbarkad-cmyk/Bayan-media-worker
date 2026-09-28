@@ -145,6 +145,13 @@ def _rules(rules_path: Path) -> dict:
                                or not (fb.get("autres_revenus") or {}).get("motifs")):
             raise NormalizeError(f"règle {r['id']} : repli_total mal formé (concept total_revenue, liste "
                                  "si_absents_du_document et autres_revenus.motifs obligatoires)")
+        for spec in (r.get("preuve_position"), (fb or {}).get("preuve_position") if fb else None):
+            if spec is not None and (not spec.get("parents") or spec.get("categorie") != "Statement"):
+                raise NormalizeError(f"règle {r['id']} : preuve_position mal formée (parents, categorie Statement)")
+        if fb is not None and fb.get("preuve_position", {}).get("freres_positifs_interdits", True) is not True:
+            raise NormalizeError(f"règle {r['id']} : un repli exige l'absence de tout autre élément positif")
+        if fb is not None and not fb.get("preuve_position"):
+            raise NormalizeError(f"règle {r['id']} : un repli exige une preuve_position (revue n° 15)")
         if fb is not None:
             missed = [c for c in [r["source_concept"], *fb["si_absents_du_document"]]
                       if not revenue_like(c, fb["autres_revenus"])]
@@ -252,7 +259,8 @@ def verify_normalisation(raw: Path, audit: Path, rules_path: Path) -> tuple[list
                 if not src.is_file() or _sha(src) != doc["local_sha256"]:
                     problems.append(f"{doc['doc_id']} : copie locale absente ou différente de local_sha256")
                     continue
-                import_filing(ref, doc["doc_id"], src, "2000-01-01T00:00:00+00:00", raw)
+                import_filing(ref, doc["doc_id"], src, "2000-01-01T00:00:00+00:00", raw,
+                              annexes=_annexes(src.parent))
                 reconcile_ixbrl(ref, doc["doc_id"], raw, rules_path)
         theirs = _load_tables(ref)
         for name, cols in (("facts", NORMALIZE_FACT_COLUMNS), ("concept_map", FILES["concept_map"])):
@@ -294,9 +302,14 @@ def _map_concept(s: Session, rule: dict, raw: Path, issuer: str, version: str) -
 
 
 # ----------------------------------------------------------------------------------------------- document d'origine
+ANNEXES_FILE = "annexes.json"
+
+
 def import_filing(audit: Path, doc_id: str, fichier: Path, retrieved_at: str, raw: Path | None = None,
-                  how: str = "téléchargé à la main, heure déclarée") -> str:
-    """Copie le document principal dans copies/ et journalise local_copy / local_sha256."""
+                  how: str = "téléchargé à la main, heure déclarée", annexes: list[Path] | None = None,
+                  annex_urls: dict[str, str] | None = None) -> str:
+    """Copie le document principal dans copies/ et journalise local_copy / local_sha256. Les annexes (schéma .xsd et
+    calculs _cal.xml du dépôt) sont copiées à côté, avec leur empreinte, dans copies/<doc>/annexes.json."""
     try:
         if datetime.fromisoformat(retrieved_at).tzinfo is None:
             raise ValueError
@@ -314,6 +327,17 @@ def import_filing(audit: Path, doc_id: str, fichier: Path, retrieved_at: str, ra
         raise NormalizeError(f"{dest} existe déjà")
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(fichier, dest)
+    listed = []
+    for a in annexes or []:
+        if not re.fullmatch(r"[\w.-]+(\.xsd|_cal\.xml)", a.name):
+            dest.unlink()
+            raise NormalizeError(f"annexe refusée {a.name!r} (seuls le schéma .xsd et le fichier _cal.xml)")
+        shutil.copyfile(a, dest.parent / a.name)
+        listed.append({"fichier": a.name, "sha256": _sha(dest.parent / a.name),
+                       "url": (annex_urls or {}).get(a.name, ""), "obtenu": f"{how} {retrieved_at}"})
+    if listed:
+        (dest.parent / ANNEXES_FILE).write_text(json.dumps(listed, ensure_ascii=False, indent=1) + "\n",
+                                                encoding="utf-8")
     sha = hashlib.sha256(dest.read_bytes()).hexdigest()
     rel = dest.relative_to(audit).as_posix()
     proof = f"url:{doc['url']}"
@@ -337,14 +361,26 @@ def fetch_filing(audit: Path, doc_id: str, user_agent: str, raw: Path, fetch=Non
         raise NormalizeError(f"document inconnu {doc_id}")
     if not doc["url"].startswith("https://www.sec.gov/Archives/"):
         raise NormalizeError(f"URL inattendue {doc['url']!r}")
-    data = (fetch or ec._get)(doc["url"], ua)
+    get = fetch or ec._get
+    data = get(doc["url"], ua)
     retrieved_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    base = doc["url"].rsplit("/", 1)[0] + "/"
+    try:
+        names = [i["name"] for i in json.loads(get(base + "index.json", ua))["directory"]["item"]]
+    except Exception:  # annexes facultatives : sans elles, aucun repli ne sera prouvé
+        names = []
+    wanted = [n for n in names if re.fullmatch(r"[\w.-]+(\.xsd|_cal\.xml)", n)]
     tmp = Path(tempfile.mkdtemp(prefix="document_"))
     try:
         path = tmp / doc["url"].rsplit("/", 1)[-1]
         path.write_bytes(data)
+        annexes = []
+        for n in wanted:
+            (tmp / n).write_bytes(get(base + n, ua))
+            annexes.append(tmp / n)
         return import_filing(audit, doc_id, path, retrieved_at, raw,
-                             how=f"téléchargé automatiquement depuis {doc['url']}, le")
+                             how=f"téléchargé automatiquement depuis {doc['url']}, le", annexes=annexes,
+                             annex_urls={n: base + n for n in wanted})
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -409,6 +445,78 @@ def _canonical(uri: str, local: str) -> str:
         if pattern.match(uri):
             return f"{prefix}:{local}"
     return f"{{{uri}}}{local}"
+
+
+LINK = "http://www.xbrl.org/2003/linkbase"
+XLINK = "http://www.w3.org/1999/xlink"
+SUMMATION = {"http://www.xbrl.org/2003/arcrole/summation-item", "https://xbrl.org/2023/arcrole/summation-item"}
+TAXONOMY_URL = {"us-gaap": re.compile(r"://xbrl\.fasb\.org/us-gaap/\d{4}/"),
+                "dei": re.compile(r"://xbrl\.sec\.gov/dei/\d{4}/"),
+                "srt": re.compile(r"://xbrl\.fasb\.org/srt/\d{4}/")}
+ROLE_DEF = re.compile(r"^\s*\d+\s*-\s*(Statement|Disclosure|Document|Schedule)\s*-\s*(.*)$")
+
+
+def parse_calculations(files: list[Path]) -> tuple[dict, list]:
+    """Rôles (catégorie EFM Statement/Disclosure…, titre) et relations de calcul (rôle, parent, enfant, poids) du
+    dépôt, depuis son schéma et son fichier _cal.xml. Concepts standard : identifiés par l'URL de la taxonomie et
+    l'identifiant « préfixe_NomLocal » (convention FASB/SEC) ; concepts d'extension : préfixe « ext: »."""
+    roles, arcs = {}, []
+
+    def canon(href: str) -> str:
+        url, _, frag = href.partition("#")
+        local = frag.split("_", 1)[1] if "_" in frag else frag
+        for prefix, pattern in TAXONOMY_URL.items():
+            if pattern.search(url) and frag.startswith(prefix + "_"):
+                return f"{prefix}:{local}"
+        return f"ext:{local}"
+    for f in files:
+        root = ET.parse(f).getroot()
+        for rt in root.iter(f"{{{LINK}}}roleType"):
+            d = rt.find(f"{{{LINK}}}definition")
+            m = ROLE_DEF.match((d.text or "") if d is not None else "")
+            roles[rt.get("roleURI")] = (m.group(1), m.group(2).strip()) if m else ("", (d.text or "").strip()
+                                                                                    if d is not None else "")
+        for cl in root.iter(f"{{{LINK}}}calculationLink"):
+            role = cl.get(f"{{{XLINK}}}role")
+            locs = {l.get(f"{{{XLINK}}}label"): canon(l.get(f"{{{XLINK}}}href") or "") for l in cl.iter(f"{{{LINK}}}loc")}
+            for a in cl.iter(f"{{{LINK}}}calculationArc"):
+                if a.get(f"{{{XLINK}}}arcrole") not in SUMMATION:
+                    continue
+                arcs.append((role, locs.get(a.get(f"{{{XLINK}}}from"), ""), locs.get(a.get(f"{{{XLINK}}}to"), ""),
+                             float(a.get("weight") or "nan")))
+    return roles, arcs
+
+
+def position_proof(concept: str, roles: dict, arcs: list, spec: dict) -> str | None:
+    """Preuve positive qu'un concept est la première ligne de revenu : dans un rôle de catégorie `spec["categorie"]`,
+    enfant de poids +1 d'un parent de `spec["parents"]`, et (par défaut) sans autre enfant de poids positif sous ce
+    parent. `freres_positifs_interdits: false` n'est admis que pour un concept qui est par définition un total."""
+    for role, parent, child, w in arcs:
+        if child != concept or w != 1.0 or parent not in spec["parents"]:
+            continue
+        cat, title = roles.get(role, ("", ""))
+        if cat != spec["categorie"]:
+            continue
+        siblings = [(c, w2) for r2, p2, c, w2 in arcs if r2 == role and p2 == parent and c != concept]
+        if spec.get("freres_positifs_interdits", True) and any(w2 > 0 for _, w2 in siblings):
+            continue
+        return (f"rôle « {cat} - {title} » : {parent} = {concept} (+1)"
+                + "".join(f" {'+' if w2 > 0 else '−'} {c}" for c, w2 in siblings))
+    return None
+
+
+def _annexes(folder: Path) -> list[Path]:
+    """Annexes du document, vérifiées contre leurs empreintes (annexes.json)."""
+    listed = folder / ANNEXES_FILE
+    if not listed.exists():
+        return []
+    out = []
+    for a in json.loads(listed.read_text(encoding="utf-8")):
+        f = folder / a["fichier"]
+        if not f.is_file() or _sha(f) != a["sha256"]:
+            raise NormalizeError(f"annexe {a['fichier']} absente ou différente de son empreinte")
+        out.append(f)
+    return out
 
 
 def parse_ixbrl(path: Path) -> tuple[dict, dict, list]:
@@ -495,6 +603,12 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> di
                    for f in ixfacts if f["context"] in contexts and not contexts[f["context"]]["segment"]
                    and entity_ok(contexts[f["context"]])}
     proof = f"fichier:{doc['local_copy']}#sha256={sha}"
+    annexes = _annexes(path.parent)
+    try:
+        roles, arcs = parse_calculations(annexes)
+    except (ValueError, ET.ParseError) as exc:
+        raise NormalizeError(f"annexes illisibles ({exc})")
+    annex_note = ", ".join(f"{a.name} (sha256 {_sha(a)[:16]}…)" for a in annexes) or "aucune annexe"
     report = {"rapproches": 0, "echecs": []}
     failures: dict[str, str] = {}
     for prop in proposals:
@@ -524,13 +638,19 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> di
                 reason = f"valeurs affichées incohérentes {sorted(map(str, values))}"
             elif reason is None and next(iter(values)) != Decimal(prop["raw_value"]):
                 reason = f"document {next(iter(values))} ≠ companyfacts {prop['raw_value']}"
+        rule = by_rule[prop["regle"]]
+        position = None
+        if reason is None and rule.get("preuve_position"):
+            position = position_proof(rule["source_concept"], roles, arcs, rule["preuve_position"])
+            if position is None:
+                reason = (f"position non prouvée par les calculs du dépôt ({annex_note}) : "
+                          f"{rule['source_concept']} n'est pas la première ligne d'un état financier")
         if reason:
             report["echecs"].append(f"{fid} : {reason}")
             failures[fid] = reason
             continue
         value = next(iter(values))
         m = matches[0]
-        rule = by_rule[prop["regle"]]
         _map_concept(s, rule, raw, doc["issuer_id"], rules["version"])
         target, fallback_note = rule["normalized_concept"], ""
         fb = rule.get("repli_total")
@@ -540,12 +660,16 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> di
             blockers = sorted({n for n, _ in same if n in fb["si_absents_du_document"]} |
                               {n for n, u in same if re.fullmatch(r"[A-Z]{3}", u) and n != rule["source_concept"]
                                and revenue_like(n, fb["autres_revenus"])})
+            proof_pos = position_proof(rule["source_concept"], roles, arcs, fb["preuve_position"]) \
+                if not blockers else None
+            if not blockers and proof_pos is None:
+                blockers = [f"aucune preuve positive dans les calculs du dépôt ({annex_note})"]
             if not blockers:
                 target = fb["concept"]
-                fallback_note = (f"{FALLBACK_PREFIX} le document ne déclare, pour l'entité entière et cette période, "
-                                 f"ni {fb['si_absents_du_document']} ni aucun autre concept de revenu "
-                                 f"(motifs {fb['autres_revenus']['motifs']}) ; le composant {rule['source_concept']} "
-                                 f"est retenu comme {target}. ")
+                fallback_note = (f"{FALLBACK_PREFIX} preuve positive : {proof_pos} [{annex_note}] ; et le document "
+                                 f"ne déclare, pour l'entité entière et cette période, ni {fb['si_absents_du_document']} "
+                                 f"ni aucun autre concept de revenu (motifs {fb['autres_revenus']['motifs']}) ; le "
+                                 f"composant {rule['source_concept']} est retenu comme {target}. ")
             else:
                 fallback_note = ""
                 report.setdefault("replis_bloques", []).append(f"{fid} : {blockers}")
@@ -559,7 +683,8 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> di
         s.set("facts", fid, "value", prop["raw_value"], proof, "valeur reprise telle quelle")
         s.set("facts", fid, "normalization_justification",
               f"{fallback_note}Règle {rule['id']} ({tag}) : {rule['source_concept']} [{rule['source_unit']}, "
-              f"{rule['period_type']}] -> {target} ; valeur reprise telle quelle ; contexte {m['context']} sans segment "
+              f"{rule['period_type']}] -> {target} ; valeur reprise telle quelle ;"
+              + (f" position : {position} [{annex_note}] ;" if position else "") + f" contexte {m['context']} sans segment "
               f"dans le document ; entrée brute {prop['source_pointer']} (sha256 {prop['entry_sha256'][:16]}…).",
               proof, rule["id"])
         s.set("facts", fid, "reconciled", "auto", proof, "rapprochement automatique XBRL en ligne")
@@ -595,6 +720,7 @@ def main(argv=None) -> int:
     i.add_argument("--doc-id", required=True)
     i.add_argument("--fichier", required=True, type=Path)
     i.add_argument("--retrieved-at", required=True)
+    i.add_argument("--annexe", action="append", type=Path, default=[], help="schéma .xsd ou fichier _cal.xml du dépôt")
     i.add_argument("--raw", type=Path)
     fx = sub.add_parser("fetch-filing", help="Télécharger le document principal depuis la SEC puis l'importer")
     fx.add_argument("--audit", required=True, type=Path)
@@ -629,7 +755,7 @@ def main(argv=None) -> int:
         elif a.cmd == "fetch-filing":
             print("sha256", fetch_filing(a.audit, a.doc_id, a.user_agent, a.raw))
         elif a.cmd == "import-filing":
-            print("sha256", import_filing(a.audit, a.doc_id, a.fichier, a.retrieved_at, a.raw))
+            print("sha256", import_filing(a.audit, a.doc_id, a.fichier, a.retrieved_at, a.raw, annexes=a.annexe))
         else:
             print(json.dumps(reconcile_ixbrl(a.audit, a.doc_id, a.raw, a.regles), ensure_ascii=False, indent=1))
     except NormalizeError as exc:

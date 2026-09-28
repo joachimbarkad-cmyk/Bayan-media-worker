@@ -1,16 +1,18 @@
-# Exemples vérifiables : normalisation de faits réels (règles edgar_v4)
+# Exemples vérifiables : normalisation de faits réels (règles edgar_v5)
 
-**Statut (V1.19).** Six documents ont été téléchargés de `www.sec.gov` le 28/09/2026 (heure exacte et empreinte dans
+**Statut (V1.20).** Huit documents ont été téléchargés de `www.sec.gov` le 28/09/2026 (heure exacte et empreinte dans
 `documents.csv` et `journal_saisies.csv`). Leurs faits proposés ont été **normalisés et rapprochés automatiquement** :
 même entité (identifiant au schéma CIK de la SEC), même période exacte, même unité (devise ISO 4217), concept résolu par
 espace de noms, contexte sans segment ni scénario, valeur affichée égale à la valeur companyfacts. Les autres dépôts
 restent « proposés ». Rapprochement automatique = concordance des chiffres ; le choix des règles reste à relire.
 
-**Revenu total.** `us-gaap:Revenues` est le total prioritaire. `RevenueFromContractWithCustomer…` (contrats clients,
-ASC 606) est un **composant** (`revenue_from_contracts_with_customers`) ; il n'est retenu comme total que **par repli**,
-marqué « REPLI : », si le document ne déclare pour l'entité entière, la même période et la même devise ni `Revenues`,
-ni `RevenueNotFromContractWithCustomer`, ni **aucun autre concept de revenu** (motifs de noms dans
-`config/normalisation/edgar_v4.json`). Sonde sur 20 émetteurs : `docs/SONDE_REVENUS.md`.
+**Revenu total (edgar_v5).** Totaux directs : `us-gaap:Revenues`, et `RegulatedAndUnregulatedOperatingRevenue` s'il est
+en première ligne d'un état financier (calculs du dépôt). `RevenueFromContractWithCustomer…ExcludingAssessedTax` est un
+**composant** ; il ne devient total que **par repli prouvé** (« REPLI : ») : il doit être, dans les calculs d'un rôle
+« Statement » du dépôt, l'enfant +1 de `GrossProfit` ou `OperatingIncomeLoss` sans autre élément positif, ET aucun
+autre revenu ne doit être déclaré pour l'entité entière (bloqueur par noms). `…IncludingAssessedTax` est un composant
+distinct, jamais un total. Les calculs du dépôt (`.xsd`, `_cal.xml`) sont téléchargés avec le document ; empreintes
+dans `copies/<doc>/annexes.json`. Sonde sur 20 émetteurs : `docs/SONDE_REVENUS.md`.
 
 ## Refaire et vérifier
 
@@ -18,7 +20,7 @@ ni `RevenueNotFromContractWithCustomer`, ni **aucun autre concept de revenu** (m
 cd trading_halal
 python3 tools/edgar_collect.py verify-trace --raw collecte/apple --audit data/audit_edgar_apple
 python3 tools/edgar_normalize.py verify-normalisation --raw collecte/apple --audit data/audit_edgar_apple \
-    --regles config/normalisation/edgar_v4.json
+    --regles config/normalisation/edgar_v5.json
 python3 -m halal_sim audit-docs data/audit_edgar_apple
 python3 tools/exemple_normalisation.py --audit data/audit_edgar_apple --accn 0000320193-25-000079
 ```
@@ -30,8 +32,44 @@ Pour un autre dépôt (identification SEC obligatoire, jamais enregistrée ; ou 
 python3 tools/edgar_normalize.py fetch-filing --audit data/audit_edgar_apple \
     --doc-id 0000320193-0000320193-24-000123 --user-agent "Prénom Nom adresse@domaine" --raw collecte/apple
 python3 tools/edgar_normalize.py reconcile-ixbrl --audit data/audit_edgar_apple \
-    --doc-id 0000320193-0000320193-24-000123 --raw collecte/apple --regles config/normalisation/edgar_v4.json
+    --doc-id 0000320193-0000320193-24-000123 --raw collecte/apple --regles config/normalisation/edgar_v5.json
 ```
+
+## Duke Energy — 10-K 2025 : total direct réglementé (V1.20)
+
+`RegulatedAndUnregulatedOperatingRevenue` = 32 237 M$, première ligne du compte de résultat (résultat d'exploitation =
+revenus − charges + gains de cession) ; composant `…IncludingAssessedTax` 31 741 M$ distinct (test
+`test_review_15_duke_total_is_regulated_operating_revenue`).
+
+Dépôt 10-K 0001326160-26-000014, accepté le 2026-02-26T18:07:42.000+00:00 ; document : https://www.sec.gov/Archives/edgar/data/1326160/000132616026000014/duk-20251231.htm
+
+| Concept du projet | Concept d'origine | Période | Valeur | Statut | Entrée brute (collecte) |
+|---|---|---|---|---|---|
+| revenue_from_contracts_with_customers_including_assessed_tax | us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax | 2023-01-01 → 2023-12-31 | 28 674 000 000 USD | normalisé, rapproché (auto), contexte c-21, decimals -6 | `facts/us-gaap/RevenueFromContractWithCustomerIncludingAssessedTax/units/USD/76` |
+| revenue_from_contracts_with_customers_including_assessed_tax | us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax | 2024-01-01 → 2024-12-31 | 30 050 000 000 USD | normalisé, rapproché (auto), contexte c-20, decimals -6 | `facts/us-gaap/RevenueFromContractWithCustomerIncludingAssessedTax/units/USD/88` |
+| revenue_from_contracts_with_customers_including_assessed_tax | us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax | 2025-01-01 → 2025-12-31 | 31 741 000 000 USD | normalisé, rapproché (auto), contexte c-1, decimals -6 | `facts/us-gaap/RevenueFromContractWithCustomerIncludingAssessedTax/units/USD/95` |
+| total_assets | us-gaap:Assets | au 2023-12-31 | 176 893 000 000 USD | normalisé, rapproché (auto), contexte c-34, decimals -6 | `facts/us-gaap/Assets/units/USD/138` |
+| total_assets | us-gaap:Assets | au 2024-12-31 | 186 343 000 000 USD | normalisé, rapproché (auto), contexte c-29, decimals -6 | `facts/us-gaap/Assets/units/USD/148` |
+| total_assets | us-gaap:Assets | au 2025-12-31 | 195 736 000 000 USD | normalisé, rapproché (auto), contexte c-28, decimals -6 | `facts/us-gaap/Assets/units/USD/153` |
+| total_revenue | us-gaap:RegulatedAndUnregulatedOperatingRevenue | 2023-01-01 → 2023-12-31 | 29 060 000 000 USD | normalisé, rapproché (auto), contexte c-21, decimals -6 | `facts/us-gaap/RegulatedAndUnregulatedOperatingRevenue/units/USD/148` |
+| total_revenue | us-gaap:RegulatedAndUnregulatedOperatingRevenue | 2024-01-01 → 2024-12-31 | 30 357 000 000 USD | normalisé, rapproché (auto), contexte c-20, decimals -6 | `facts/us-gaap/RegulatedAndUnregulatedOperatingRevenue/units/USD/161` |
+| total_revenue | us-gaap:RegulatedAndUnregulatedOperatingRevenue | 2025-01-01 → 2025-12-31 | 32 237 000 000 USD | normalisé, rapproché (auto), contexte c-1, decimals -6 | `facts/us-gaap/RegulatedAndUnregulatedOperatingRevenue/units/USD/168` |
+
+## Ford — 10-K 2025 : repli prouvé (V1.20)
+
+R1 = 187 267 M$, enfant +1 du résultat d'exploitation dans « CONSOLIDATED INCOME STATEMENTS » (Ford Credit compris,
+vérifié par le relecteur) (test `test_review_15_ford_total_is_a_proven_fallback`).
+
+Dépôt 10-K 0000037996-26-000015, accepté le 2026-02-11T00:08:37.000+00:00 ; document : https://www.sec.gov/Archives/edgar/data/37996/000003799626000015/f-20251231.htm
+
+| Concept du projet | Concept d'origine | Période | Valeur | Statut | Entrée brute (collecte) |
+|---|---|---|---|---|---|
+| revenue_from_contracts_with_customers | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2023-01-01 → 2023-12-31 | 176 191 000 000 USD | **total_revenue par repli** ; normalisé, rapproché (auto), contexte c-16, decimals -6 | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/86` |
+| revenue_from_contracts_with_customers | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2024-01-01 → 2024-12-31 | 184 992 000 000 USD | **total_revenue par repli** ; normalisé, rapproché (auto), contexte c-17, decimals -6 | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/98` |
+| revenue_from_contracts_with_customers | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2025-01-01 → 2025-12-31 | 187 267 000 000 USD | **total_revenue par repli** ; normalisé, rapproché (auto), contexte c-1, decimals -6 | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/105` |
+| total_assets | us-gaap:Assets | au 2023-12-31 | 273 310 000 000 USD | normalisé, rapproché (auto), contexte c-31, decimals -6 | `facts/us-gaap/Assets/units/USD/181` |
+| total_assets | us-gaap:Assets | au 2024-12-31 | 285 196 000 000 USD | normalisé, rapproché (auto), contexte c-18, decimals -6 | `facts/us-gaap/Assets/units/USD/192` |
+| total_assets | us-gaap:Assets | au 2025-12-31 | 289 160 000 000 USD | normalisé, rapproché (auto), contexte c-19, decimals -6 | `facts/us-gaap/Assets/units/USD/197` |
 
 ## American Express — 10-K 2025 : le repli est bloqué (V1.19)
 
@@ -128,4 +166,4 @@ Dépôt 10-K 0001652044-26-000018, accepté le 2026-02-05T02:56:03.000+00:00 ; d
 
 - Nombres d'actions : catégories d'actions ordinaires (cotées ou non) à établir sur le document, à la date du fait.
 - Agrégats et postes à qualifier (dette à intérêt, placements à intérêt, revenus illicites) et capitalisation : voir
-  `config/normalisation/edgar_v4.json` (`non_normalises_volontairement`).
+  `config/normalisation/edgar_v5.json` (`non_normalises_volontairement`).

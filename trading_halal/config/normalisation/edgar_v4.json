@@ -1,7 +1,7 @@
 {
   "version": "edgar_v4",
   "date": "2026-09-28",
-  "statut": "PROPOSITION NON RELUE : règles écrites par l'assistant, à faire relire indépendamment (voir HANDOFF.md)",
+  "statut": "RETIRÉE (revue n° 15) : le repli R1 -> total reposait sur l'absence de bloqueurs, sans preuve positive ; remplacée par edgar_v5",
   "portee": "Faits companyfacts (SEC) en USD ; correspondance UN concept d'origine -> UN concept du projet, sans agrégation ni calcul. Aucune normalisation sans le document du dépôt.",
   "regles": [
     {

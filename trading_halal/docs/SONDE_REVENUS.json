@@ -4,26 +4,30 @@
   "nom": "Apple Inc.",
   "accn": "0000320193-25-000079",
   "exercice": "2024-09-29 → 2025-09-27",
-  "decision": "REPLI R1 -> total",
+  "decision": "REPLI R1 -> total (preuve positive)",
   "autres": {},
   "r1": [
    "416,161",
    "6"
   ],
-  "revenues": null
+  "revenues": null,
+  "r0b": null,
+  "preuve": "rôle « Statement - CONSOLIDATED STATEMENTS OF OPERATIONS » : us-gaap:GrossProfit = us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax (+1) − us-gaap:CostOfGoodsAndServicesSold"
  },
  {
   "cik": "0000789019",
   "nom": "MICROSOFT CORP",
   "accn": "0001193125-26-323660",
   "exercice": "2025-07-01 → 2026-06-30",
-  "decision": "REPLI R1 -> total",
+  "decision": "REPLI R1 -> total (preuve positive)",
   "autres": {},
   "r1": [
    "331,839",
    "6"
   ],
-  "revenues": null
+  "revenues": null,
+  "r0b": null,
+  "preuve": "rôle « Statement - INCOME STATEMENTS » : us-gaap:GrossProfit = us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax (+1) − us-gaap:CostOfGoodsAndServicesSold"
  },
  {
   "cik": "0001652044",
@@ -36,7 +40,9 @@
   "revenues": [
    "402,836",
    "6"
-  ]
+  ],
+  "r0b": null,
+  "preuve": ""
  },
  {
   "cik": "0001130464",
@@ -52,7 +58,9 @@
   "revenues": [
    "2,310.0",
    "6"
-  ]
+  ],
+  "r0b": null,
+  "preuve": ""
  },
  {
   "cik": "0000726728",
@@ -74,7 +82,9 @@
   "revenues": [
    "5,749,377",
    "3"
-  ]
+  ],
+  "r0b": null,
+  "preuve": ""
  },
  {
   "cik": "0001063761",
@@ -108,7 +118,9 @@
   "revenues": [
    "6,364,505",
    "3"
-  ]
+  ],
+  "r0b": null,
+  "preuve": ""
  },
  {
   "cik": "0001045609",
@@ -134,7 +146,9 @@
   "revenues": [
    "8,790,127",
    "3"
-  ]
+  ],
+  "r0b": null,
+  "preuve": ""
  },
  {
   "cik": "0000019617",
@@ -192,7 +206,9 @@
   "revenues": [
    "182,447",
    "6"
-  ]
+  ],
+  "r0b": null,
+  "preuve": ""
  },
  {
   "cik": "0000070858",
@@ -238,19 +254,17 @@
   "revenues": [
    "113,097",
    "6"
-  ]
+  ],
+  "r0b": null,
+  "preuve": ""
  },
  {
   "cik": "0001326160",
   "nom": "Duke Energy CORP",
   "accn": "0001326160-26-000014",
   "exercice": "2025-01-01 → 2025-12-31",
-  "decision": "aucun total (ni Revenues ni R1)",
+  "decision": "RegulatedAndUnregulatedOperatingRevenue -> total",
   "autres": {
-   "us-gaap:RegulatedAndUnregulatedOperatingRevenue": [
-    "32,237",
-    "6"
-   ],
    "us-gaap:RegulatedOperatingRevenueElectricNonNuclear": [
     "29,060",
     "6"
@@ -269,7 +283,12 @@
    ]
   },
   "r1": null,
-  "revenues": null
+  "revenues": null,
+  "r0b": [
+   "32,237",
+   "6"
+  ],
+  "preuve": "rôle « Statement - Condensed Consolidated Statements of Operations » : us-gaap:OperatingIncomeLoss = us-gaap:RegulatedAndUnregulatedOperatingRevenue (+1) − us-gaap:CostsAndExpenses + us-gaap:GainLossOnDispositionOfAssets1"
  },
  {
   "cik": "0000732717",
@@ -282,7 +301,9 @@
   "revenues": [
    "125,648",
    "6"
-  ]
+  ],
+  "r0b": null,
+  "preuve": ""
  },
  {
   "cik": "0000104169",
@@ -298,7 +319,9 @@
   "revenues": [
    "713,163",
    "6"
-  ]
+  ],
+  "r0b": null,
+  "preuve": ""
  },
  {
   "cik": "0000034088",
@@ -320,7 +343,9 @@
   "revenues": [
    "332,238",
    "6"
-  ]
+  ],
+  "r0b": null,
+  "preuve": ""
  },
  {
   "cik": "0000731766",
@@ -338,33 +363,39 @@
   "revenues": [
    "447,567",
    "6"
-  ]
+  ],
+  "r0b": null,
+  "preuve": ""
  },
  {
   "cik": "0001403161",
   "nom": "VISA INC.",
   "accn": "0001403161-25-000089",
   "exercice": "2024-10-01 → 2025-09-30",
-  "decision": "REPLI R1 -> total",
+  "decision": "REPLI R1 -> total (preuve positive)",
   "autres": {},
   "r1": [
    "40,000",
    "6"
   ],
-  "revenues": null
+  "revenues": null,
+  "r0b": null,
+  "preuve": "rôle « Statement - CONSOLIDATED STATEMENTS OF OPERATIONS » : us-gaap:OperatingIncomeLoss = us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax (+1) − us-gaap:CostsAndExpenses"
  },
  {
   "cik": "0000037996",
   "nom": "FORD MOTOR CO",
   "accn": "0000037996-26-000015",
   "exercice": "2025-01-01 → 2025-12-31",
-  "decision": "REPLI R1 -> total",
+  "decision": "REPLI R1 -> total (preuve positive)",
   "autres": {},
   "r1": [
    "187,267",
    "6"
   ],
-  "revenues": null
+  "revenues": null,
+  "r0b": null,
+  "preuve": "rôle « Statement - CONSOLIDATED INCOME STATEMENTS » : us-gaap:OperatingIncomeLoss = us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax (+1) − us-gaap:CostsAndExpenses"
  },
  {
   "cik": "0000018230",
@@ -390,7 +421,9 @@
   "revenues": [
    "67,589",
    "6"
-  ]
+  ],
+  "r0b": null,
+  "preuve": ""
  },
  {
   "cik": "0000012927",
@@ -416,7 +449,9 @@
   "revenues": [
    "89,463",
    "6"
-  ]
+  ],
+  "r0b": null,
+  "preuve": ""
  },
  {
   "cik": "0000021344",
@@ -438,14 +473,16 @@
   "revenues": [
    "47,941",
    "6"
-  ]
+  ],
+  "r0b": null,
+  "preuve": ""
  },
  {
   "cik": "0000004962",
   "nom": "AMERICAN EXPRESS CO",
   "accn": "0000004962-26-000080",
   "exercice": "2025-01-01 → 2025-12-31",
-  "decision": "repli R1 bloqué",
+  "decision": "repli R1 bloqué (autres revenus)",
   "autres": {
    "us-gaap:InterestAndDividendIncomeOperating": [
     "25,598",
@@ -472,6 +509,8 @@
    "41,304",
    "6"
   ],
-  "revenues": null
+  "revenues": null,
+  "r0b": null,
+  "preuve": ""
  }
 ]

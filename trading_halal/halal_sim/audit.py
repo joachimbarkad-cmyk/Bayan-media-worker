@@ -42,7 +42,9 @@ FILES = {
 # Concepts normalisés du projet (ceux qu'utiliserait un futur jeu de simulation).
 PROJECT_CONCEPTS = {"market_cap", "shares_outstanding", "total_assets", "interest_bearing_debt",
                     "cash_and_interest_bearing_investments", "total_revenue", "non_compliant_revenue",
-                    "revenue_from_contracts_with_customers"}  # composant (ASC 606), jamais un total par défaut
+                    "revenue_from_contracts_with_customers",  # composant (ASC 606), jamais un total par défaut
+                    # même composant, taxes collectées INCLUSES : jamais interchangeable avec le précédent
+                    "revenue_from_contracts_with_customers_including_assessed_tax"}
 SHARE_UNITS = {"shares", "actions"}
 SHARE_CONCEPTS = {"shares_outstanding", "market_cap"}
 # Nature de chaque concept normalisé : monétaire (unité « monnaie » + devise) ou nombre d'actions (sans devise).
