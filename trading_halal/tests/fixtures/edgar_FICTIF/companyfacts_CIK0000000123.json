@@ -1,0 +1,78 @@
+{
+ "cik": 123,
+ "entityName": "Exemple Industries (fictif)",
+ "facts": {
+  "dei": {
+   "EntityCommonStockSharesOutstanding": {
+    "label": "Entity Common Stock, Shares Outstanding",
+    "units": {
+     "shares": [
+      {
+       "end": "2025-02-14",
+       "val": 48000000,
+       "accn": "0000000123-25-000004",
+       "form": "10-K",
+       "filed": "2025-02-20"
+      }
+     ]
+    }
+   }
+  },
+  "us-gaap": {
+   "Revenues": {
+    "label": "Revenues",
+    "units": {
+     "USD": [
+      {
+       "start": "2024-01-01",
+       "end": "2024-12-31",
+       "val": 1250000000,
+       "accn": "0000000123-25-000004",
+       "form": "10-K",
+       "filed": "2025-02-20"
+      },
+      {
+       "start": "2023-01-01",
+       "end": "2023-12-31",
+       "val": 1100000000,
+       "accn": "0000000123-25-000004",
+       "form": "10-K",
+       "filed": "2025-02-20"
+      },
+      {
+       "start": "2024-07-01",
+       "end": "2024-09-30",
+       "val": 300000000,
+       "accn": "0000000123-24-000030",
+       "form": "10-Q",
+       "filed": "2024-11-01"
+      },
+      {
+       "start": "2024-01-01",
+       "end": "2024-12-31",
+       "val": 1250000000,
+       "accn": "0000000123-25-000010",
+       "form": "10-K/A",
+       "filed": "2025-04-10"
+      }
+     ]
+    }
+   },
+   "EarningsPerShareBasic": {
+    "label": "EPS basic",
+    "units": {
+     "USD/shares": [
+      {
+       "start": "2024-01-01",
+       "end": "2024-12-31",
+       "val": 2.1,
+       "accn": "0000000123-25-000004",
+       "form": "10-K",
+       "filed": "2025-02-20"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

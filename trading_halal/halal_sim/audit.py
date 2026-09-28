@@ -29,9 +29,12 @@ FILES = {
                    "currency", "source"],
     "documents": ["doc_id", "issuer_id", "doc_type", "accession_number", "url", "local_copy", "local_sha256",
                   "period_end", "accepted_at", "public_available_at", "retrieved_at", "version", "amends_doc_id"],
-    "facts": ["fact_id", "doc_id", "source_concept", "source_context", "normalized_concept", "definition", "value",
+    # Fait d'origine (concept, contexte, dimensions, unité, valeur brute, précision) conservé tel quel ; la version
+    # normalisée (valeur, unité, devise) n'existe qu'avec une transformation et une justification propres au fait.
+    "facts": ["fact_id", "doc_id", "source_concept", "source_context", "source_dimensions", "source_unit", "raw_value",
+              "decimals", "normalized_concept", "transformation", "normalization_justification", "definition", "value",
               "unit", "currency", "period_type", "period_start", "period_end", "measure_date", "share_class",
-              "price_adjusted", "corrects_fact_id"],
+              "price_adjusted", "corrects_fact_id", "reconciled", "reconciled_note"],
     "concept_map": ["source_concept", "normalized_concept", "justification"],
     "activities": ["issuer_id", "proposed_code", "evidence_doc_id", "available_at", "source", "source_url",
                    "justification"],
@@ -41,6 +44,9 @@ PROJECT_CONCEPTS = {"market_cap", "shares_outstanding", "total_assets", "interes
                     "cash_and_interest_bearing_investments", "total_revenue", "non_compliant_revenue"}
 SHARE_UNITS = {"shares", "actions"}
 SHARE_CONCEPTS = {"shares_outstanding", "market_cap"}
+# Nature de chaque concept normalisé : monétaire (unité « monnaie » + devise) ou nombre d'actions (sans devise).
+MONETARY_CONCEPTS = PROJECT_CONCEPTS - {"shares_outstanding"}
+MONETARY_UNIT = "monnaie"
 CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 
 
@@ -54,10 +60,25 @@ class AuditResult:
     counts: dict[str, int]
     errors: list[str] = field(default_factory=list)      # bloquants
     unknowns: list[str] = field(default_factory=list)    # inconnues signalées, non comblées
+    reconciled: int = 0                                  # faits normalisés rapprochés à la main de leur pièce
+    to_reconcile: int = 0                                # faits normalisés au total
 
     @property
     def ok(self) -> bool:
+        """Aucune contradiction détectée automatiquement. Ce n'est PAS un verdict d'audit : voir `verdict`."""
         return not self.errors
+
+    @property
+    def verdict(self) -> str:
+        if self.errors:
+            return "REJETE : contradictions détectées"
+        if self.to_reconcile == 0:
+            return "NON EXPLOITABLE : aucun fait normalisé"
+        if self.reconciled < self.to_reconcile:
+            return (f"NON EXPLOITABLE : {self.to_reconcile - self.reconciled} fait(s) normalisé(s) non rapproché(s) "
+                    "de leur pièce")
+        return ("RAPPROCHE : forme cohérente et faits normalisés rapprochés à la main ; l'exactitude repose sur ce "
+                "rapprochement humain, pas sur le logiciel")
 
 
 def _read(path: Path, expected: list[str]) -> list[dict]:
@@ -215,6 +236,10 @@ def audit_folder(root: str | Path) -> AuditResult:
             E(f"{ctx} : accepté avant (ou en même temps que) le document qu'il rectifie")
         if target["_pe"] != r["_pe"]:
             E(f"{ctx} : période {r['period_end']} différente du document rectifié ({target['period_end']})")
+        t_pub, r_pub = target["_pub"] or target["_acc"], r["_pub"] or r["_acc"]
+        if t_pub and r_pub and r_pub <= t_pub:
+            E(f"{ctx} : diffusé ({r_pub.isoformat()}) avant ou en même temps que le document qu'il rectifie "
+              f"({t_pub.isoformat()})")
         chain, cur = {r["doc_id"]}, target
         while cur is not None and cur["amends_doc_id"]:
             if cur["doc_id"] in chain:
@@ -259,6 +284,41 @@ def audit_folder(root: str | Path) -> AuditResult:
             E(f"{ctx} : concept {r['source_concept']!r} mappé vers {mapped!r} mais non normalisé dans le fait")
         else:
             U(f"{ctx} : concept {r['source_concept']!r} non normalisé (inutilisable par le projet en l'état)")
+        if not r["source_unit"]:
+            E(f"{ctx} : unité d'origine manquante")
+        if r["source_dimensions"]:
+            U(f"{ctx} : fait dimensionnel ({r['source_dimensions']}) : à ne pas confondre avec le total de l'entité")
+        if r["decimals"] and r["decimals"] != "INF" and not re.fullmatch(r"-?\d+", r["decimals"]):
+            E(f"{ctx} : précision (decimals) invalide {r['decimals']!r}")
+        if not r["decimals"]:
+            U(f"{ctx} : précision (decimals) non renseignée")
+        if r["raw_value"]:
+            try:
+                if not math.isfinite(float(r["raw_value"])):
+                    raise ValueError
+            except ValueError:
+                E(f"{ctx} : valeur brute non numérique ou non finie {r['raw_value']!r}")
+        if norm:
+            res.to_reconcile += 1
+            if not r["normalization_justification"]:
+                E(f"{ctx} : normalisation sans justification propre au fait (le mappage général ne suffit pas)")
+            if r["transformation"] == "":
+                E(f"{ctx} : transformation non décrite (« aucune » si la valeur est reprise telle quelle)")
+            elif r["transformation"] == "aucune" and r["value"] != r["raw_value"]:
+                E(f"{ctx} : transformation « aucune » mais valeur {r['value']!r} ≠ valeur brute {r['raw_value']!r}")
+            if norm in MONETARY_CONCEPTS:
+                if r["unit"] != MONETARY_UNIT or not r["currency"]:
+                    E(f"{ctx} : {norm} est monétaire : unité « {MONETARY_UNIT} » et devise obligatoires")
+            elif r["unit"].lower() not in SHARE_UNITS or r["currency"]:
+                E(f"{ctx} : {norm} est un nombre d'actions : unité « actions », sans devise")
+            if r["reconciled"] == "oui":
+                res.reconciled += 1
+            elif r["reconciled"] not in ("", "non"):
+                E(f"{ctx} : reconciled doit valoir oui, non ou rester vide")
+        if r["unit"] == MONETARY_UNIT and not r["currency"]:
+            E(f"{ctx} : unité monétaire sans devise")
+        if r["unit"].lower() in SHARE_UNITS and r["currency"]:
+            E(f"{ctx} : nombre d'actions exprimé avec une devise ({r['currency']})")
         if r["value"] == "":
             U(f"{ctx} ({r['source_concept']}) : valeur inconnue (null)")
         else:

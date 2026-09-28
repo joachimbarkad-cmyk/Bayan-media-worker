@@ -87,6 +87,38 @@ class StoreSchemaError(RuntimeError):
         self.path, self.found = path, found
 
 
+def archive_database(path: Path) -> Path:
+    """Archive explicite d'une base : copie COHÉRENTE par l'API de sauvegarde SQLite (elle intègre un éventuel
+    journal WAL) vers un nom réservé de façon exclusive (jamais d'écrasement, même dans la même seconde),
+    vérification de la copie, puis seulement suppression de l'original et de ses fichiers -wal / -shm."""
+    from datetime import datetime
+    path = Path(path)
+    src = sqlite3.connect(str(path))
+    version = src.execute("PRAGMA user_version").fetchone()[0]
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    n = 0
+    while True:
+        target = path.with_name(f"{path.name}.schema-v{version}-{stamp}-{n}.bak")
+        try:
+            with open(target, "xb"):  # réservation exclusive du nom
+                break
+        except FileExistsError:
+            n += 1
+    dst = sqlite3.connect(str(target))
+    try:
+        src.backup(dst)
+        if dst.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            raise RuntimeError(f"Copie {target} invalide : original conservé")
+    finally:
+        dst.close()
+        src.close()
+    for suffix in ("", "-wal", "-shm"):
+        extra = Path(str(path) + suffix)
+        if extra.exists():
+            extra.unlink()
+    return target
+
+
 class Store:
     def __init__(self, path: str | Path):
         path = Path(path)

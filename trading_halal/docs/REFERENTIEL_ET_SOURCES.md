@@ -105,3 +105,10 @@ du chiffre et la fin de période, plusieurs catégories d'actions, cours ajusté
 réelles, il faudra dater le nombre d'actions et préciser la définition de capitalisation du référentiel retenu.
 La devise de chaque état financier est comparée à celle de la cotation : sans conversion datée, une différence
 donne INCERTAIN.
+
+## 9. Règles de fiqh fournies par l'utilisateur (en attente)
+
+L'utilisateur indique que ses règles de fiqh figurent dans une conversation séparée (avec un autre assistant).
+Cette conversation **n'est pas accessible** au développement : aucune règle n'en a été reprise. Dès que les passages
+pertinents seront fournis (texte, références, auteur ou comité), ils seront consignés ici avec leur source, puis codés
+dans un référentiel daté, testés, et soumis à validation humaine avant tout usage sur données réelles.

@@ -6,7 +6,8 @@ import unittest
 from datetime import date
 
 from helpers import demo_dataset, fresh_copy, run, with_activity
-from test_review4 import VolumeTests, _copy_demo
+import test_review4 as r4
+from test_review4 import _copy_demo
 
 from halal_sim.data import DataError, load_dataset
 from halal_sim.db import Store
@@ -28,7 +29,7 @@ def _set_price_field(d, row_index, column, value):
 class ExecutionVolumeTests(unittest.TestCase):
     def test_review_case_no_fill_larger_than_day_volume(self):
         """Volume total du jour = 1 action : les références simulaient l'achat de 7 actions."""
-        _, store = run(ds=VolumeTests()._with_volume("FXALP", date(2021, 11, 1), 1))
+        _, store = run(ds=r4.VolumeTests()._with_volume("FXALP", date(2021, 11, 1), 1))
         c = store.conn
         self.assertEqual(c.execute("SELECT COUNT(*) FROM orders WHERE ticker='FXALP' AND execution_date=? AND "
                                    "status='EXECUTE_SIMULE'", (EXEC,)).fetchone()[0], 0)
@@ -39,7 +40,7 @@ class ExecutionVolumeTests(unittest.TestCase):
         """La barre du jour d'exécution (volume) ne sert qu'au modèle de marché : les DÉCISIONS prises la veille
         et avant sont identiques, seules les exécutions changent."""
         _, base = run()
-        _, alt = run(ds=VolumeTests()._with_volume("FXALP", date(2021, 11, 1), 0))
+        _, alt = run(ds=r4.VolumeTests()._with_volume("FXALP", date(2021, 11, 1), 0))
         q = ("SELECT portfolio, decision_date, ticker, signal, final_action, reason_code, detail, inputs_json "
              "FROM decisions WHERE decision_date <= '2021-10-29' ORDER BY 1, 2, 3")
         self.assertEqual([tuple(r) for r in base.conn.execute(q)], [tuple(r) for r in alt.conn.execute(q)])

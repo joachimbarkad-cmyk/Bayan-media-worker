@@ -1,6 +1,6 @@
-fact_id,doc_id,source_concept,source_context,normalized_concept,definition,value,unit,currency,period_type,period_start,period_end,measure_date,share_class,price_adjusted,corrects_fact_id
-F1,D1,us-gaap:Revenues,ctx_FY2024,total_revenue,Chiffre d'affaires total de l'exercice (définition du document),1250000000,monnaie,USD,duration,2024-01-01,2024-12-31,,,,
-F2,D1,exemple:InterestBearingDebt,ctx_2024-12-31,interest_bearing_debt,Dette financière portant intérêt (définition à valider),310000000,monnaie,USD,instant,,2024-12-31,,,,
-F3,D1,dei:EntityCommonStockSharesOutstanding,ctx_2025-02-14,shares_outstanding,Actions ordinaires en circulation (page de garde),48000000,actions,,instant,,2024-12-31,2025-02-14,ordinaires,,
-F4,D1,exemple:NonCompliantRevenue,,,Revenus non conformes (non publiés tels quels par l'émetteur),,monnaie,USD,duration,2024-01-01,2024-12-31,,,,
-F5,D2,exemple:InterestBearingDebt,ctx_2024-12-31,interest_bearing_debt,Dette financière portant intérêt après rectification,315000000,monnaie,USD,instant,,2024-12-31,,,,F2
+fact_id,doc_id,source_concept,source_context,source_dimensions,source_unit,raw_value,decimals,normalized_concept,transformation,normalization_justification,definition,value,unit,currency,period_type,period_start,period_end,measure_date,share_class,price_adjusted,corrects_fact_id,reconciled,reconciled_note
+F1,D1,us-gaap:Revenues,ctx_FY2024,,USD,1250000000,-6,total_revenue,aucune,Total de l'entité sans dimension ; reprise telle quelle,Chiffre d'affaires total de l'exercice (définition du document),1250000000,monnaie,USD,duration,2024-01-01,2024-12-31,,,,,non,
+F2,D1,exemple:InterestBearingDebt,ctx_2024-12-31,,USD,310000000,-6,interest_bearing_debt,aucune,Concept fictif ; total de l'entité,Dette financière portant intérêt (définition à valider),310000000,monnaie,USD,instant,,2024-12-31,,,,,non,
+F3,D1,dei:EntityCommonStockSharesOutstanding,ctx_2025-02-14,,shares,48000000,INF,shares_outstanding,aucune,Page de garde ; une seule catégorie d'actions déclarée,Actions ordinaires en circulation (page de garde),48000000,actions,,instant,,2024-12-31,2025-02-14,ordinaires,,,non,
+F4,D1,exemple:NonCompliantRevenue,,,USD,,,,,,Revenus non conformes (non publiés tels quels par l'émetteur),,monnaie,USD,duration,2024-01-01,2024-12-31,,,,,,
+F5,D2,exemple:InterestBearingDebt,ctx_2024-12-31,,USD,315000000,-6,interest_bearing_debt,aucune,Valeur rectifiée par D2,Dette financière portant intérêt après rectification,315000000,monnaie,USD,instant,,2024-12-31,,,,F2,non,

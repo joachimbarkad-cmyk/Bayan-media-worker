@@ -23,8 +23,9 @@ Depuis la racine du dépôt :
 cd trading_halal
 python3 -m halal_sim check-data                 # valide les fichiers de données de démonstration
 python3 -m halal_sim run                        # simulation complète + rapport + sensibilité au capital
-python3 -m unittest discover -s tests -v        # 112 vérifications automatiques
+python3 -m unittest discover -s tests -v        # 125 vérifications automatiques
 python3 -m halal_sim audit-docs                  # contrôle du dossier d'audit documentaire d'exemple (FICTIF)
+python3 tools/edgar_collect.py collect --cik 320193 --dry-run --out collecte_brute   # collecte EDGAR (voir docs/AUDIT_DOCUMENTAIRE.md)
 ```
 
 Options utiles :

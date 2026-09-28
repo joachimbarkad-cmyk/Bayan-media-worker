@@ -51,23 +51,32 @@ def cmd_audit_docs(args) -> int:
         print(f"  ERREUR   {e}")
     for u in res.unknowns:
         print(f"  INCONNUE {u}")
-    print(f"{len(res.errors)} erreur(s) bloquante(s), {len(res.unknowns)} inconnue(s) signalée(s).")
+    print(f"{len(res.errors)} erreur(s) bloquante(s), {len(res.unknowns)} inconnue(s) signalée(s), "
+          f"{res.reconciled}/{res.to_reconcile} fait(s) normalisé(s) rapproché(s) de leur pièce.")
+    print(f"VERDICT : {res.verdict}")
     print("Ce contrôle vérifie la forme, la chronologie et l'intégrité des copies locales ; il ne prouve pas l'exactitude "
           "des valeurs et ne produit aucun statut religieux.")
     return 0 if res.ok else 1
 
 
-def _open_store(path: Path):
-    """Ouvre la base ; si elle date d'une version incompatible, elle est ARCHIVÉE (renommée, jamais supprimée)."""
-    from datetime import datetime
-    from .db import Store, StoreSchemaError
+class IncompatibleDatabase(SystemExit):
+    pass
+
+
+def _open_store(path: Path, archive: bool = False):
+    """Ouvre la base. Une base d'un autre schéma est REFUSÉE par défaut ; elle n'est archivée que sur demande
+    explicite (--archiver-ancienne-base), par copie vérifiée, jamais par écrasement."""
+    from .db import Store, StoreSchemaError, archive_database
     try:
         return Store(path)
     except StoreSchemaError as exc:
-        backup = path.with_name(f"{path.name}.schema-v{exc.found}-{datetime.now():%Y%m%d-%H%M%S}.bak")
-        path.rename(backup)
-        print(f"Base existante au schéma v{exc.found} (incompatible) : archivée sous {backup.name}. "
-              "Une nouvelle base est créée ; l'ancienne reste lisible avec la version du code qui l'a produite.")
+        if not archive:
+            print(f"REFUS : la base {path} est au schéma v{exc.found}, incompatible avec cette version. Rien n'a été "
+                  "modifié. Relancez avec --archiver-ancienne-base pour l'archiver (copie vérifiée) et en créer une "
+                  "neuve, ou indiquez une autre base dans la configuration (db_path).")
+            raise IncompatibleDatabase(2)
+        backup = archive_database(path)
+        print(f"Base au schéma v{exc.found} archivée sous {backup.name} (copie vérifiée) ; nouvelle base créée.")
         return Store(path)
 
 
@@ -81,7 +90,7 @@ def cmd_run(args) -> int:
     cfg = load_config(args.config)
     ds = load_dataset(_path(cfg["dataset_dir"]))
     ruleset = load_ruleset(_path(cfg["ruleset"]))
-    store = _open_store(_path(cfg["db_path"]))
+    store = _open_store(_path(cfg["db_path"]), archive=args.archiver_ancienne_base)
     capital = args.capital or cfg["initial_capital"]
     main = run_backtest(ds, cfg, ruleset, store, capital=capital, label="principal")
     sens_ids = []
@@ -117,6 +126,8 @@ def main(argv=None) -> int:
     r = sub.add_parser("run", help="Lancer la simulation et produire le rapport")
     r.add_argument("--capital", type=float, help="Capital initial (remplace la configuration)")
     r.add_argument("--no-sensitivity", action="store_true", help="Ne pas lancer les simulations de sensibilité au capital")
+    r.add_argument("--archiver-ancienne-base", action="store_true",
+                   help="Si la base existante a un schéma incompatible : l'archiver (copie vérifiée) et en créer une neuve")
     c = sub.add_parser("check-data", help="Valider les fichiers de données")
     c.add_argument("--dataset", help="Dossier du jeu de données (défaut : celui de la configuration)")
     a = sub.add_parser("audit-docs", help="Contrôler un dossier d'audit documentaire (sans simulation)")

@@ -184,5 +184,60 @@ class Review6AuditTests(unittest.TestCase):
         self.assertTrue(any("diffusion publique non établie" in u for u in res.unknowns))
 
 
+class Review7AuditTests(unittest.TestCase):
+    """Cas signalés par la revue n° 7 ; chacun passait (ok=True) avec la V1.6."""
+    _copy, _edit, _errors = AuditTests._copy, AuditTests._edit, AuditTests._errors
+
+    def test_share_count_cannot_be_monetary(self):
+        d = self._copy()
+        self._edit(d, "facts", "fact_id", "F3", unit="monnaie", currency="USD")
+        self.assertIn("nombre d'actions : unité « actions », sans devise", self._errors(d))
+
+    def test_monetary_fact_needs_currency(self):
+        d = self._copy()
+        self._edit(d, "facts", "fact_id", "F1", currency="")
+        self.assertIn("unité monétaire sans devise", self._errors(d))
+        d = self._copy()
+        self._edit(d, "facts", "fact_id", "F1", unit="actions", currency="")
+        self.assertIn("est monétaire", self._errors(d))
+
+    def test_amendment_cannot_be_public_before_original(self):
+        d = self._copy()
+        self._edit(d, "documents", "doc_id", "D1", public_available_at="2025-05-01T09:00:00-04:00")
+        self._edit(d, "activities", "issuer_id", "FICT-0001", available_at="2025-05-02T09:00:00-04:00")
+        self.assertIn("avant ou en même temps que le document qu'il rectifie", self._errors(d))
+
+    def test_normalization_needs_fact_level_justification_and_transformation(self):
+        d = self._copy()
+        self._edit(d, "facts", "fact_id", "F1", normalization_justification="")
+        self.assertIn("justification propre au fait", self._errors(d))
+        d = self._copy()
+        self._edit(d, "facts", "fact_id", "F1", value="1250")
+        self.assertIn("transformation « aucune » mais valeur", self._errors(d))
+        d = self._copy()
+        self._edit(d, "facts", "fact_id", "F1", value="1250", transformation="division par 1 000 000 (millions)")
+        self.assertEqual(self._errors(d), "")
+
+    def test_raw_fact_fields(self):
+        d = self._copy()
+        self._edit(d, "facts", "fact_id", "F1", source_unit="")
+        self.assertIn("unité d'origine manquante", self._errors(d))
+        d = self._copy()
+        self._edit(d, "facts", "fact_id", "F1", decimals="environ")
+        self.assertIn("précision (decimals) invalide", self._errors(d))
+        d = self._copy()
+        self._edit(d, "facts", "fact_id", "F1", source_dimensions="srt:SegmentsAxis=exemple:EuropeMember")
+        self.assertTrue(any("fait dimensionnel" in u for u in audit_folder(d).unknowns))
+
+    def test_zero_errors_is_not_a_usable_verdict_without_reconciliation(self):
+        res = audit_folder(EXAMPLE)
+        self.assertTrue(res.ok)
+        self.assertTrue(res.verdict.startswith("NON EXPLOITABLE"))
+        d = self._copy()
+        for fid in ("F1", "F2", "F3", "F5"):
+            self._edit(d, "facts", "fact_id", fid, reconciled="oui")
+        self.assertTrue(audit_folder(d).verdict.startswith("RAPPROCHE"))
+
+
 if __name__ == "__main__":
     unittest.main()
