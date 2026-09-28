@@ -1,1 +1,2 @@
 source_concept,normalized_concept,justification
+us-gaap:Assets,total_assets,Total des actifs comptabilisés à la date du bilan. Définition de la taxonomie recopiée depuis companyfacts (champ description). Définition (us-gaap) : « Sum of the carrying amounts as of the balance sheet date of all assets that are recognized. Assets are probable future economic benefits obtained or controlled by an entity as a result of past transactions or events. »

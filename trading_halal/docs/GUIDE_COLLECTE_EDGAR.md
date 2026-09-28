@@ -55,8 +55,9 @@ pas la fournir pour l'instant : la voie manuelle ci-dessus s'en passe.
 
 ## Rapprocher un chiffre de son document (V1.13)
 
-Le document principal d'un dépôt (ex. `aapl-20250927.htm` pour le 10-K 2025 d'Apple, adresse dans la colonne `url` de
-`documents.csv`) est sur `www.sec.gov`, encore bloqué dans l'environnement. Pour l'utiliser :
+Depuis la V1.17, `www.sec.gov` est accessible : `python3 tools/edgar_normalize.py fetch-filing --audit DOSSIER --doc-id DOC
+--user-agent "Prénom Nom adresse@domaine" --raw RAW` télécharge et importe le document. Sans accès réseau, voie manuelle
+(adresse dans la colonne `url` de `documents.csv`) :
 
 1. l'ouvrir dans un navigateur et l'enregistrer tel quel (« page HTML uniquement ») sous son nom d'origine ;
 2. noter l'heure du téléchargement avec le fuseau ;

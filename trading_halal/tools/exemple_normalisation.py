@@ -24,8 +24,10 @@ def table(audit: Path, accn: str) -> str:
     for r in props:
         period = f"{r['period_start']} → {r['period_end']}" if r["period_start"] else f"au {r['period_end']}"
         fact = facts[r["fact_id"]]
-        status = ("normalisé, rapproché (auto)" if fact["reconciled"] == "auto" and fact["normalized_concept"]
-                  else "proposé (document non lu)")
+        if fact["reconciled"] == "auto" and fact["normalized_concept"]:
+            status = f"normalisé, rapproché (auto), contexte {fact['source_context']}, decimals {fact['decimals']}"
+        else:
+            status = "proposé (document non lu)"
         value = f"{int(r['raw_value']):,}".replace(",", " ")
         lines.append(f"| {r['normalized_concept']} | {r['source_concept']} | {period} | {value} {r['source_unit']} | "
                      f"{status} | `{r['source_pointer']}` |")

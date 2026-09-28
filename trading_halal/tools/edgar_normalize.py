@@ -283,14 +283,15 @@ def _map_concept(s: Session, rule: dict, raw: Path, issuer: str, version: str) -
 
 
 # ----------------------------------------------------------------------------------------------- document d'origine
-def import_filing(audit: Path, doc_id: str, fichier: Path, retrieved_at: str, raw: Path | None = None) -> str:
-    """Copie le document principal (téléchargé à la main) dans copies/ et journalise local_copy / local_sha256."""
+def import_filing(audit: Path, doc_id: str, fichier: Path, retrieved_at: str, raw: Path | None = None,
+                  how: str = "téléchargé à la main, heure déclarée") -> str:
+    """Copie le document principal dans copies/ et journalise local_copy / local_sha256."""
     try:
         if datetime.fromisoformat(retrieved_at).tzinfo is None:
             raise ValueError
     except ValueError:
         raise NormalizeError("--retrieved-at doit être une date-heure avec fuseau")
-    s = Session(audit, f"{TOOL} import-filing (téléchargé à la main, heure déclarée {retrieved_at})")
+    s = Session(audit, f"{TOOL} import-filing ({how} {retrieved_at})")
     doc = s.index["documents"].get(doc_id)
     if doc is None:
         raise NormalizeError(f"document inconnu {doc_id}")
@@ -305,7 +306,7 @@ def import_filing(audit: Path, doc_id: str, fichier: Path, retrieved_at: str, ra
     sha = hashlib.sha256(dest.read_bytes()).hexdigest()
     rel = dest.relative_to(audit).as_posix()
     proof = f"url:{doc['url']}"
-    s.set("documents", doc_id, "local_copy", rel, proof, f"téléchargé à la main, heure déclarée {retrieved_at}")
+    s.set("documents", doc_id, "local_copy", rel, proof, f"{how} {retrieved_at}")
     s.set("documents", doc_id, "local_sha256", sha, proof, "empreinte calculée à l'import")
     try:
         s.commit(raw)
@@ -315,14 +316,51 @@ def import_filing(audit: Path, doc_id: str, fichier: Path, retrieved_at: str, ra
     return sha
 
 
+def fetch_filing(audit: Path, doc_id: str, user_agent: str, raw: Path, fetch=None) -> str:
+    """Télécharge le document principal depuis son URL SEC (identification obligatoire, jamais enregistrée), puis
+    l'importe avec l'heure réelle du téléchargement (UTC)."""
+    ua = ec.check_user_agent(user_agent)
+    with open(audit / "documents.csv", newline="", encoding="utf-8") as f:
+        doc = next((r for r in csv.DictReader(f) if r["doc_id"] == doc_id), None)
+    if doc is None:
+        raise NormalizeError(f"document inconnu {doc_id}")
+    if not doc["url"].startswith("https://www.sec.gov/Archives/"):
+        raise NormalizeError(f"URL inattendue {doc['url']!r}")
+    data = (fetch or ec._get)(doc["url"], ua)
+    retrieved_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    tmp = Path(tempfile.mkdtemp(prefix="document_"))
+    try:
+        path = tmp / doc["url"].rsplit("/", 1)[-1]
+        path.write_bytes(data)
+        return import_filing(audit, doc_id, path, retrieved_at, raw,
+                             how=f"téléchargé automatiquement depuis {doc['url']}, le")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 IX = "http://www.xbrl.org/2013/inlineXBRL"
 XBRLI = "http://www.xbrl.org/2003/instance"
 SUPPORTED_FORMATS = {"num-dot-decimal", "numdotdecimal", "fixed-zero", "zerodash", "num-comma-decimal"}
 
 
+XSI_NIL = "{http://www.w3.org/2001/XMLSchema-instance}nil"
+
+
+def _ix_text(el) -> str:
+    """Texte affiché d'un élément XBRL en ligne : descendants compris (faits imbriqués), contenu de ix:exclude exclu."""
+    parts = [el.text or ""]
+    for child in el:
+        if child.tag != f"{{{IX}}}exclude":
+            parts.append(_ix_text(child))
+        parts.append(child.tail or "")
+    return "".join(parts)
+
+
 def _ix_value(el) -> Decimal:
+    if el.get(XSI_NIL) == "true":
+        raise ValueError("valeur nulle (xsi:nil) dans le document")
     fmt = (el.get("format") or "").split(":")[-1]
-    text = "".join(el.itertext()).strip()
+    text = _ix_text(el).strip()
     if fmt not in SUPPORTED_FORMATS and fmt != "":
         raise ValueError(f"format {el.get('format')!r} non pris en charge")
     if fmt in ("fixed-zero", "zerodash") or text in ("-", "—", "–"):
@@ -359,7 +397,7 @@ def parse_ixbrl(path: Path) -> tuple[dict, dict, list]:
         name = el.get("name", "")
         facts.append({"name": name, "context": el.get("contextRef"), "unit": units.get(el.get("unitRef"), ""),
                       "decimals": el.get("decimals") or "", "id": el.get("id") or "", "el": el,
-                      "text": "".join(el.itertext()).strip(), "scale": el.get("scale") or "0"})
+                      "text": _ix_text(el).strip(), "scale": el.get("scale") or "0"})
     return contexts, units, facts
 
 
@@ -469,6 +507,11 @@ def main(argv=None) -> int:
     i.add_argument("--fichier", required=True, type=Path)
     i.add_argument("--retrieved-at", required=True)
     i.add_argument("--raw", type=Path)
+    fx = sub.add_parser("fetch-filing", help="Télécharger le document principal depuis la SEC puis l'importer")
+    fx.add_argument("--audit", required=True, type=Path)
+    fx.add_argument("--doc-id", required=True)
+    fx.add_argument("--user-agent")
+    fx.add_argument("--raw", required=True, type=Path)
     r = sub.add_parser("reconcile-ixbrl")
     r.add_argument("--audit", required=True, type=Path)
     r.add_argument("--doc-id", required=True)
@@ -494,6 +537,8 @@ def main(argv=None) -> int:
                 print("  SAISIE HUMAINE HORS RÈGLES (à relire)", msg)
             print(f"{len(problems)} écart(s) avec les règles ; {len(human)} saisie(s) humaine(s) hors règles.")
             return 1 if problems else 0
+        elif a.cmd == "fetch-filing":
+            print("sha256", fetch_filing(a.audit, a.doc_id, a.user_agent, a.raw))
         elif a.cmd == "import-filing":
             print("sha256", import_filing(a.audit, a.doc_id, a.fichier, a.retrieved_at, a.raw))
         else:

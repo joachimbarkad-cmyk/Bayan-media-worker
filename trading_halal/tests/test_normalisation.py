@@ -169,6 +169,61 @@ class ProposalTests(Base):
             en.normalize(self.raw, self.out, self.rules)
 
 
+class RealDocumentEdgeCasesTests(unittest.TestCase):
+    """Cas rencontrés dans le 10-K réel d'Apple : xsi:nil, faits imbriqués ; et ix:exclude (spécification)."""
+
+    def el(self, xml):
+        return ET.fromstring('<r xmlns:ix="http://www.xbrl.org/2013/inlineXBRL" '
+                             'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' + xml + "</r>")[0]
+
+    def test_nil_value_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "nil"):
+            en._ix_value(self.el('<ix:nonFraction name="a" xsi:nil="true"/>'))
+
+    def test_nested_fact_text_counts_and_exclude_does_not(self):
+        outer = self.el('<ix:nonFraction name="a" scale="6" format="ixt:num-dot-decimal">'
+                        '<ix:nonFraction name="b" scale="6" format="ixt:num-dot-decimal">1,250</ix:nonFraction>'
+                        '</ix:nonFraction>')
+        self.assertEqual(en._ix_value(outer), 1250000000)
+        excl = self.el('<ix:nonFraction name="a" format="ixt:num-dot-decimal">1,2<ix:exclude>(note 3)</ix:exclude>50'
+                       '</ix:nonFraction>')
+        self.assertEqual(en._ix_value(excl), 1250)
+
+
+class FetchFilingTests(Base):
+    def test_fetch_requires_identification_and_stores_none(self):
+        en.normalize(self.raw, self.out, self.rules)
+        calls = []
+
+        def fake(url, ua):
+            calls.append((url, ua))
+            return ixbrl(GOOD).encode("utf-8")
+        with self.assertRaises(SystemExit):
+            en.fetch_filing(self.out, K10, None, self.raw, fetch=fake)
+        self.assertEqual(calls, [])
+        en.fetch_filing(self.out, K10, "Alice Martin alice@societe.fr", self.raw, fetch=fake)
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(calls[0][0].endswith("/fxei-10k.htm"))
+        for f in self.out.rglob("*"):
+            if f.is_file():
+                self.assertNotIn(b"alice@societe.fr", f.read_bytes(), f.name)
+        rep = en.reconcile_ixbrl(self.out, K10, self.raw, self.rules)
+        self.assertEqual(rep["rapproches"], 2)
+        self.assertEqual(en.verify_normalisation(self.raw, self.out, self.rules), ([], []))
+
+
+class FetchUrlTests(Base):
+    def test_non_sec_url_is_refused_before_any_request(self):
+        text = (self.out / "documents.csv").read_text(encoding="utf-8")
+        (self.out / "documents.csv").write_text(text.replace("https://www.sec.gov/Archives/", "https://exemple.invalid/"),
+                                                encoding="utf-8")
+        calls = []
+        with self.assertRaisesRegex(en.NormalizeError, "URL inattendue"):
+            en.fetch_filing(self.out, K10, "Alice Martin alice@societe.fr", self.raw,
+                            fetch=lambda url, ua: calls.append(url) or b"")
+        self.assertEqual(calls, [])
+
+
 class ReconcileTests(Base):
     def test_import_filing_checks_name_and_timezone(self):
         wrong = self.tmp / "autre.htm"
@@ -335,14 +390,15 @@ class VerifyNormalisationTests(Base):
         self.assertTrue(any(en.PROPOSALS_FILE in m for m in problems))
 
 
-REAL = {"apple": ("0000320193", {"total_assets": 88, "total_revenue": 117}),
-        "microsoft": ("0000789019", {"total_assets": 48, "total_revenue": 78}),
-        "alphabet": ("0001652044", {"total_assets": 26, "total_revenue": 26})}
+REAL = {"apple": ("0000320193", {"total_assets": 88, "total_revenue": 117}, 11),
+        "microsoft": ("0000789019", {"total_assets": 48, "total_revenue": 78}, 5),
+        "alphabet": ("0001652044", {"total_assets": 26, "total_revenue": 26}, 2)}
 REVENUE = "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"
 
 
 class RealIssuersTests(unittest.TestCase):
-    """Dossiers réels : propositions seulement (documents inaccessibles d'ici), contrôles à 0."""
+    """Dossiers réels : propositions pour tous les dépôts ; normalisation et rapprochement automatique pour les
+    documents téléchargés (10-K 2025 et 10-Q T3 2025 d'Apple, derniers 10-K de Microsoft et d'Alphabet)."""
 
     def paths(self, name):
         audit, raw = ROOT / "data" / f"audit_edgar_{name}", ROOT / "collecte" / name
@@ -355,20 +411,35 @@ class RealIssuersTests(unittest.TestCase):
         docs, facts = load_audit(audit)
         return docs, select_fact(docs, facts, REAL[name][0], REVENUE, "USD", start, end, date.fromisoformat(day))
 
-    def test_proposals_only_and_all_checks_clean(self):
-        for name, (_, counts) in REAL.items():
+    def test_proposals_normalizations_and_all_checks_clean(self):
+        for name, (_, counts, normalized) in REAL.items():
             with self.subTest(name):
                 audit, raw = self.paths(name)
                 rep = json.loads((audit / "rapport_normalisation.json").read_text(encoding="utf-8"))
                 self.assertEqual((rep["propositions"], rep["conflits"]), (counts, []))
                 self.assertEqual(rep["regles_sha256"], en._sha(RULES_V2))
                 docs, facts = load_audit(audit)
-                self.assertFalse(any(f["normalized_concept"] for f in facts))
+                norm = [f for f in facts if f["normalized_concept"]]
+                self.assertEqual(len(norm), normalized)
+                self.assertTrue(all(f["reconciled"] == "auto" and f["source_dimensions"] == "" and
+                                    docs[f["doc_id"]]["local_copy"] for f in norm))
                 self.assertEqual(ec.verify_trace(raw, audit), [])
                 self.assertEqual(en.verify_normalisation(raw, audit, RULES_V2), ([], []))
                 res = audit_folder(audit)
-                self.assertEqual(res.errors, [])
-                self.assertIn("aucun fait normalisé", res.verdict)
+                self.assertEqual((res.errors, res.reconciled_auto, res.to_reconcile), ([], normalized, normalized))
+                self.assertIn("RAPPROCHEMENT AUTOMATIQUE", res.verdict)
+
+    def test_apple_fiscal_2025_revenue_is_usable_from_its_document(self):
+        audit, _ = self.paths("apple")
+        docs, facts = load_audit(audit)
+        s = select_fact(docs, facts, "0000320193", "total_revenue", "monnaie", "2024-09-29", "2025-09-27",
+                        date(2025, 11, 1), concept_field="normalized_concept", currency="USD")
+        self.assertEqual((s.fact["value"], s.usable, s.reconciliation), ("416161000000", True, "auto"))
+        self.assertEqual((s.fact["source_context"], s.fact["decimals"]), ("c-1", "-6"))
+        self.assertIn("« 416,161 »", s.fact["reconciled_note"])
+        q = select_fact(docs, facts, "0000320193", "total_revenue", "monnaie", "2025-03-30", "2025-06-28",
+                        date(2025, 8, 2), concept_field="normalized_concept", currency="USD")
+        self.assertEqual((q.fact["value"], q.usable), ("94036000000", True))
 
     def test_known_values(self):
         for name, start, end, day, value in (

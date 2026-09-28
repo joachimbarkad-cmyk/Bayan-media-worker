@@ -1,4 +1,4 @@
-# HANDOFF — simulateur de trading halal, V1.16 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.17 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
@@ -6,6 +6,41 @@ Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier
 **Merci de relire de façon critique** : lectures d'information future, ADMISSIBLE erronés, contrôles d'audit
 contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
 au document de fiqh fourni par l'utilisateur**.
+
+## V1.17 — Premiers rapprochements sur de vrais documents SEC
+
+`www.sec.gov` est devenu accessible (vérifié : 403 sans identification, 200 avec). Nouvelle commande
+`edgar_normalize.py fetch-filing` : télécharge le document principal depuis l'URL SEC du dépôt (URL vérifiée,
+identification SEC obligatoire et **jamais enregistrée**), puis l'importe avec l'heure réelle (UTC) et son SHA-256.
+
+Rapprochement exécuté sur 4 documents réels (les autres dépôts restent « proposés ») :
+
+| Document | Normalisés et rapprochés (auto) | Échecs |
+|---|---|---|
+| Apple 10-K 2025 (`aapl-20250927.htm`) | 5 (chiffre d'affaires 2023-2025, actifs 2024-2025) | 0 |
+| Apple 10-Q T3 2025 (`aapl-20250628.htm`) | 6 (trimestre et neuf mois distincts) | 0 |
+| Microsoft 10-K 2026 | 5 | 0 |
+| Alphabet 10-K 2025 | 2 (actifs) | 0 |
+
+Exemple vérifiable : chiffre d'affaires Apple 2025 = contexte `c-1` (29/09/2024 → 27/09/2025, sans segment), affiché
+« 416,161 », échelle 6, decimals -6 = 416 161 000 000 = valeur companyfacts. Tous les dossiers : verify-trace,
+verify-normalisation (qui rejoue import et rapprochement sur les copies locales) et audit à 0 ; verdict
+« RAPPROCHEMENT AUTOMATIQUE ». Détail : `docs/EXEMPLE_NORMALISATION.md`.
+
+Cas réels rencontrés dans le 10-K d'Apple et désormais traités : 2 valeurs `xsi:nil` (refus motivé), 9 faits imbriqués
+(texte des descendants compris), 5 formats `ixt-sec:numwordsen` (non pris en charge : échec motivé, jamais une valeur) ;
+`ix:exclude` (absent ici) exclu du texte selon la spécification. Aucun `scenario` dans ce document.
+
+**Constat à trancher** : dans son 10-K 2025, Alphabet déclare son chiffre d'affaires total sous `us-gaap:Revenues`
+(revenus hors contrats clients compris) ; R1 (`RevenueFromContractWithCustomer…`) ne le voit pas. Choisir le bon total
+pour le dénominateur du ratio de revenus illicites est une décision du référentiel : laissée à la relecture.
+
+Tests : 6 nouveaux (cas réels, téléchargement, URL non SEC refusée, Apple 2025 utilisable depuis son document) ;
+mutations : 5, toutes détectées (dont une après ajout du test d'URL). **209 tests.** Copies locales : 13 Mo au total
+(dont 8 Mo pour le 10-K de Microsoft).
+
+Points nécessitant une revue indépendante : comparer à la main quelques lignes rapprochées au document affiché
+(numéros de contexte cités dans les notes) ; décision `us-gaap:Revenues` ; catégories d'actions.
 
 ## V1.16 — Revue n° 13 : plus aucune normalisation sans le document
 
@@ -278,9 +313,9 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 
 - Simulation de bout en bout (12 contrôles), avec `--ruleset` pour choisir le référentiel et `--db` pour la base.
 - `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE.
-- **204 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+- **209 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
   test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
-  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 24, test_ruleset_validation 10, test_screening 11.
+  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 29, test_ruleset_validation 10, test_screening 11.
 
 ## Limites connues (générales)
 

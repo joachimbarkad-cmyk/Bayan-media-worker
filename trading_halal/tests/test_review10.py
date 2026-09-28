@@ -117,7 +117,8 @@ class AppleRealDataTests(unittest.TestCase):
         self.assertIsNone(self.sel("2024-09-29", "2025-09-27", "2025-10-31").fact)
         s = self.sel("2024-09-29", "2025-09-27", "2025-11-01")
         self.assertEqual(s.fact["raw_value"], "416161000000")
-        self.assertFalse(s.usable)  # rien n'est encore normalisé ni rapproché
+        # V1.17 : normalisé et rapproché automatiquement depuis le document téléchargé
+        self.assertEqual((s.usable, s.reconciliation), (True, "auto"))
 
     def test_q3_2025_quarter_versus_nine_months(self):
         self.assertEqual(self.sel("2025-03-30", "2025-06-28", "2025-08-02").fact["raw_value"], "94036000000")
