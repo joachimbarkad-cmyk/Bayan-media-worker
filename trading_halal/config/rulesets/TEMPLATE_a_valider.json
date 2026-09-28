@@ -1,0 +1,128 @@
+{
+  "id": "A_VALIDER_TEMPLATE",
+  "validated": false,
+  "demo_only": false,
+  "warning": "MODÈLE À COMPLÉTER. Tant que les seuils valent null, tous les titres ayant des données financières sont INCERTAIN (aucun achat possible). Remplir uniquement à partir d'un texte source officiel daté, puis faire valider (voir docs/REFERENTIEL_ET_SOURCES.md).",
+  "reference_text": {
+    "name": null,
+    "version": null,
+    "date": null,
+    "url_or_document": null,
+    "pages_or_sections": null
+  },
+  "validated_by": null,
+  "validated_on": null,
+  "open_questions": [
+    "Référentiel retenu (norme AAOIFI n° 21 ou méthodologie d'indice précise, avec version datée) ?",
+    "Dénominateur : capitalisation boursière (instantanée ou moyenne glissante, sur quelle durée ?) ou total de l'actif ?",
+    "Valeurs exactes des seuils et sens de l'inégalité (strict ou non) ?",
+    "Ratio de créances / actifs liquides à ajouter ?",
+    "Classement du tabac, de l'armement, des médias/divertissements, de l'hôtellerie ?",
+    "Conduite à tenir pour un titre détenu qui devient EXCLU ou INCERTAIN (vente immédiate ou délai) ?",
+    "Méthode de purification des dividendes et plus-values ?"
+  ],
+  "allowed_instrument_types": [
+    "ACTION"
+  ],
+  "activity_rules": {
+    "SOFTWARE": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori"
+    },
+    "HEALTHCARE": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori"
+    },
+    "INDUSTRIALS": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori"
+    },
+    "TRANSPORT": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori"
+    },
+    "TELECOM": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori"
+    },
+    "RETAIL": {
+      "status": "ADMISSIBLE",
+      "note": "Licite a priori ; une part de ventes non conformes (ex. alcool) est mesurée par le ratio de revenus non conformes"
+    },
+    "ENERGY": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori"
+    },
+    "CHEMICALS": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori"
+    },
+    "CONVENTIONAL_BANKING": {
+      "status": "EXCLU",
+      "note": "Finance conventionnelle fondée sur l'intérêt (riba)"
+    },
+    "CONVENTIONAL_INSURANCE": {
+      "status": "EXCLU",
+      "note": "Assurance conventionnelle"
+    },
+    "ALCOHOL": {
+      "status": "EXCLU",
+      "note": "Production ou vente principale d'alcool"
+    },
+    "PORK": {
+      "status": "EXCLU",
+      "note": "Produits porcins"
+    },
+    "GAMBLING": {
+      "status": "EXCLU",
+      "note": "Jeux de hasard"
+    },
+    "ADULT_ENTERTAINMENT": {
+      "status": "EXCLU",
+      "note": "Divertissement pour adultes"
+    },
+    "TOBACCO": {
+      "status": "INCERTAIN",
+      "note": "Classement variable selon les référentiels : décision religieuse à trancher par l'utilisateur"
+    },
+    "WEAPONS": {
+      "status": "INCERTAIN",
+      "note": "Classement variable selon les référentiels : décision à trancher"
+    },
+    "MEDIA_ENTERTAINMENT": {
+      "status": "INCERTAIN",
+      "note": "Classement variable selon les référentiels : décision à trancher"
+    },
+    "HOTELS_LEISURE": {
+      "status": "INCERTAIN",
+      "note": "Dépend de l'activité réelle (alcool, jeux…) : à trancher"
+    }
+  },
+  "max_fundamentals_age_days": 200,
+  "financial_ratios": [
+    {
+      "id": "dette_a_interet",
+      "label": "Dette portant intérêt / dénominateur à valider",
+      "numerator": "interest_bearing_debt",
+      "denominator": "market_cap",
+      "max": null,
+      "source": null
+    },
+    {
+      "id": "liquidites_a_interet",
+      "label": "Liquidités et placements à intérêt / dénominateur à valider",
+      "numerator": "cash_and_interest_bearing_investments",
+      "denominator": "market_cap",
+      "max": null,
+      "source": null
+    },
+    {
+      "id": "revenus_non_conformes",
+      "label": "Revenus non conformes / chiffre d'affaires",
+      "numerator": "non_compliant_revenue",
+      "denominator": "total_revenue",
+      "max": null,
+      "source": null
+    }
+  ]
+}

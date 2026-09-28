@@ -1,0 +1,130 @@
+"""Journal SQLite : chaque exécution, filtrage, décision, ordre simulé et résultat."""
+from __future__ import annotations
+
+import json
+import sqlite3
+from datetime import date, datetime, timezone
+from pathlib import Path
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS runs(
+  run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at TEXT NOT NULL,
+  label TEXT NOT NULL,
+  parent_run_id INTEGER,
+  simulation_only INTEGER NOT NULL DEFAULT 1 CHECK (simulation_only = 1),
+  dataset_name TEXT, dataset_nature TEXT NOT NULL,
+  data_hashes TEXT, code_hash TEXT,
+  ruleset_id TEXT, ruleset_validated INTEGER, ruleset_json TEXT,
+  config_json TEXT, initial_capital REAL, currency TEXT,
+  start_date TEXT, end_date TEXT
+);
+CREATE TABLE IF NOT EXISTS screenings(
+  run_id INTEGER NOT NULL REFERENCES runs(run_id),
+  decision_date TEXT NOT NULL, ticker TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('ADMISSIBLE','EXCLU','INCERTAIN')),
+  reasons_json TEXT NOT NULL, ratios_json TEXT,
+  fundamentals_period_end TEXT, fundamentals_available_date TEXT, fundamentals_source TEXT,
+  activity_codes TEXT, activity_as_of TEXT, activity_source TEXT,
+  ruleset_id TEXT NOT NULL, max_data_date TEXT,
+  CHECK (max_data_date IS NULL OR max_data_date <= decision_date)
+);
+CREATE TABLE IF NOT EXISTS decisions(
+  run_id INTEGER NOT NULL REFERENCES runs(run_id),
+  portfolio TEXT NOT NULL, decision_date TEXT NOT NULL, ticker TEXT NOT NULL,
+  screening_status TEXT NOT NULL, signal TEXT NOT NULL, final_action TEXT NOT NULL,
+  reason_code TEXT NOT NULL, detail TEXT, inputs_json TEXT, max_data_date TEXT,
+  CHECK (max_data_date IS NULL OR max_data_date <= decision_date),
+  CHECK (NOT (final_action = 'ACHAT' AND screening_status <> 'ADMISSIBLE'))
+);
+CREATE TABLE IF NOT EXISTS orders(
+  run_id INTEGER NOT NULL REFERENCES runs(run_id),
+  portfolio TEXT NOT NULL, decision_date TEXT NOT NULL, execution_date TEXT,
+  ticker TEXT NOT NULL, side TEXT NOT NULL CHECK (side IN ('BUY','SELL')),
+  qty INTEGER, ref_price REAL, exec_price REAL, notional REAL, fees REAL, slippage_cost REAL,
+  status TEXT NOT NULL CHECK (status IN ('EXECUTE_SIMULE','REJETE')),
+  reason TEXT, screening_status_at_decision TEXT NOT NULL,
+  CHECK (execution_date IS NULL OR execution_date > decision_date)
+);
+CREATE TRIGGER IF NOT EXISTS buy_requires_admissible BEFORE INSERT ON orders
+WHEN NEW.side = 'BUY' AND NEW.status = 'EXECUTE_SIMULE' AND NEW.screening_status_at_decision <> 'ADMISSIBLE'
+BEGIN SELECT RAISE(ABORT, 'Achat interdit : statut non ADMISSIBLE'); END;
+CREATE TABLE IF NOT EXISTS equity(
+  run_id INTEGER NOT NULL REFERENCES runs(run_id),
+  portfolio TEXT NOT NULL, date TEXT NOT NULL,
+  cash REAL NOT NULL, positions_value REAL NOT NULL, equity REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS metrics(
+  run_id INTEGER NOT NULL REFERENCES runs(run_id),
+  portfolio TEXT NOT NULL, key TEXT NOT NULL, value REAL
+);
+CREATE INDEX IF NOT EXISTS idx_dec ON decisions(run_id, portfolio, decision_date);
+CREATE INDEX IF NOT EXISTS idx_scr ON screenings(run_id, decision_date);
+"""
+
+
+def _s(v):
+    return v.isoformat() if isinstance(v, date) else v
+
+
+class Store:
+    def __init__(self, path: str | Path):
+        path = Path(path)
+        if str(path) != ":memory:":
+            path.parent.mkdir(parents=True, exist_ok=True)
+        self.conn = sqlite3.connect(str(path))
+        self.conn.row_factory = sqlite3.Row
+        self.conn.executescript(SCHEMA)
+
+    def start_run(self, *, label, parent_run_id, ds, ruleset, config, code_hash, capital) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO runs(created_at,label,parent_run_id,dataset_name,dataset_nature,data_hashes,code_hash,"
+            "ruleset_id,ruleset_validated,ruleset_json,config_json,initial_capital,currency) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (datetime.now(timezone.utc).isoformat(timespec="seconds"), label, parent_run_id,
+             ds.manifest.get("name"), ds.nature, json.dumps(ds.file_hashes), code_hash, ruleset["id"],
+             int(bool(ruleset["validated"])), json.dumps(ruleset, ensure_ascii=False),
+             json.dumps(config, ensure_ascii=False), capital, config.get("currency", "")))
+        return cur.lastrowid
+
+    def finish_run(self, run_id, start, end):
+        self.conn.execute("UPDATE runs SET start_date=?, end_date=? WHERE run_id=?", (_s(start), _s(end), run_id))
+        self.conn.commit()
+
+    def add_screening(self, run_id, r, sec):
+        ref = r.fundamentals_ref or {}
+        self.conn.execute(
+            "INSERT INTO screenings VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (run_id, _s(r.as_of), r.ticker, r.status, json.dumps(r.reasons, ensure_ascii=False),
+             json.dumps({k: round(v, 6) for k, v in r.ratios.items()}), ref.get("period_end"),
+             ref.get("available_date"), ref.get("source"), ";".join(sec["activity_codes"]),
+             _s(sec["activity_as_of"]), sec["activity_source"], r.ruleset_id, _s(r.max_date_read)))
+
+    def add_decision(self, run_id, portfolio, decision_date, status, dec, final_action, reason_code, detail):
+        self.conn.execute(
+            "INSERT INTO decisions VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (run_id, portfolio, _s(decision_date), dec.ticker, status, dec.signal, final_action, reason_code, detail,
+             json.dumps(dec.inputs, ensure_ascii=False), _s(dec.max_date_read)))
+
+    def add_fill(self, run_id, f):
+        self.conn.execute(
+            "INSERT INTO orders VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (run_id, f.portfolio, _s(f.decision_date), _s(f.execution_date), f.ticker, f.side, f.qty, f.ref_price,
+             f.exec_price, f.notional, f.fees, f.slippage_cost, "EXECUTE_SIMULE", f.reason, f.screening_status))
+
+    def add_rejected_order(self, run_id, portfolio, decision_date, execution_date, ticker, side, qty, status, reason):
+        self.conn.execute(
+            "INSERT INTO orders(run_id,portfolio,decision_date,execution_date,ticker,side,qty,status,reason,"
+            "screening_status_at_decision) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (run_id, portfolio, _s(decision_date), _s(execution_date), ticker, side, qty, "REJETE", reason, status))
+
+    def add_equity_rows(self, run_id, rows):
+        self.conn.executemany("INSERT INTO equity VALUES(?,?,?,?,?,?)",
+                              [(run_id, p, _s(d), c, pv, e) for p, d, c, pv, e in rows])
+
+    def add_metrics(self, run_id, portfolio, metrics: dict):
+        self.conn.executemany("INSERT INTO metrics VALUES(?,?,?,?)",
+                              [(run_id, portfolio, k, v) for k, v in metrics.items()])
+
+    def commit(self):
+        self.conn.commit()

@@ -1,0 +1,113 @@
+{
+  "id": "DEMO_FICTIF_v1",
+  "validated": false,
+  "demo_only": true,
+  "warning": "RÉFÉRENTIEL DE DÉMONSTRATION. Les seuils financiers ci-dessous sont des valeurs ARBITRAIRES choisies pour tester le logiciel. Ce ne sont PAS les seuils AAOIFI ni ceux d'un indice. Interdit sur des données réelles (le moteur refuse).",
+  "sources": [
+    "Aucune : valeurs de démonstration. Voir docs/REFERENTIEL_ET_SOURCES.md pour les sources à consulter."
+  ],
+  "allowed_instrument_types": [
+    "ACTION"
+  ],
+  "activity_rules": {
+    "SOFTWARE": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori"
+    },
+    "HEALTHCARE": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori"
+    },
+    "INDUSTRIALS": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori"
+    },
+    "TRANSPORT": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori"
+    },
+    "TELECOM": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori"
+    },
+    "RETAIL": {
+      "status": "ADMISSIBLE",
+      "note": "Licite a priori ; une part de ventes non conformes (ex. alcool) est mesurée par le ratio de revenus non conformes"
+    },
+    "ENERGY": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori"
+    },
+    "CHEMICALS": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori"
+    },
+    "CONVENTIONAL_BANKING": {
+      "status": "EXCLU",
+      "note": "Finance conventionnelle fondée sur l'intérêt (riba)"
+    },
+    "CONVENTIONAL_INSURANCE": {
+      "status": "EXCLU",
+      "note": "Assurance conventionnelle"
+    },
+    "ALCOHOL": {
+      "status": "EXCLU",
+      "note": "Production ou vente principale d'alcool"
+    },
+    "PORK": {
+      "status": "EXCLU",
+      "note": "Produits porcins"
+    },
+    "GAMBLING": {
+      "status": "EXCLU",
+      "note": "Jeux de hasard"
+    },
+    "ADULT_ENTERTAINMENT": {
+      "status": "EXCLU",
+      "note": "Divertissement pour adultes"
+    },
+    "TOBACCO": {
+      "status": "INCERTAIN",
+      "note": "Classement variable selon les référentiels : décision religieuse à trancher par l'utilisateur"
+    },
+    "WEAPONS": {
+      "status": "INCERTAIN",
+      "note": "Classement variable selon les référentiels : décision à trancher"
+    },
+    "MEDIA_ENTERTAINMENT": {
+      "status": "INCERTAIN",
+      "note": "Classement variable selon les référentiels : décision à trancher"
+    },
+    "HOTELS_LEISURE": {
+      "status": "INCERTAIN",
+      "note": "Dépend de l'activité réelle (alcool, jeux…) : à trancher"
+    }
+  },
+  "max_fundamentals_age_days": 200,
+  "financial_ratios": [
+    {
+      "id": "dette_a_interet",
+      "label": "Dette portant intérêt / capitalisation",
+      "numerator": "interest_bearing_debt",
+      "denominator": "market_cap",
+      "max": 0.2,
+      "source": "VALEUR ARBITRAIRE DE DÉMONSTRATION"
+    },
+    {
+      "id": "liquidites_a_interet",
+      "label": "Liquidités et placements à intérêt / capitalisation",
+      "numerator": "cash_and_interest_bearing_investments",
+      "denominator": "market_cap",
+      "max": 0.2,
+      "source": "VALEUR ARBITRAIRE DE DÉMONSTRATION"
+    },
+    {
+      "id": "revenus_non_conformes",
+      "label": "Revenus non conformes / chiffre d'affaires",
+      "numerator": "non_compliant_revenue",
+      "denominator": "total_revenue",
+      "max": 0.03,
+      "source": "VALEUR ARBITRAIRE DE DÉMONSTRATION"
+    }
+  ]
+}

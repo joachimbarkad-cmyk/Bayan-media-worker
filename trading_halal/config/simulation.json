@@ -1,0 +1,29 @@
+{
+  "_commentaire": "Paramètres de simulation. Les frais sont FICTIFS : remplacez-les par la grille tarifaire réelle de votre courtier avant toute conclusion.",
+  "dataset_dir": "data/demo",
+  "ruleset": "config/rulesets/demo_fictif.json",
+  "currency": "EUR",
+  "initial_capital": 2000,
+  "strategy": {
+    "name": "filtre_tendance_sma",
+    "sma_days": 200
+  },
+  "costs": {
+    "fixed_fee": 1.0,
+    "pct_fee": 0.0,
+    "min_fee": 1.0,
+    "slippage_bps": 10,
+    "max_roundtrip_cost_pct": 1.5
+  },
+  "holding_policy": {
+    "on_exclu": "SELL",
+    "on_incertain": "SELL"
+  },
+  "sensitivity_capitals": [
+    500,
+    2000,
+    10000
+  ],
+  "db_path": "output/simulation.sqlite",
+  "report_path": "output/rapport_demo.md"
+}
