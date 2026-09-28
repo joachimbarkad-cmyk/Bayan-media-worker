@@ -6,10 +6,16 @@ Chronologie d'un jour J :
 3. si J est le dernier jour de bourse du mois : filtrage + décisions avec les seules
    données datées <= J (via PointInTimeView) ; ordres mis en attente pour J+1.
 
-Deux portefeuilles, mêmes données, mêmes frais, même filtre religieux :
+Trois portefeuilles, mêmes données, mêmes frais, même filtre religieux, même univers daté :
 - "strategie" : filtre de tendance SMA ;
 - "reference" : achat à parts égales des titres ADMISSIBLES au premier jour de décision,
-  puis conservation ; seules les ventes imposées par le filtre religieux sont faites.
+  puis conservation ; seules les ventes imposées par le filtre religieux sont faites ;
+- "reference_reinvestie" (règles écrites avant le test, cf. docs/REFERENCES.md) : chaque fin de mois,
+  ventes imposées comme ci-dessus, puis les liquidités disponibles sont réparties entre les titres
+  actuellement ADMISSIBLES, à parts cibles égales, sans SMA ; aucune vente pour rééquilibrer.
+
+Univers : à chaque date, seuls les titres dont la fiche est connue (known_from < J) et non radiés sont
+filtrés. Un titre détenu qui sort de l'univers est vendu (VENTE_HORS_UNIVERS).
 """
 from __future__ import annotations
 
@@ -22,10 +28,11 @@ from .broker import CostModel, Fill, PaperBroker
 from .data import Dataset, PointInTimeView
 from .db import Store
 from .metrics import compute_metrics
-from .screening import ADMISSIBLE, EXCLU, ScreeningResult, real_data_problems, screen_security, structural_problems
+from .screening import (ADMISSIBLE, CAUSE_DONNEE_MANQUANTE, EXCLU, INCERTAIN, ScreeningResult, real_data_problems,
+                        screen_security, structural_problems)
 from .strategy import BUY, NONE, SELL, Decision, SmaTrendStrategy, incertain_action, validate_holding_policy
 
-PORTFOLIOS = ("strategie", "reference")
+PORTFOLIOS = ("strategie", "reference", "reference_reinvestie")
 
 
 class PolicyError(RuntimeError):
@@ -136,10 +143,35 @@ class Backtest:
             self._record(pf, d, scr.status, dec, SELL, dec.reason_code, dec.detail)
         return orders, proceeds
 
-    def _decide_strategy(self, d: date, screenings: dict[str, ScreeningResult]) -> list[PendingOrder]:
+    def _out_of_universe(self, t: str, d: date, scr: ScreeningResult) -> tuple[Decision, ScreeningResult]:
+        close, view = self._close(t, d)
+        return Decision(t, SELL, "VENTE_HORS_UNIVERS", "; ".join(scr.reasons), {"cloture": close}, view.max_date_read), scr
+
+    def _forced_sells(self, br: PaperBroker, d: date, screenings: dict[str, ScreeningResult], universe: set[str]):
+        """Ventes imposées (hors univers, EXCLU, INCERTAIN selon la politique) : mêmes règles pour les références."""
+        sells = []
+        for t in sorted(br.positions):
+            scr = screenings[t]
+            if t not in universe:
+                sells.append(self._out_of_universe(t, d, scr))
+                continue
+            if scr.status == ADMISSIBLE:
+                continue
+            action = self.policy["on_exclu"] if scr.status == EXCLU else incertain_action(self.policy, scr.incertain_causes)
+            if action == "SELL":
+                close, view = self._close(t, d)
+                sells.append((Decision(t, SELL, f"VENTE_STATUT_{scr.status}", "; ".join(scr.reasons),
+                                       {"cloture": close}, view.max_date_read), scr))
+        return sells
+
+    def _decide_strategy(self, d: date, screenings: dict[str, ScreeningResult], universe: set[str]) -> list[PendingOrder]:
         br = self.brokers["strategie"]
         decisions = []
-        for t in self.ds.tickers:
+        for t in sorted(screenings):
+            if t not in universe:
+                if br.positions.get(t, 0) > 0:
+                    decisions.append(self._out_of_universe(t, d, screenings[t]))
+                continue
             view = PointInTimeView(self.ds, d)
             decisions.append((self.strategy.decide(view, screenings[t], br.positions.get(t, 0) > 0, self.policy),
                               screenings[t]))
@@ -163,11 +195,11 @@ class Backtest:
             self._record("strategie", d, scr.status, dec, BUY, dec.reason_code, f"{dec.detail} ; {detail}")
         return orders
 
-    def _decide_reference(self, d: date, screenings: dict[str, ScreeningResult]) -> list[PendingOrder]:
+    def _decide_reference(self, d: date, screenings: dict[str, ScreeningResult], universe: set[str]) -> list[PendingOrder]:
         br = self.brokers["reference"]
         if not self.bench_started:
             self.bench_started = True
-            admissible = [t for t in self.ds.tickers if screenings[t].status == ADMISSIBLE]
+            admissible = [t for t in sorted(universe) if screenings[t].status == ADMISSIBLE]
             target, orders, cash_est = self.capital / max(1, len(admissible)), [], br.cash
             for t in admissible:
                 close, view = self._close(t, d)
@@ -181,23 +213,59 @@ class Backtest:
                 orders.append(PendingOrder(t, "BUY", qty, d, ADMISSIBLE, dec.reason_code))
                 self._record("reference", d, ADMISSIBLE, dec, BUY, dec.reason_code, f"{dec.detail} ; {detail}")
             return orders
-        sells = []
-        for t in list(br.positions):
-            scr = screenings[t]
-            if scr.status == ADMISSIBLE:
+        return self._sell_orders("reference", br, d, self._forced_sells(br, d, screenings, universe))[0]
+
+    def _decide_reinvested(self, d: date, screenings: dict[str, ScreeningResult], universe: set[str]) -> list[PendingOrder]:
+        """Règles fixées avant le test (docs/REFERENCES.md) :
+        1. ventes imposées identiques à la référence ;
+        2. cible par titre = valeur estimée du portefeuille / nombre de titres ADMISSIBLES ;
+        3. pour chaque titre ADMISSIBLE (ordre alphabétique) sous sa cible : achat de l'écart, limité aux
+           liquidités disponibles, en actions entières, avec le même plafond de coût ;
+        4. part trop petite (capital ou coût) : pas d'achat, les liquidités restent et la règle est
+           réappliquée le mois suivant ; refus enregistré seulement pour un titre non détenu ;
+        5. titre redevenu ADMISSIBLE : traité comme tout autre titre admissible ;
+        6. jamais de vente pour rééquilibrer, jamais de SMA."""
+        pf, br = "reference_reinvestie", self.brokers["reference_reinvestie"]
+        orders, proceeds = self._sell_orders(pf, br, d, self._forced_sells(br, d, screenings, universe))
+        sold = {o.ticker for o in orders}
+        admissible = [t for t in sorted(universe) if screenings[t].status == ADMISSIBLE]
+        target = self._equity_estimate(br, d) / max(1, len(admissible))
+        cash_est = br.cash + proceeds
+        for t in admissible:
+            if t in sold:
                 continue
-            action = self.policy["on_exclu"] if scr.status == EXCLU else incertain_action(self.policy, scr.incertain_causes)
-            if action == "SELL":
-                close, view = self._close(t, d)
-                sells.append((Decision(t, SELL, f"VENTE_STATUT_{scr.status}", "; ".join(scr.reasons),
-                                       {"cloture": close}, view.max_date_read), scr))
-        return self._sell_orders("reference", br, d, sells)[0]
+            close, view = self._close(t, d)
+            if close is None:
+                continue
+            held = br.positions.get(t, 0)
+            gap = target - held * close
+            if gap <= 0:
+                continue
+            code_ok = "REFERENCE_REINVESTIE_COMPLEMENT" if held else "REFERENCE_REINVESTIE_ACHAT"
+            dec = Decision(t, BUY, code_ok, f"Écart à la cible {gap:.2f}", {"cloture": close, "cible": round(target, 2)},
+                           view.max_date_read)
+            qty, code, detail = self._size_buy(close, min(gap, cash_est))
+            if qty == 0:
+                if not held:
+                    self._record(pf, d, ADMISSIBLE, dec, NONE, code, detail)
+                continue
+            cash_est -= qty * self.costs.fill_price(close, "BUY") + self.costs.fee(qty * self.costs.fill_price(close, "BUY"))
+            orders.append(PendingOrder(t, "BUY", qty, d, ADMISSIBLE, code_ok))
+            self._record(pf, d, ADMISSIBLE, dec, BUY, code_ok, f"{dec.detail} ; {detail}")
+        return orders
 
     def _execute(self, pf: str, orders: list[PendingOrder], d: date) -> list[PendingOrder]:
         br, carry = self.brokers[pf], []
         for o in sorted(orders, key=lambda o: (o.side != "SELL", o.ticker)):
             bar = self.ds.bar_on(o.ticker, d)
             if bar is None:
+                delisted = self.ds.securities[o.ticker]["delisted_date"]
+                if o.side == "SELL" and delisted is not None and d >= delisted and br.positions.get(o.ticker):
+                    # HYPOTHÈSE : liquidation au dernier cours coté (en réalité : rachat, échange ou perte totale).
+                    last = self.ds.last_close_on_or_before(o.ticker, delisted)
+                    self.store.add_fill(self.run_id, br.sell(o.ticker, br.positions[o.ticker], last, o.decision_date, d,
+                                                             o.status, "LIQUIDATION_RADIATION_AU_DERNIER_COURS"))
+                    continue
                 self.store.add_rejected_order(self.run_id, pf, o.decision_date, d, o.ticker, o.side, o.qty, o.status,
                                               "PRIX_MANQUANT_A_L_EXECUTION" + (" (vente reportée)" if o.side == "SELL" else ""))
                 if o.side == "SELL":
@@ -241,13 +309,19 @@ class Backtest:
                     series[pf].append((d, br.cash + pv, pv))
                     rows.append((pf, d, round(br.cash, 4), round(pv, 4), round(br.cash + pv, 4)))
             if d in decision_set:
+                universe = set(self.ds.universe_at(d))
+                held = {t for br in self.brokers.values() for t in br.positions}
                 screenings = {}
-                for t in self.ds.tickers:
+                for t in sorted(universe):
                     r = screen_security(PointInTimeView(self.ds, d), t, self.ruleset)
                     self.store.add_screening(self.run_id, r)
                     screenings[t] = r
-                pending["strategie"] += self._decide_strategy(d, screenings)
-                pending["reference"] += self._decide_reference(d, screenings)
+                for t in sorted(held - universe):  # détenu mais radié : aucune lecture de sa fiche
+                    screenings[t] = ScreeningResult(t, d, INCERTAIN, ["Titre sorti de l'univers (radié) à cette date"],
+                                                    incertain_causes=[CAUSE_DONNEE_MANQUANTE], ruleset_id=self.ruleset["id"])
+                pending["strategie"] += self._decide_strategy(d, screenings, universe)
+                pending["reference"] += self._decide_reference(d, screenings, universe)
+                pending["reference_reinvestie"] += self._decide_reinvested(d, screenings, universe)
         self.store.add_equity_rows(self.run_id, rows)
         metrics = {}
         for pf, br in self.brokers.items():

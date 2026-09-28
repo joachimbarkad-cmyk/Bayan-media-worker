@@ -17,6 +17,8 @@
 | Activité inconnue, absente ou sans fiche publiée → INCERTAIN | `screening.py` | Choix conservateur |
 | Les activités « cœur » (banque et assurance conventionnelles, alcool, porc, jeux, divertissement pour adultes) doivent figurer dans tout référentiel et ne peuvent pas y être classées ADMISSIBLE | `structural_problems()` | Garde-fou logiciel contre un référentiel mal saisi ; si votre référentiel exige autre chose, il faudra modifier ce code en connaissance de cause |
 | Trois familles de ratios obligatoires (`dette_a_interet`, `liquidites_a_interet`, `revenus_non_conformes`), seuils `null` ou dans ]0 ; 1] | `structural_problems()` | Un référentiel vidé ne peut plus laisser passer un titre sans contrôle financier (revue n° 1) |
+| Chaque type de ratio est lié à **son** numérateur et à des dénominateurs admis (`RATIO_CATALOG`) : dette → dette portant intérêt / (capitalisation ou total de l'actif) ; liquidités → liquidités et placements à intérêt / (capitalisation ou total de l'actif) ; revenus non conformes → revenus non conformes / chiffre d'affaires | `screening.py` | Empêche de détourner un ratio vers d'autres champs (revue n° 2). Ajouter un type (ex. créances) = modification du catalogue + test |
+| Valeur financière non finie, négative ou incohérente (revenus non conformes > chiffre d'affaires) : refusée à l'import ; si elle apparaît malgré tout, INCERTAIN (cause `DONNEE_INVALIDE`) | `data.py`, `screening.py` | Revue n° 2 : `nan` et une dette négative rendaient un titre ADMISSIBLE |
 | Chaque INCERTAIN porte sa cause (`ACTIVITE`, `DONNEE_MANQUANTE`, `DONNEE_PERIMEE`, `SEUIL_NON_DEFINI`), politique de conservation réglable par cause | `screening.py`, `holding_policy` | Mécanisme technique ; le **réglage** relève de votre référentiel (défaut : vente) |
 | Données financières absentes, incomplètes ou périmées (> 200 jours après la fin de période) → INCERTAIN | `screening.py` + `max_fundamentals_age_days` | Choix conservateur ; durée de 200 j **à valider** |
 | Seuils financiers | `config/rulesets/demo_fictif.json` | **Valeurs ARBITRAIRES de démonstration (20 % / 20 % / 3 %)**, volontairement différentes des chiffres cités ci-dessous. Interdites sur des données réelles (le moteur refuse). |
@@ -55,3 +57,25 @@ Liens de recherche ayant fourni les informations secondaires :
 4. Un titre détenu qui devient EXCLU ou INCERTAIN : vente immédiate (réglage actuel `SELL` pour les deux) ou délai de grâce ?
    Un INCERTAIN dû à une simple donnée manquante justifie-t-il une vente ?
 5. Purification : méthode de calcul de la part des dividendes (et des plus-values ?) à donner en aumône. Non implémentée en V1.
+
+## 5. Rigidité assumée du moteur (réponse à la revue n° 2)
+
+La revue n° 2 juge trop rigide d'imposer à tout référentiel trois types de ratios et six activités « cœur ».
+Je conserve ces exigences **volontairement** : les assouplir rouvrirait la faille de la revue n° 1 (un référentiel
+vidé qui laisse tout passer). Elles sont regroupées dans `REQUIRED_RATIO_IDS`, `RATIO_CATALOG` et
+`CORE_EXCLUDED_ACTIVITIES` (`halal_sim/screening.py`) : si le référentiel que vous choisissez l'exige, on les
+modifiera explicitement, avec un test et une relecture, plutôt que par un simple fichier de configuration.
+
+Le logiciel vérifie la **forme** d'un référentiel (champs, sources, noms) ; il ne peut pas vérifier que la source
+citée dit bien ce qui est codé, ni que la validation a réellement eu lieu. Cette vérification reste humaine.
+
+## 6. Exigences de datation pour les données réelles
+
+- `available_date` doit être la date à laquelle **le public** a pu accéder au document, dans le calendrier du marché
+  concerné — pas la fin de période comptable. Pour les dépôts EDGAR, la SEC distingue la date officielle de dépôt
+  et l'heure d'acceptation, et ses API publient les données avec un délai de traitement : il faudra conserver
+  l'horodatage, le fuseau et la version de chaque document pour rendre la règle « J → J+1 » vérifiable.
+- Le référentiel s'applique **rétroactivement** à toute la période simulée. C'est acceptable pour tester une règle
+  fixée à l'avance ; cela ne reconstruit pas les décisions religieuses réellement disponibles à chaque date passée.
+- Une fiche titre modifiée sans mise à jour de `known_from` ne peut pas être détectée par le logiciel : pour un
+  changement de type d'instrument ou de devise, il faudra un historique daté (comme pour les activités).

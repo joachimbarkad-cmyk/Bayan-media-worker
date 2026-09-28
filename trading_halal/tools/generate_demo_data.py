@@ -36,6 +36,15 @@ SECURITIES = [
     ("FXOBL", "Obligation Omicron 2030 (fictif)", "OBLIGATION_CONVENTIONNELLE", "CONVENTIONAL_BANKING", "Obligation à coupon d'intérêt", 100.0, 0.0, 0.05),
 ]
 
+# Titres dont la vie boursière ne couvre pas toute la période (graine séparée : les autres titres
+# restent identiques). ticker, nom, type, activité, description, prix initial, dérive, bêta, entrée, radiation
+LATE_SECURITIES = [
+    ("FXNU", "Nu Robotique (fictif)", "ACTION", "INDUSTRIALS", "Robots industriels, introduite en bourse en 2023",
+     20.0, 0.10, 1.2, date(2023, 3, 1), None),
+    ("FXMU", "Mu Services (fictif)", "ACTION", "SOFTWARE", "Services informatiques, radiée de la cote en 2024",
+     35.0, -0.25, 1.1, date(2021, 1, 4), date(2024, 6, 28)),
+]
+
 # Changements d'activité publiés en cours de période (ticker, date de publication, codes, description)
 ACTIVITY_CHANGES = [
     ("FXLAM", "2024-03-15", "TRANSPORT;GAMBLING", "Transport routier ; rachat d'un casino annoncé le 2024-03-15"),
@@ -107,11 +116,35 @@ def main() -> None:
                 closes[ticker][d] = close
                 prev = close
 
+    # Titres introduits ou radiés en cours de période : prix seulement pendant leur cotation.
+    rng2 = random.Random(SEED + 1)
+    with open(OUT / "prices_FICTIF.csv", "a", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        for ticker, _n, _t, _c, _d, p0, drift, beta, start, delisted in LATE_SECURITIES:
+            prev = p0
+            closes[ticker] = {}
+            for d, m in zip(days, market):
+                if d < start or (delisted and d >= delisted):
+                    continue
+                ret = beta * m + drift / 252 + rng2.gauss(0, 0.012)
+                opn = prev * math.exp(rng2.gauss(0, 0.004))
+                close = prev * math.exp(ret)
+                high = max(opn, close) * (1 + abs(rng2.gauss(0, 0.004)))
+                low = min(opn, close) * (1 - abs(rng2.gauss(0, 0.004)))
+                w.writerow([d.isoformat(), ticker, f"{opn:.4f}", f"{high:.4f}", f"{low:.4f}", f"{close:.4f}",
+                            int(20000 + rng2.random() * 80000)])
+                closes[ticker][d] = close
+                prev = close
+
     with open(OUT / "securities_FICTIF.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["ticker", "name", "instrument_type", "country", "currency"])
+        # known_from : date à partir de laquelle la fiche (type d'instrument, devise) est connue et le titre coté.
+        w.writerow(["ticker", "name", "instrument_type", "country", "currency", "known_from", "delisted_date"])
         for ticker, name, itype, *_ in SECURITIES:
-            w.writerow([ticker, name, itype, "XX", "EUR"])
+            w.writerow([ticker, name, itype, "XX", "EUR", "2021-01-01", ""])
+        for ticker, name, itype, _c, _d, _p, _dr, _b, start, delisted in LATE_SECURITIES:
+            w.writerow([ticker, name, itype, "XX", "EUR", (start - timedelta(days=1)).isoformat(),
+                        delisted.isoformat() if delisted else ""])
 
     # Historique daté des activités : une fiche initiale par titre, puis les changements.
     with open(OUT / "activities_FICTIF.csv", "w", newline="", encoding="utf-8") as f:
@@ -119,6 +152,8 @@ def main() -> None:
         w.writerow(["ticker", "available_date", "activity_codes", "activity_description", "source"])
         for ticker, _n, _t, codes, desc, *_ in SECURITIES:
             w.writerow([ticker, "2021-01-01", codes, desc, SOURCE])
+        for ticker, _n, _t, codes, desc, _p, _dr, _b, start, _del in LATE_SECURITIES:
+            w.writerow([ticker, (start - timedelta(days=1)).isoformat(), codes, desc, SOURCE])
         for row in ACTIVITY_CHANGES:
             w.writerow([*row, SOURCE])
 
@@ -154,6 +189,19 @@ def main() -> None:
                 w.writerow([ticker, pe.isoformat(), (pe + timedelta(days=45)).isoformat(), "EUR",
                             f"{mcap:.0f}", f"{mcap * 0.8 * noise():.0f}", f"{mcap * dr * noise():.0f}",
                             f"{mcap * cash_r * noise():.0f}", f"{revenue:.0f}", nc, SOURCE])
+
+    with open(OUT / "fundamentals_FICTIF.csv", "a", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        for ticker, _n, _t, _c, _d, p0, _dr, _b, start, delisted in LATE_SECURITIES:
+            for pe in periods:
+                if pe < start or (delisted and pe + timedelta(days=45) >= delisted):
+                    continue
+                known = [c for d, c in closes[ticker].items() if d <= pe]
+                mcap = 1e9 * (known[-1] if known else p0) / p0
+                revenue = mcap * 0.5
+                w.writerow([ticker, pe.isoformat(), (pe + timedelta(days=45)).isoformat(), "EUR", f"{mcap:.0f}",
+                            f"{mcap * 0.8:.0f}", f"{mcap * 0.08:.0f}", f"{mcap * 0.05:.0f}", f"{revenue:.0f}", "0",
+                            SOURCE])
 
     manifest = {
         "name": "demo_fictif_v1",

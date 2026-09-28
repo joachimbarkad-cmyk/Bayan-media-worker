@@ -14,6 +14,7 @@ import bisect
 import csv
 import hashlib
 import json
+import math
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -37,12 +38,35 @@ class Bar:
     volume: int
 
 
-SECURITY_COLS = ["ticker", "name", "instrument_type", "country", "currency"]
+SECURITY_COLS = ["ticker", "name", "instrument_type", "country", "currency", "known_from", "delisted_date"]
 ACTIVITY_COLS = ["ticker", "available_date", "activity_codes", "activity_description", "source"]
 PRICE_COLS = ["date", "ticker", "open", "high", "low", "close", "volume"]
 FUND_NUMERIC = ["market_cap", "total_assets", "interest_bearing_debt",
                 "cash_and_interest_bearing_investments", "total_revenue", "non_compliant_revenue"]
 FUND_COLS = ["ticker", "period_end", "available_date", "currency", *FUND_NUMERIC, "source"]
+FUND_POSITIVE = ("market_cap", "total_assets")          # strictement positifs s'ils sont renseignés
+FUND_NON_NEGATIVE = ("interest_bearing_debt", "cash_and_interest_bearing_investments", "total_revenue",
+                     "non_compliant_revenue")
+
+
+def fundamentals_problems(rec: dict) -> list[str]:
+    """Valeurs financières impossibles (non finies, négatives, incohérentes). Une valeur ABSENTE (None)
+    n'est pas un problème ici : elle conduit à INCERTAIN lors du filtrage."""
+    p = []
+    for k in FUND_NUMERIC:
+        v = rec.get(k)
+        if v is None:
+            continue
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+            p.append(f"{k} non fini ou non numérique ({v!r})")
+        elif k in FUND_POSITIVE and v <= 0:
+            p.append(f"{k} doit être > 0 ({v})")
+        elif k in FUND_NON_NEGATIVE and v < 0:
+            p.append(f"{k} ne peut pas être négatif ({v})")
+    nc, rev = rec.get("non_compliant_revenue"), rec.get("total_revenue")
+    if not p and nc is not None and rev is not None and nc > rev:
+        p.append("revenus non conformes supérieurs au chiffre d'affaires")
+    return p
 
 
 @dataclass
@@ -67,6 +91,13 @@ class Dataset:
     @property
     def nature(self) -> str:
         return self.manifest["nature"]
+
+    def universe_at(self, d: date) -> list[str]:
+        """Titres connus AVANT le jour d (known_from < d) et non radiés au jour d. Évite de faire connaître
+        au backtest, dès 2021, un titre introduit plus tard ; les titres radiés restent dans les fichiers."""
+        return [t for t in sorted(self.securities)
+                if self.securities[t]["known_from"] < d
+                and (self.securities[t]["delisted_date"] is None or d < self.securities[t]["delisted_date"])]
 
     @property
     def tickers(self) -> list[str]:
@@ -111,9 +142,12 @@ def _num(value: str, ctx: str) -> float | None:
     if value == "":
         return None  # donnée manquante : conduira à INCERTAIN, jamais à une valeur inventée
     try:
-        return float(value)
+        number = float(value)
     except ValueError as exc:
         raise DataError(f"{ctx} : nombre invalide {value!r}") from exc
+    if not math.isfinite(number):  # float() accepte « nan » et « inf » : on les refuse
+        raise DataError(f"{ctx} : nombre non fini {value!r}")
+    return number
 
 
 def load_dataset(root: str | Path) -> Dataset:
@@ -133,8 +167,15 @@ def load_dataset(root: str | Path) -> Dataset:
         if not t or t in securities:
             raise DataError(f"{paths['securities'].name} ligne {n} : ticker vide ou en double ({t!r})")
         row = {k: (v or "").strip() for k, v in row.items()}
-        if not row["currency"]:
-            raise DataError(f"{paths['securities'].name} ligne {n} : devise manquante pour {t}")
+        ctx = f"{paths['securities'].name} ligne {n}"
+        if not row["currency"] or not row["instrument_type"]:
+            raise DataError(f"{ctx} : devise ou type d'instrument manquant pour {t}")
+        if not row["known_from"]:
+            raise DataError(f"{ctx} : known_from obligatoire (date à partir de laquelle la fiche est connue)")
+        row["known_from"] = _date(row["known_from"], ctx)
+        row["delisted_date"] = _date(row["delisted_date"], ctx) if row["delisted_date"] else None
+        if row["delisted_date"] and row["delisted_date"] <= row["known_from"]:
+            raise DataError(f"{ctx} : radiation antérieure à known_from")
         securities[t] = row
 
     activities: dict[str, list[dict]] = {t: [] for t in securities}
@@ -191,6 +232,9 @@ def load_dataset(root: str | Path) -> Dataset:
             raise DataError(f"{ctx} : source manquante (traçabilité obligatoire)")
         for k in FUND_NUMERIC:
             rec[k] = _num(row[k], ctx)
+        problems = fundamentals_problems(rec)
+        if problems:
+            raise DataError(f"{ctx} : " + " ; ".join(problems))
         fundamentals[t].append(rec)
     for t in fundamentals:
         fundamentals[t].sort(key=lambda r: (r["available_date"], r["period_end"]))
@@ -218,9 +262,14 @@ class PointInTimeView:
             self.max_date_read = d
 
     def security(self, ticker: str) -> dict:
-        """Identifiants statiques uniquement (nom, type d'instrument, devise). L'activité, qui peut
-        changer dans le temps, passe par `latest_activity()`."""
-        return self._ds.securities[ticker]
+        """Fiche titre (nom, type d'instrument, devise), valable à partir de `known_from`. Refuse une fiche
+        qui n'était pas encore connue à la date de décision (même règle J+1 que les autres documents).
+        L'activité, qui peut changer dans le temps, passe par `latest_activity()`."""
+        sec = self._ds.securities[ticker]
+        if sec["known_from"] >= self.as_of:
+            raise LookaheadError(f"Fiche {ticker} connue à partir du {sec['known_from']}, décision du {self.as_of}")
+        self._touch(sec["known_from"])
+        return sec
 
     def last_bars(self, ticker: str, n: int) -> list[Bar]:
         dates = self._ds._bar_dates.get(ticker, [])

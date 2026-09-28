@@ -10,11 +10,12 @@ Principes :
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from .data import FUND_NUMERIC, PointInTimeView
+from .data import PointInTimeView, fundamentals_problems
 
 ADMISSIBLE = "ADMISSIBLE"
 EXCLU = "EXCLU"
@@ -27,13 +28,24 @@ CAUSE_ACTIVITE = "ACTIVITE"                    # activité classée INCERTAIN ou
 CAUSE_DONNEE_MANQUANTE = "DONNEE_MANQUANTE"    # fiche d'activité, état financier ou valeur absente
 CAUSE_DONNEE_PERIMEE = "DONNEE_PERIMEE"        # état financier trop ancien
 CAUSE_SEUIL_NON_DEFINI = "SEUIL_NON_DEFINI"    # référentiel incomplet
-INCERTAIN_CAUSES = (CAUSE_ACTIVITE, CAUSE_DONNEE_MANQUANTE, CAUSE_DONNEE_PERIMEE, CAUSE_SEUIL_NON_DEFINI)
+CAUSE_DONNEE_INVALIDE = "DONNEE_INVALIDE"      # valeur impossible (non finie, négative, incohérente)
+INCERTAIN_CAUSES = (CAUSE_ACTIVITE, CAUSE_DONNEE_MANQUANTE, CAUSE_DONNEE_PERIMEE, CAUSE_SEUIL_NON_DEFINI,
+                    CAUSE_DONNEE_INVALIDE)
 
 # Exigences structurelles vérifiées pour TOUT référentiel (démo compris). Elles traduisent le cahier des
 # charges (actions au comptant uniquement, trois familles de ratios) et empêchent qu'un référentiel
 # vidé ou mal formé laisse passer un titre sans contrôle. Elles ne fixent aucune valeur de seuil.
 ALLOWED_INSTRUMENT_TYPES = {"ACTION"}
-REQUIRED_RATIO_IDS = {"dette_a_interet", "liquidites_a_interet", "revenus_non_conformes"}
+# Catalogue des types de ratios : chaque identifiant est lié à SON numérateur et aux dénominateurs admis.
+# Un référentiel choisit le dénominateur et le seuil, pas la signification du ratio. Ajouter un type
+# (par exemple créances / actifs) exige de modifier ce catalogue, avec un test : c'est voulu.
+RATIO_CATALOG = {
+    "dette_a_interet": {"numerator": "interest_bearing_debt", "denominators": {"market_cap", "total_assets"}},
+    "liquidites_a_interet": {"numerator": "cash_and_interest_bearing_investments",
+                             "denominators": {"market_cap", "total_assets"}},
+    "revenus_non_conformes": {"numerator": "non_compliant_revenue", "denominators": {"total_revenue"}},
+}
+REQUIRED_RATIO_IDS = set(RATIO_CATALOG)
 CORE_EXCLUDED_ACTIVITIES = ("CONVENTIONAL_BANKING", "CONVENTIONAL_INSURANCE", "ALCOHOL", "PORK", "GAMBLING",
                             "ADULT_ENTERTAINMENT")
 
@@ -93,9 +105,15 @@ def structural_problems(rs: dict) -> list[str]:
         for key in ("id", "label", "numerator", "denominator", "max"):
             if key not in r:
                 p.append(f"ratio {r.get('id')} : clé '{key}' manquante")
-        for key in ("numerator", "denominator"):
-            if key in r and r[key] not in FUND_NUMERIC:
-                p.append(f"ratio {r.get('id')} : champ {key} inconnu {r[key]!r}")
+        spec = RATIO_CATALOG.get(r.get("id"))
+        if spec is None:
+            p.append(f"ratio {r.get('id')!r} absent du catalogue RATIO_CATALOG (types permis : {sorted(RATIO_CATALOG)})")
+        else:
+            if r.get("numerator") != spec["numerator"]:
+                p.append(f"ratio {r['id']} : numérateur {r.get('numerator')!r} au lieu de {spec['numerator']!r}")
+            if r.get("denominator") not in spec["denominators"]:
+                p.append(f"ratio {r['id']} : dénominateur {r.get('denominator')!r} non admis "
+                         f"(permis : {sorted(spec['denominators'])})")
         mx = r.get("max")
         if mx is not None and (isinstance(mx, bool) or not isinstance(mx, (int, float)) or not 0 < mx <= 1):
             p.append(f"ratio {r.get('id')} : seuil {mx!r} invalide (null ou nombre dans ]0 ; 1])")
@@ -172,17 +190,23 @@ def screen_security(view: PointInTimeView, ticker: str, ruleset: dict) -> Screen
     else:
         ref = {"period_end": fund["period_end"].isoformat(), "available_date": fund["available_date"].isoformat(),
                "source": fund["source"]}
+        invalid = fundamentals_problems(fund)  # défense en profondeur : déjà refusé à l'import
+        for msg in invalid:
+            findings.append((INCERTAIN, f"Donnée financière invalide : {msg}", CAUSE_DONNEE_INVALIDE))
         age = (view.as_of - fund["period_end"]).days
         if age > ruleset["max_fundamentals_age_days"]:
             findings.append((INCERTAIN, f"Données financières périmées : fin de période {fund['period_end']} "
                                         f"({age} j > {ruleset['max_fundamentals_age_days']} j)", CAUSE_DONNEE_PERIMEE))
-        for r in ruleset["financial_ratios"]:
+        for r in ([] if invalid else ruleset["financial_ratios"]):
             num, den = fund.get(r["numerator"]), fund.get(r["denominator"])
             if num is None or den is None or den <= 0:
                 findings.append((INCERTAIN, f"{r['label']} : donnée manquante ({r['numerator']} / {r['denominator']})",
                                  CAUSE_DONNEE_MANQUANTE))
                 continue
             value = num / den
+            if not math.isfinite(value) or value < 0:
+                findings.append((INCERTAIN, f"{r['label']} : valeur calculée invalide ({value!r})", CAUSE_DONNEE_INVALIDE))
+                continue
             ratios[r["id"]] = value
             if r["max"] is None:
                 findings.append((INCERTAIN, f"{r['label']} = {value:.1%} : seuil non défini dans le référentiel (à valider)",

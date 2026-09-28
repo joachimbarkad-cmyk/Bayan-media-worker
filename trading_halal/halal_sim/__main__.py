@@ -68,7 +68,7 @@ def cmd_run(args) -> int:
 
     print(f"Simulation n° {main.run_id} ({ds.nature}) {main.start} → {main.end}, capital {capital} {cfg['currency']}")
     for pf, m in main.metrics.items():
-        print(f"  {pf:10} rendement {m['rendement_total_pct']:7.2f} %   baisse max {m['baisse_max_pct']:7.2f} %   "
+        print(f"  {pf:20} rendement {m['rendement_total_pct']:7.2f} %   baisse max {m['baisse_max_pct']:7.2f} %   "
               f"coûts {m['couts_total_pct_capital']:5.2f} % du capital   ordres {m['nb_achats'] + m['nb_ventes']}")
     failed = [n for n, ok, _ in checks if not ok]
     print(f"Vérifications : {len(checks) - len(failed)}/{len(checks)} OK" + (f" — ÉCHECS : {failed}" if failed else ""))

@@ -39,7 +39,13 @@ REASON_TEXT = {
     "VENTE_STATUT_INCERTAIN": "Titre détenu devenu INCERTAIN : vente simulée selon la politique choisie.",
     "GEL_STATUT_INCERTAIN": "Titre détenu devenu INCERTAIN : conservé sans renforcement, à revoir.",
     "REFERENCE_ACHAT_INITIAL": "Achat initial du portefeuille de référence.",
+    "REFERENCE_REINVESTIE_ACHAT": "Référence réinvestie : achat d'un titre admissible non détenu.",
+    "REFERENCE_REINVESTIE_COMPLEMENT": "Référence réinvestie : complément d'une ligne sous sa part cible.",
+    "VENTE_HORS_UNIVERS": "Titre détenu radié de la cote : vente (liquidation au dernier cours, hypothèse du modèle).",
 }
+
+
+PORTFOLIO_ORDER = ("strategie", "reference", "reference_reinvestie")
 
 
 def _plain(code: str) -> str:
@@ -89,20 +95,22 @@ def build_report(conn: sqlite3.Connection, run_id: int, sensitivity_run_ids: lis
         ["Référentiel religieux", f"{rs['id']} (validé : {'oui' if rs.get('validated') else 'NON'})"],
         ["Stratégie", f"{cfg['strategy']['name']} : détenir un titre admissible si clôture > moyenne des "
                       f"{cfg['strategy']['sma_days']} dernières clôtures ; décision en fin de mois, exécution à l'ouverture suivante"],
-        ["Référence", "Achat à parts égales des titres admissibles au 1er jour de décision, puis conservation "
-                      "(ventes seulement si le filtre religieux l'impose)"],
+        ["Référence « achat-conservation »", "Achat à parts égales des titres admissibles au 1er jour de décision, "
+                                            "puis conservation (ventes seulement si le filtre ou une radiation l'impose)"],
+        ["Référence « réinvestie »", "Chaque fin de mois : mêmes ventes imposées, puis liquidités réparties à parts cibles "
+                                    "égales entre les titres admissibles du moment, sans moyenne mobile (docs/REFERENCES.md)"],
         ["Frais (fictifs)", f"{c['fixed_fee']} {cur} fixe + {c['pct_fee'] * 100:g} % (min {c['min_fee']} {cur}) par ordre ; "
                             f"glissement {c['slippage_bps']} pb ; refus si coût aller-retour > {c['max_roundtrip_cost_pct']} %"],
         ["Politique titres détenus", f"EXCLU → {cfg['holding_policy']['on_exclu']}, INCERTAIN → {cfg['holding_policy']['on_incertain']}"],
         ["Empreinte du code / des données", f"{run['code_hash'][:12]} / {json.loads(run['data_hashes'])['prices'][:12]}"],
     ]))
 
-    L.append("\n## Résultats : stratégie contre référence\n")
-    L.append(_table(["Indicateur", "Stratégie", "Référence"],
-                    [[label, _fmt(m.get("strategie", {}).get(k, "")), _fmt(m.get("reference", {}).get(k, ""))]
-                     for k, label in METRIC_LABELS]))
-    L.append("\nLes deux portefeuilles utilisent les mêmes données, le même filtre, les mêmes frais et les mêmes règles "
-             "d'exécution. Les liquidités ne sont pas rémunérées (pas d'intérêts). Dividendes non modélisés dans la V1.\n")
+    L.append("\n## Résultats : stratégie contre deux références\n")
+    L.append(_table(["Indicateur", "Stratégie", "Réf. achat-conservation", "Réf. réinvestie"],
+                    [[label] + [_fmt(m.get(pf, {}).get(k, "")) for pf in PORTFOLIO_ORDER] for k, label in METRIC_LABELS]))
+    L.append("\nLes trois portefeuilles utilisent les mêmes données, le même univers daté, le même filtre, les mêmes frais et "
+             "les mêmes règles d'exécution. Les liquidités ne sont pas rémunérées (pas d'intérêts). Dividendes non modélisés. "
+             "La référence achat-conservation ne réinvestit pas le produit des ventes imposées ; la référence réinvestie, si.\n")
 
     if sensitivity_run_ids:
         L.append("## Sensibilité au capital (même stratégie, mêmes frais)\n")
@@ -113,17 +121,18 @@ def build_report(conn: sqlite3.Connection, run_id: int, sensitivity_run_ids: lis
             refused = conn.execute(
                 "SELECT COUNT(*) n FROM decisions WHERE run_id=? AND portfolio='strategie' AND reason_code IN "
                 "('REFUS_COUT_DISPROPORTIONNE','REFUS_CAPITAL_INSUFFISANT')", (rid,)).fetchone()["n"]
-            rows.append([f"{r['initial_capital']:.0f} {cur}", _fmt(mm["strategie"]["rendement_total_pct"]),
-                         _fmt(mm["reference"]["rendement_total_pct"]), _fmt(mm["strategie"]["couts_total_pct_capital"]),
-                         refused])
-        L.append(_table(["Capital", "Stratégie (%)", "Référence (%)", "Coûts stratégie (% capital)",
-                         "Achats refusés (coût/capital)"], rows))
+            rows.append([f"{r['initial_capital']:.0f} {cur}"] +
+                        [_fmt(mm[pf]["rendement_total_pct"]) for pf in PORTFOLIO_ORDER] +
+                        [_fmt(mm["strategie"]["couts_total_pct_capital"]), refused])
+        L.append(_table(["Capital", "Stratégie (%)", "Réf. achat-conservation (%)", "Réf. réinvestie (%)",
+                         "Coûts stratégie (% capital)", "Achats refusés stratégie (coût/capital)"], rows))
         L.append("\nAvec un petit capital, les frais fixes et les actions entières pèsent davantage : c'est ce que mesure ce tableau. "
                  "Un rendement de 0 avec des refus signifie qu'aucun achat n'a été jugé pertinent à ce niveau de capital "
                  "(le capital est resté en liquidités).\n")
 
     L.append(f"## Filtre religieux au {last_date}\n")
     thresholds = {x["id"]: x.get("max") for x in rs["financial_ratios"]}
+    labels = {x["id"]: x.get("label", x["id"]) for x in rs["financial_ratios"]}
     tag = "" if rs.get("validated") else " — seuil de DÉMO arbitraire"
     L.append("ADMISSIBLE = aucun motif d'exclusion ni d'incertitude trouvé avec le référentiel et les données disponibles ; "
              "ce n'est pas une certification. Les documents publiés un jour J ne sont utilisés qu'à partir du jour J+1.\n")
@@ -131,7 +140,7 @@ def build_report(conn: sqlite3.Connection, run_id: int, sensitivity_run_ids: lis
     for r in conn.execute("SELECT * FROM screenings WHERE run_id=? AND decision_date=? ORDER BY status, ticker",
                           (run_id, last_date)):
         ratios = "<br>".join(
-            f"{k} = {v:.1%} (seuil {'non défini' if thresholds.get(k) is None else format(thresholds[k], '.0%')}{tag})"
+            f"{labels.get(k, k)} = {v:.1%} (seuil {'non défini' if thresholds.get(k) is None else format(thresholds[k], '.0%')}{tag})"
             for k, v in json.loads(r["ratios_json"]).items()) or "—"
         fin = f"{r['fundamentals_period_end']} publié le {r['fundamentals_available_date']}" if r["fundamentals_period_end"] else "aucune"
         act = f"{r['activity_codes']} (fiche du {r['activity_available_date']})" if r["activity_available_date"] else "aucune fiche"
@@ -161,7 +170,9 @@ def build_report(conn: sqlite3.Connection, run_id: int, sensitivity_run_ids: lis
         rows.append([r["ticker"], r["screening_status"], f"**{r['final_action']}**", _plain(r["reason_code"]),
                      trend, f"`{r['reason_code']}` — {r['detail']}"])
     L.append(_table(["Titre", "Statut", "Décision", "En clair", "Données", "Code et détail"], rows))
-    L.append("\nUne décision « ACHAT » ici est une proposition simulée pour le jour de bourse suivant, pas un conseil.\n")
+    L.append("\nUne décision « ACHAT » est une proposition simulée pour l'ouverture du jour de bourse suivant, pas un conseil. "
+             "À l'exécution, la quantité peut être réduite (liquidités insuffisantes au prix d'ouverture) ou l'ordre rejeté "
+             "(coût devenu disproportionné, prix manquant) : voir « Ordres rejetés au moment de l'exécution simulée ».\n")
 
     L.append("## Refus et ventes imposées sur toute la période (stratégie)\n")
     rows = [[f"`{r['reason_code']}`", _plain(r["reason_code"]), r["n"]] for r in conn.execute(
@@ -198,7 +209,8 @@ def build_report(conn: sqlite3.Connection, run_id: int, sensitivity_run_ids: lis
              "- Frais fictifs : à remplacer par la grille réelle du courtier choisi.\n"
              "- Activités lues depuis un historique daté, mais aucune durée de validité maximale d'une fiche d'activité.\n"
              "- Pas de conversion de devises : tous les titres doivent être dans la devise du portefeuille (sinon refus).\n"
-             "- La référence ne réinvestit pas le produit des ventes imposées, ce qui peut avantager la stratégie.\n")
+             "- Titre radié : liquidation supposée au dernier cours coté (en réalité : rachat, échange ou perte totale).\n"
+             "- Le référentiel religieux s'applique rétroactivement à toute la période simulée.\n")
     return "\n".join(L) + "\n"
 
 

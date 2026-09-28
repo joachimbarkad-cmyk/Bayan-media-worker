@@ -22,7 +22,7 @@ Depuis la racine du dépôt :
 cd trading_halal
 python3 -m halal_sim check-data                 # valide les fichiers de données de démonstration
 python3 -m halal_sim run                        # simulation complète + rapport + sensibilité au capital
-python3 -m unittest discover -s tests -v        # 51 vérifications automatiques
+python3 -m unittest discover -s tests -v        # 61 vérifications automatiques
 ```
 
 Options utiles :
@@ -42,7 +42,7 @@ Résultats :
 
 | Chemin | Rôle |
 |---|---|
-| `data/demo/` | Données **FICTIVES** : `manifest.json` (nature = FICTIF), titres, prix quotidiens, états financiers et fiches d'activité datés par leur publication |
+| `data/demo/` | Données **FICTIVES** : `manifest.json` (nature = FICTIF), fiches titres datées (entrée en cote, radiation), prix quotidiens, états financiers et fiches d'activité datés par leur publication |
 | `config/simulation.json` | Capital, frais (fictifs), stratégie, politique de vente, chemins |
 | `config/rulesets/demo_fictif.json` | Référentiel de **démonstration** (seuils arbitraires, interdit sur données réelles) |
 | `config/rulesets/TEMPLATE_a_valider.json` | Modèle à compléter depuis un texte officiel ; seuils `null` → rien n'est admissible |
@@ -50,7 +50,8 @@ Résultats :
 | `halal_sim/screening.py` | Filtre ADMISSIBLE / EXCLU / INCERTAIN avec motifs, ratios, source et date |
 | `halal_sim/strategy.py` | Stratégie unique : filtre de tendance SMA 200 jours |
 | `halal_sim/broker.py` | Courtier **simulé** (frais, glissement, actions entières, ni marge ni découvert) |
-| `halal_sim/backtest.py` | Moteur chronologique stratégie + référence |
+| `halal_sim/backtest.py` | Moteur chronologique : stratégie + deux références |
+| `docs/REFERENCES.md` | Règles des deux portefeuilles de référence, fixées avant le test |
 | `halal_sim/report.py` | Rapport Markdown et contrôles recalculés depuis SQLite |
 | `halal_sim/safety.py` | Coupure du réseau au lancement |
 | `docs/REFERENTIEL_ET_SOURCES.md` | Sources religieuses, état de vérification, questions à trancher |
@@ -67,6 +68,9 @@ Tout achat dont le coût aller-retour estimé dépasse 1,5 % du montant est refu
 
 Créer un dossier avec un `manifest.json` (`"nature": "REEL"`) et les quatre CSV au même format que `data/demo/`
 (titres, prix, états financiers, fiches d'activité), chaque document ayant sa **date de publication** et sa **source**.
+Chaque fiche titre porte `known_from` (date à partir de laquelle son type d'instrument et sa devise sont connus)
+et, s'il y a lieu, `delisted_date` : inclure les titres **radiés** pour limiter le biais du survivant.
+Les valeurs non finies (`nan`, `inf`), négatives ou incohérentes sont refusées à l'import.
 Un document publié le jour J n'est utilisé qu'à partir de la décision du jour J+1 (l'heure de publication n'est pas connue).
 Tous les titres doivent être dans la devise du portefeuille (pas encore de conversion).
 

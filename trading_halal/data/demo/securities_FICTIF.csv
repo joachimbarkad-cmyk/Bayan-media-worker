@@ -1,14 +1,16 @@
-ticker,name,instrument_type,country,currency
-FXALP,Alpha Logiciels (fictif),ACTION,XX,EUR
-FXBET,Beta Santé (fictif),ACTION,XX,EUR
-FXIOT,Iota Matériaux (fictif),ACTION,XX,EUR
-FXLAM,Lambda Transport (fictif),ACTION,XX,EUR
-FXKAP,Kappa Télécom (fictif),ACTION,XX,EUR
-FXOME,Omega Distribution (fictif),ACTION,XX,EUR
-FXSIG,Sigma Chimie (fictif),ACTION,XX,EUR
-FXGAM,Banque Gamma (fictif),ACTION,XX,EUR
-FXDEL,Delta Brasserie (fictif),ACTION,XX,EUR
-FXEPS,Epsilon Industrie (fictif),ACTION,XX,EUR
-FXETA,Eta Énergie (fictif),ACTION,XX,EUR
-FXTHE,Theta Tabac (fictif),ACTION,XX,EUR
-FXOBL,Obligation Omicron 2030 (fictif),OBLIGATION_CONVENTIONNELLE,XX,EUR
+ticker,name,instrument_type,country,currency,known_from,delisted_date
+FXALP,Alpha Logiciels (fictif),ACTION,XX,EUR,2021-01-01,
+FXBET,Beta Santé (fictif),ACTION,XX,EUR,2021-01-01,
+FXIOT,Iota Matériaux (fictif),ACTION,XX,EUR,2021-01-01,
+FXLAM,Lambda Transport (fictif),ACTION,XX,EUR,2021-01-01,
+FXKAP,Kappa Télécom (fictif),ACTION,XX,EUR,2021-01-01,
+FXOME,Omega Distribution (fictif),ACTION,XX,EUR,2021-01-01,
+FXSIG,Sigma Chimie (fictif),ACTION,XX,EUR,2021-01-01,
+FXGAM,Banque Gamma (fictif),ACTION,XX,EUR,2021-01-01,
+FXDEL,Delta Brasserie (fictif),ACTION,XX,EUR,2021-01-01,
+FXEPS,Epsilon Industrie (fictif),ACTION,XX,EUR,2021-01-01,
+FXETA,Eta Énergie (fictif),ACTION,XX,EUR,2021-01-01,
+FXTHE,Theta Tabac (fictif),ACTION,XX,EUR,2021-01-01,
+FXOBL,Obligation Omicron 2030 (fictif),OBLIGATION_CONVENTIONNELLE,XX,EUR,2021-01-01,
+FXNU,Nu Robotique (fictif),ACTION,XX,EUR,2023-02-28,
+FXMU,Mu Services (fictif),ACTION,XX,EUR,2021-01-03,2024-06-28
