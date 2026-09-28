@@ -1,5 +1,5 @@
 from unittest.mock import patch
-import importlib.util, tempfile, pathlib, json, subprocess, unittest, threading, urllib.request, urllib.error, os
+import importlib.util, tempfile, pathlib, json, subprocess, unittest, threading, urllib.request, urllib.error, os, sys
 spec=importlib.util.spec_from_file_location('worker',pathlib.Path(__file__).parents[1]/'worker.py');w=importlib.util.module_from_spec(spec);spec.loader.exec_module(w)
 class MediaTest(unittest.TestCase):
     @classmethod
@@ -61,6 +61,19 @@ class MediaTest(unittest.TestCase):
         first=w.new_job(payload);w.process_job(first['id'],payload);self.assertTrue((w.ROOT/first['id']/'export.mp4').exists())
         second=w.new_job(payload);w.process_job(second['id'],payload);self.assertEqual(w.job_state(second['id'])['status'],'complete')
         self.assertFalse((w.ROOT/first['id']/'export.mp4').exists());self.assertTrue((w.ROOT/second['id']/'export.mp4').exists())
+    def test_11_youtube_bot_check_is_actionable(self):
+        class DownloadError(Exception):pass
+        class FakeYDL:
+            def __init__(self,*a):pass
+            def __enter__(self):return self
+            def __exit__(self,*a):return False
+            def extract_info(self,*a,**k):raise DownloadError('ERROR: [youtube] yy_ABo1l80o: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication.')
+        fake=type(sys)('yt_dlp');fake.YoutubeDL=FakeYDL
+        for kind in ('import','export'):
+            payload={'kind':kind,'costPolicy':'free','ass':'[Script Info]\n','project':{'id':'p','title':'QA','url':'https://youtu.be/yy_ABo1l80o','segments':[]}}
+            job=w.new_job(payload)
+            with patch.dict(sys.modules,{'yt_dlp':fake}):w.process_job(job['id'],payload)
+            state=w.job_state(job['id']);self.assertEqual(state['status'],'blocked',state.get('error'));self.assertIn('fichier vidéo original',state['error']);self.assertNotIn('ERROR:',state['error'])
     def test_8_youtube_guard(self):
         for url in ['http://localhost/admin','https://youtube.com.evil.test/watch?v=abcdefghijk','file:///etc/passwd']:
             with self.assertRaises(ValueError):w.valid_youtube(url)

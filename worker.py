@@ -113,6 +113,17 @@ def ydl_options():
     if cookies:options['cookiefile']=cookies
     return options
 
+YOUTUBE_REFUSAL=re.compile(r'confirm you.?re not a bot|sign in to confirm|cookies|HTTP Error 429|HTTP Error 403|age-restricted|private video|members-only',re.I)
+
+@contextmanager
+def youtube_access(action):
+    """YouTube often refuses datacenter IPs; turn yt-dlp's raw English errors into an actionable free path."""
+    try:yield
+    except Exception as e:
+        if type(e).__name__ not in ('DownloadError','ExtractorError'):raise
+        if YOUTUBE_REFUSAL.search(str(e)):raise NeedsConfiguration(f'YouTube refuse l’accès depuis ce serveur ({action}). Importez le fichier vidéo original (100 Mo maximum) dans le projet, puis le SRT / VTT si besoin. Aucun service payant n’est nécessaire.') from None
+        raise RuntimeError(f'YouTube indisponible ({action}) : '+re.sub(r'^ERROR:\s*','',str(e))[:300]) from None
+
 def make_segment(pid,start,end,text,id=None):
     return {'id':id or str(uuid.uuid4()),'project_id':pid,'start_time':round(start,3),'end_time':round(end,3),'arabic_text':text.strip(),'french_text':'','original_arabic_text':text.strip(),'original_french_translation':'','review_status':'unreviewed','segment_order':0}
 
@@ -146,7 +157,7 @@ def youtube_captions(id,project,folder):
     except ImportError:raise NeedsConfiguration('Installez yt-dlp sur le service vidéo.')
     url=valid_youtube(project['url']);update(id,stage='Recherche des sous-titres arabes',progress=None)
     with yt_dlp.YoutubeDL(ydl_options()) as ydl:
-        info=ydl.extract_info(url,download=False)
+        with youtube_access('sous-titres'):info=ydl.extract_info(url,download=False)
         meta={'title':info.get('title',project['title']),'channel':info.get('channel',''),'duration':info.get('duration',0),'language':info.get('language') or 'ar'}
         (folder/'youtube-metadata.json').write_text(json.dumps({**meta,'subtitles':info.get('subtitles'),'automatic_captions':info.get('automatic_captions')},ensure_ascii=False))
         for key,label in [('subtitles','Sous-titres arabes manuels récupérés'),('automatic_captions','Sous-titres arabes automatiques récupérés')]:
@@ -175,7 +186,7 @@ def download_youtube(id,url,folder):
             ensure_space(0)
             update(id,stage='Téléchargement de la vidéo',progress=round(downloaded/total*100,1) if total else None)
     opts=ydl_options();opts.update({'format':'b[ext=mp4][height<=720]/bv*[ext=mp4][height<=720]+ba[ext=m4a]/b[height<=720]','merge_output_format':'mp4','outtmpl':str(folder/'source.%(ext)s'),'progress_hooks':[hook]})
-    with yt_dlp.YoutubeDL(opts) as ydl:ydl.extract_info(valid_youtube(url),download=True)
+    with yt_dlp.YoutubeDL(opts) as ydl,youtube_access('téléchargement de la vidéo'):ydl.extract_info(valid_youtube(url),download=True)
     files=[p for p in folder.glob('source.*') if p.suffix not in ('.part','.ytdl')]
     if not files:raise RuntimeError('Téléchargement absent. YouTube peut exiger une authentification. Vous pouvez importer le fichier original.')
     return max(files,key=lambda p:p.stat().st_size)

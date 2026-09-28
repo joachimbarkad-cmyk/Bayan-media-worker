@@ -52,6 +52,17 @@ Avec une source plus granuleuse (93,3 Mo), le premier export produit **204,3 Mo*
 
 Limite qui reste : un volume de 500 Mo ne contient pas deux médias différents de ~90 Mo avec leurs MP4 pendant 24 h. Dans ce cas, le message « Espace vidéo insuffisant » est exact. Il faut attendre le nettoyage ou utiliser un volume plus grand.
 
+## Constat en production (Railway, logs du 21 au 28/09/2026)
+
+- Version déployée : `main` @ `a784885`, c’est-à-dire **sans** les corrections ci-dessus. L’image est bien construite avec le Dockerfile (FFmpeg 7.1.5).
+- Journaux HTTP : chaque traitement reçoit **une seule** consultation d’état, puis plus rien. **Aucun** `GET /jobs/:id/file` : aucun MP4 n’a jamais été téléchargé depuis la production.
+- Journaux du service : chaque traitement lancé depuis une URL YouTube (26, 27 et 28/09, dernier le 28/09 à 15:05) échoue en ~3 s avec `ERROR: [youtube] … Sign in to confirm you’re not a bot`. YouTube refuse les adresses IP de Railway.
+- Dans le code, cette erreur n’était pas gérée. Le traitement passait en `failed` avec le texte anglais brut de yt-dlp, à l’import comme à l’export d’un projet sans vidéo envoyée. Reproduit localement avec yt-dlp 2026.08.19.
+
+**Correction :** `youtube_access()` reconnaît ces refus (vérification anti-robot, cookies, 403/429, vidéo privée ou réservée) et passe le traitement en `blocked`, avec un message en français. Ce message indique le parcours gratuit pris en charge : importer le fichier vidéo original (100 Mo maximum), puis le SRT/VTT. Les autres erreurs YouTube restent `failed`, avec un message court en français. Test : `test_11_youtube_bot_check_is_actionable`.
+
+Le service Railway n’a pas pu être appelé depuis l’environnement de test : son domaine est refusé par la politique réseau du bac à sable.
+
 ## Refaire le test
 
 ```sh
