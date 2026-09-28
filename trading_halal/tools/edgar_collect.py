@@ -68,6 +68,11 @@ class EdgarFormatError(ValueError):
     pass
 
 
+TRACE_FILE = "trace_source.csv"
+TRACE_HEADERS = ["fact_id", "source_file", "source_pointer", "entry_sha256", "fy", "fp", "frame"]
+JOURNAL_FILE = "journal_conversion.json"
+
+
 def cik10(value: str) -> str:
     digits = value.strip().lstrip("0") or "0"
     if not digits.isdigit() or len(digits) > 10:
@@ -167,6 +172,9 @@ def convert(raw: Path, out: Path, forms: set[str], replace: bool = False) -> dic
     rows = {k: [] for k in AUDIT_HEADERS}
     amendments_to_link, skipped_facts, incomplete, merged, skipped_docs = [], 0, [], 0, []
     seen: dict[str, tuple] = {}
+    # Journal des exclusions (par numéro d'accès et motif) et trace de chaque fait vers son entrée JSON brute.
+    excluded: dict[tuple, dict] = {}
+    trace, merged_trace, total_items = [], [], 0
     for (kind, c10), entry in sorted(retrieved.items()):
         if kind != "submissions":
             continue
@@ -185,18 +193,21 @@ def convert(raw: Path, out: Path, forms: set[str], replace: bool = False) -> dic
         n = len(cols["accessionNumber"])
         if any(len(v) != n for v in cols.values()):
             raise EdgarFormatError(f"{entry['file']} : listes filings.recent de longueurs différentes")
-        docs_by_accn, meta_by_accn = {}, {}
+        docs_by_accn, meta_by_accn, why_not = {}, {}, {}
         for i in range(n):
             form = cols["form"][i]
             base = form[:-2] if form.endswith("/A") else form
-            if base not in forms:
-                continue
             accn = cols["accessionNumber"][i]
+            if base not in forms:
+                why_not[accn] = f"formulaire non retenu ({form})"
+                continue
             if form.endswith("/A"):
                 amendments_to_link.append(f"{c10} {form} {accn} (période {cols['reportDate'][i]})")
+                why_not[accn] = f"rectificatif ({form}) non rattaché : document rectifié à désigner à la main"
                 continue  # le document rectifié doit être désigné à la main : pas d'inférence
             if not cols["reportDate"][i]:
                 skipped_docs.append(f"{c10} {form} {accn} : fin de période (reportDate) absente")
+                why_not[accn] = f"dépôt {form} retenu puis écarté : fin de période (reportDate) absente"
                 continue
             doc_id = f"{c10}-{accn}"
             docs_by_accn[accn] = doc_id
@@ -217,10 +228,17 @@ def convert(raw: Path, out: Path, forms: set[str], replace: bool = False) -> dic
         for taxonomy, concepts in _need(cf, "facts", facts_entry["file"]).items():
             for concept, body in concepts.items():
                 for unit, items in _need(body, "units", f"{taxonomy}:{concept}").items():
-                    for it in items:
+                    for idx, it in enumerate(items):
+                        total_items += 1
+                        pointer = make_pointer(taxonomy, concept, unit, idx)
                         doc_id = docs_by_accn.get(_need(it, "accn", f"{taxonomy}:{concept}"))
                         if doc_id is None:
                             skipped_facts += 1
+                            reason = why_not.get(it["accn"], "dépôt absent de filings.recent (historique non collecté)")
+                            ex = excluded.setdefault((c10, it["accn"]), {
+                                "cik": c10, "accn": it["accn"], "form": it.get("form", ""), "filed": it.get("filed", ""),
+                                "motif": reason, "faits": 0, "exemple": pointer})
+                            ex["faits"] += 1
                             continue
                         accn = it["accn"]
                         f_form, f_filed = _need(it, "form", concept), _need(it, "filed", concept)
@@ -237,8 +255,12 @@ def convert(raw: Path, out: Path, forms: set[str], replace: bool = False) -> dic
                                     f"Doublon contradictoire {fid} : {seen[fid][1]} contre {json.dumps(it)} ; "
                                     "conversion arrêtée, les deux entrées brutes restent dans le fichier source")
                             merged += 1
+                            merged_trace.append({"fact_id": fid, "source_pointer": pointer})
                             continue
                         seen[fid] = (val, json.dumps(it))
+                        trace.append({"fact_id": fid, "source_file": facts_entry["file"], "source_pointer": pointer,
+                                      "entry_sha256": entry_sha256(it), "fy": str(it.get("fy", "")),
+                                      "fp": str(it.get("fp", "")), "frame": str(it.get("frame", ""))})
                         rows["facts"].append({
                             "fact_id": fid,
                             "doc_id": doc_id, "source_concept": f"{taxonomy}:{concept}",
@@ -270,10 +292,105 @@ def convert(raw: Path, out: Path, forms: set[str], replace: bool = False) -> dic
             w = csv.DictWriter(f, fieldnames=header)
             w.writeheader()
             w.writerows(rows[name])
+    with open(out / TRACE_FILE, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=TRACE_HEADERS)
+        w.writeheader()
+        w.writerows(trace)
+    exclusions = sorted(excluded.values(), key=lambda e: (e["cik"], e["filed"], e["accn"]))
+    (out / JOURNAL_FILE).write_text(json.dumps({
+        "entrees_brutes_companyfacts": total_items, "faits_retenus": len(trace),
+        "doublons_identiques_fusionnes": merged_trace,
+        "faits_ecartes": skipped_facts, "exclusions_par_depot": exclusions,
+        "depots_retenus_puis_ecartes": skipped_docs, "rectificatifs_a_rattacher": amendments_to_link,
+        "historique_incomplet": incomplete}, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    if total_items != len(trace) + merged + skipped_facts:  # aucune entrée brute ne disparaît sans être comptée
+        raise EdgarFormatError("comptage incohérent des entrées companyfacts ; conversion à reprendre")
     return {"documents": len(rows["documents"]), "facts": len(rows["facts"]),
             "amendments_to_link": amendments_to_link, "facts_skipped_other_documents": skipped_facts,
             "identical_duplicates_merged": merged, "incomplete_history": incomplete,
-            "selected_but_skipped": skipped_docs}
+            "selected_but_skipped": skipped_docs, "excluded_filings": len(excluded),
+            "journal": str(out / JOURNAL_FILE)}
+
+
+def entry_sha256(item: dict) -> str:
+    return hashlib.sha256(json.dumps(item, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def _esc(s: str) -> str:  # échappement des pointeurs JSON (RFC 6901) : les unités peuvent contenir « / »
+    return s.replace("~", "~0").replace("/", "~1")
+
+
+def make_pointer(taxonomy: str, concept: str, unit: str, idx: int) -> str:
+    return f"facts/{_esc(taxonomy)}/{_esc(concept)}/units/{_esc(unit)}/{idx}"
+
+
+def parse_pointer(pointer: str) -> tuple[str, str, str, int]:
+    parts = pointer.split("/")
+    if len(parts) != 6 or parts[0] != "facts" or parts[3] != "units" or not parts[5].isdigit():
+        raise EdgarFormatError(f"pointeur de trace invalide : {pointer!r}")
+    un = [x.replace("~1", "/").replace("~0", "~") for x in parts]
+    return un[1], un[2], un[4], int(un[5])
+
+
+def _resolve_pointer(doc: dict, pointer: str):
+    taxonomy, concept, unit, idx = parse_pointer(pointer)
+    return doc["facts"][taxonomy][concept]["units"][unit][idx]
+
+
+def verify_trace(raw: Path, audit: Path) -> list[str]:
+    """Recalcule chaque fait converti depuis son entrée JSON brute : aucune valeur, date ou attribution modifiée."""
+    problems: list[str] = []
+    journal = json.loads((raw / "journal_collecte.json").read_text(encoding="utf-8"))
+    for e in journal:
+        if hashlib.sha256((raw / e["file"]).read_bytes()).hexdigest() != e["sha256"]:
+            problems.append(f"{e['file']} modifié depuis sa collecte")
+    if problems:
+        return problems
+    with open(audit / "facts.csv", newline="", encoding="utf-8") as f:
+        facts = {r["fact_id"]: r for r in csv.DictReader(f)}
+    with open(audit / "documents.csv", newline="", encoding="utf-8") as f:
+        docs = {r["doc_id"]: r for r in csv.DictReader(f)}
+    with open(audit / TRACE_FILE, newline="", encoding="utf-8") as f:
+        trace = list(csv.DictReader(f))
+    cache: dict[str, dict] = {}
+    traced = set()
+    for t in trace:
+        fid = t["fact_id"]
+        if fid in traced:
+            problems.append(f"{fid} : tracé deux fois")
+        traced.add(fid)
+        fact = facts.get(fid)
+        if fact is None:
+            problems.append(f"{fid} : présent dans la trace, absent de facts.csv")
+            continue
+        src = raw / Path(t["source_file"]).name
+        if src.name not in cache:
+            cache[src.name] = json.loads(src.read_text(encoding="utf-8"))
+        try:
+            it = _resolve_pointer(cache[src.name], t["source_pointer"])
+        except (KeyError, IndexError, ValueError, EdgarFormatError):
+            problems.append(f"{fid} : entrée brute introuvable ({t['source_pointer']})")
+            continue
+        tax, concept, unit, _ = parse_pointer(t["source_pointer"])
+        doc = docs.get(fact["doc_id"], {})
+        checks = {
+            "empreinte de l'entrée": (entry_sha256(it), t["entry_sha256"]),
+            "valeur": (str(it.get("val")), fact["raw_value"]),
+            "numéro d'accès": (it.get("accn"), doc.get("accession_number")),
+            "concept": (f"{tax}:{concept}", fact["source_concept"]),
+            "unité": (unit, fact["source_unit"]),
+            "début de période": (it.get("start", ""), fact["period_start"]),
+            "fin de période": (it.get("end"), fact["period_end"]),
+            "formulaire": (it.get("form"), doc.get("doc_type")),
+            "fy/fp/frame": ((str(it.get("fy", "")), str(it.get("fp", "")), str(it.get("frame", ""))),
+                            (t["fy"], t["fp"], t["frame"])),
+        }
+        for label, (a, b) in checks.items():
+            if a != b:
+                problems.append(f"{fid} : {label} différent(e) de l'entrée brute ({a!r} contre {b!r})")
+    for fid in facts.keys() - traced:
+        problems.append(f"{fid} : fait sans trace vers une entrée brute")
+    return problems
 
 
 def _check_cik(obj: dict, c10: str, ctx: str) -> None:
@@ -307,12 +424,21 @@ def main(argv=None) -> int:
     v.add_argument("--out", required=True, type=Path)
     v.add_argument("--forms", default="10-K,10-Q")
     v.add_argument("--remplacer", action="store_true")
+    r = sub.add_parser("verify-trace", help="Recalculer chaque fait converti depuis son entrée JSON brute")
+    r.add_argument("--raw", required=True, type=Path)
+    r.add_argument("--audit", required=True, type=Path)
     a = p.parse_args(argv)
     if a.cmd == "collect":
         collect(a.cik, a.out, a.user_agent, a.dry_run, replace=a.remplacer)
     elif a.cmd == "import-files":
         import_files(a.cik, a.submissions, a.companyfacts, a.retrieved_at, a.out, a.remplacer)
         print(f"Fichiers enregistrés dans {a.out}. Étape suivante : convert --raw {a.out} --out <dossier d'audit>")
+    elif a.cmd == "verify-trace":
+        problems = verify_trace(a.raw, a.audit)
+        for msg in problems[:50]:
+            print("  ÉCART", msg)
+        print(f"{len(problems)} écart(s) entre le dossier converti et les entrées brutes.")
+        return 1 if problems else 0
     else:
         res = convert(a.raw, a.out, set(a.forms.split(",")), a.remplacer)
         print(json.dumps(res, ensure_ascii=False, indent=2))

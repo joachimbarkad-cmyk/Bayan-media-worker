@@ -1,4 +1,4 @@
-# HANDOFF — simulateur de trading halal, V1.9 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.10 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
@@ -6,6 +6,21 @@ Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier
 **Merci de relire de façon critique** : lectures d'information future, ADMISSIBLE erronés, contrôles d'audit
 contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
 au document de fiqh fourni par l'utilisateur**.
+
+## 00. Suite donnée à la revue n° 10 (collecte Apple)
+
+| Recommandation | Fait | Test |
+|---|---|---|
+| `acceptanceDateTime` en UTC | Confirmé par le relecteur ; conservé en `+00:00`, `public_available_at` reste vide | — |
+| Journal des exclusions par numéro d'accès et motif | `journal_conversion.json` : 28 dépôts, 10 067 faits (10-Q 5 737, 10-K 3 002, 8-K 1 118, 10-K/A 210 ; tous hors `filings.recent`), un pointeur d'exemple par dépôt ; comptage entrées brutes = retenus + fusionnés + écartés, sinon arrêt | `test_exclusions_are_logged_per_accession_with_reason`, `test_every_apple_fact_is_traced_to_its_raw_entry` |
+| Conserver l'entrée JSON source | `trace_source.csv` : pointeur JSON (RFC 6901) vers l'entrée brute, empreinte SHA-256 de l'entrée, `fy`, `fp`, `frame` ; `verify-trace` recalcule valeur, accn, concept, unité, dates, formulaire | `test_trace_verifies_and_detects_tampering`, `test_units_containing_a_slash_round_trip`, `test_missing_trace_row_is_reported` |
+| Sélection « période + dépôt disponible à la décision », avec rectificatif et comparatif | `halal_sim/selection.py` (règles dans `docs/NORMALISATION_RATIOS.md`) | 7 cas fictifs + 4 sur Apple dans `tests/test_review10.py` |
+| Ordre de normalisation des ratios | `docs/NORMALISATION_RATIOS.md` ; les chiffres cités par le relecteur sont retrouvés dans les données (LongTermDebt 90 678 M = 12 350 + 78 328 ; CommercialPaper 7 979 M ; trésorerie 35 934 M ; actions 14 773 260 000 au 27/09 et 14 776 353 000 au 17/10 ; NonoperatingIncomeExpense −321 M) | — |
+
+Défaut trouvé en chemin : la première version de la trace coupait les unités contenant « / » (`USD/shares`) ;
+`verify-trace` l'a détecté (675 écarts), corrigé par l'échappement RFC 6901. Sur Apple : 15 068 faits, 0 écart.
+Mutations : 9 défauts réintroduits (J+1, plus récent, début de période, UTC, ambiguïté, échappement, contrôle de
+valeur, compte des exclusions, fait sans trace), tous détectés. **157 tests.**
 
 ## 0 bis. Première collecte EDGAR réelle (Apple, CIK 320193)
 
@@ -68,9 +83,9 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 
 - Simulation de bout en bout (12 contrôles), avec `--ruleset` pour choisir le référentiel et `--db` pour la base.
 - `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE.
-- **142 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+- **157 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
   test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
-  test_review9 9, test_ruleset_validation 10, test_screening 11.
+  test_review9 9, test_review10 15, test_ruleset_validation 10, test_screening 11.
 
 ## 4. Limites connues
 
@@ -81,6 +96,9 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 5. Purification, zakāt, filtre mālikite des actifs monétaires : non codés (décisions du board).
 
 ## 5. Questions pour le relecteur
+
+0. (V1.10) La règle « dépôt le plus récemment disponible » est-elle la bonne pour un backtest, ou faut-il garder la
+   valeur telle que publiée à l'origine pour certains usages ? `verify-trace` laisse-t-il passer une altération ?
 
 1. Le référentiel `AAOIFI_SS21_document_utilisateur.json` reflète-t-il fidèlement le § 5.1 du document (seuils,
    dénominateurs, comparateur « ≤ », sources) ? Y manque-t-il une règle que le document présente comme consensuelle ?
