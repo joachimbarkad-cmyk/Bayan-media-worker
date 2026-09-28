@@ -111,7 +111,7 @@ une contre-vérification humaine indépendante restent nécessaires.
 - Un fait dont le concept est mappé mais qui n'est pas normalisé doit porter une justification
   « NON NORMALISÉ : motif » (exclusion explicite) ; sinon, erreur bloquante.
 - Outil : `tools/edgar_normalize.py` (`normalize`, `import-filing`, `reconcile-ixbrl`), règles
-  `config/normalisation/edgar_v3.json` (v1 et v2 retirées, revues n° 13 et 14), exemples `docs/EXEMPLE_NORMALISATION.md`.
+  `config/normalisation/edgar_v4.json` (v1 à v3 retirées), exemples `docs/EXEMPLE_NORMALISATION.md`.
 
 ## Conformité aux règles (V1.14)
 

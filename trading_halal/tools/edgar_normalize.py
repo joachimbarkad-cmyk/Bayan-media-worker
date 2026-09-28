@@ -141,9 +141,16 @@ def _rules(rules_path: Path) -> dict:
     rules = json.loads(rules_path.read_text(encoding="utf-8"))
     for r in rules["regles"]:
         fb = r.get("repli_total")
-        if fb is not None and (fb.get("concept") != "total_revenue" or not fb.get("si_absents_du_document")):
-            raise NormalizeError(f"règle {r['id']} : repli_total mal formé (concept total_revenue et liste "
-                                 "si_absents_du_document obligatoires)")
+        if fb is not None and (fb.get("concept") != "total_revenue" or not fb.get("si_absents_du_document")
+                               or not (fb.get("autres_revenus") or {}).get("motifs")):
+            raise NormalizeError(f"règle {r['id']} : repli_total mal formé (concept total_revenue, liste "
+                                 "si_absents_du_document et autres_revenus.motifs obligatoires)")
+        if fb is not None:
+            missed = [c for c in [r["source_concept"], *fb["si_absents_du_document"]]
+                      if not revenue_like(c, fb["autres_revenus"])]
+            if missed:
+                raise NormalizeError(f"règle {r['id']} : motifs/exclusions incohérents, ces concepts de revenu ne sont "
+                                     f"pas reconnus comme revenus : {missed}")
         if r["normalized_concept"] in SHARE_BASED:
             raise NormalizeError(f"règle {r['id']} : {r['normalized_concept']} exige une catégorie d'actions, qui ne "
                                  "peut pas être établie automatiquement (revue n° 13) ; règle refusée")
@@ -387,6 +394,15 @@ TAXONOMY_NS = {"us-gaap": re.compile(r"^http://fasb\.org/us-gaap/\d{4}$"),
                "srt": re.compile(r"^http://fasb\.org/srt/\d{4}$")}
 
 
+def revenue_like(name: str, spec: dict) -> bool:
+    """Concept dont le nom local évoque un revenu (motifs), hors faux amis (exclusions). Heuristique prudente :
+    un faux positif bloque seulement un repli (aucun total), jamais l'inverse."""
+    local = name.rsplit("}", 1)[-1].split(":", 1)[-1]
+    if any(x in local for x in spec.get("exclusions", [])):
+        return False
+    return any(m in local for m in spec["motifs"])
+
+
 def _canonical(uri: str, local: str) -> str:
     """Nom canonique « us-gaap:Local » si l'URI est celle d'une taxonomie connue ; sinon « {uri}local »."""
     for prefix, pattern in TAXONOMY_NS.items():
@@ -475,7 +491,7 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> di
         except ValueError:
             return False
     # Concepts déclarés pour l'entité entière (contexte sans segment ni scénario), par période exacte.
-    report_wide = {(f["name"], contexts[f["context"]]["start"], contexts[f["context"]]["end"])
+    report_wide = {(f["name"], contexts[f["context"]]["start"], contexts[f["context"]]["end"], f["unit"])
                    for f in ixfacts if f["context"] in contexts and not contexts[f["context"]]["segment"]
                    and entity_ok(contexts[f["context"]])}
     proof = f"fichier:{doc['local_copy']}#sha256={sha}"
@@ -519,13 +535,20 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> di
         target, fallback_note = rule["normalized_concept"], ""
         fb = rule.get("repli_total")
         if fb:
-            blockers = [c for c in fb["si_absents_du_document"]
-                        if (c, prop["period_start"], prop["period_end"]) in report_wide]
+            same = [(n, u) for (n, st, en_, u) in report_wide
+                    if (st, en_) == (prop["period_start"], prop["period_end"])]
+            blockers = sorted({n for n, _ in same if n in fb["si_absents_du_document"]} |
+                              {n for n, u in same if re.fullmatch(r"[A-Z]{3}", u) and n != rule["source_concept"]
+                               and revenue_like(n, fb["autres_revenus"])})
             if not blockers:
                 target = fb["concept"]
-                fallback_note = (f"{FALLBACK_PREFIX} aucun de {fb['si_absents_du_document']} n'est déclaré pour "
-                                 f"l'entité entière et cette période dans le document ; le composant "
-                                 f"{rule['source_concept']} est retenu comme {target}. ")
+                fallback_note = (f"{FALLBACK_PREFIX} le document ne déclare, pour l'entité entière et cette période, "
+                                 f"ni {fb['si_absents_du_document']} ni aucun autre concept de revenu "
+                                 f"(motifs {fb['autres_revenus']['motifs']}) ; le composant {rule['source_concept']} "
+                                 f"est retenu comme {target}. ")
+            else:
+                fallback_note = ""
+                report.setdefault("replis_bloques", []).append(f"{fid} : {blockers}")
         decs = {x["decimals"] for x in matches}
         s.set("facts", fid, "source_context", m["context"], proof, "identifiant du contexte XBRL du document")
         s.set("facts", fid, "source_dimensions", "", proof, "établi par le document : contexte sans segment")

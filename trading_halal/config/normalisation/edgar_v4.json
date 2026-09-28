@@ -1,7 +1,7 @@
 {
-  "version": "edgar_v3",
+  "version": "edgar_v4",
   "date": "2026-09-28",
-  "statut": "RETIRÉE (sonde du 28/09/2026) : le repli R1 -> total ne vérifiait que deux concepts ; American Express (10-K 2025) aurait reçu ses seuls revenus de contrats clients comme total. Remplacée par edgar_v4.",
+  "statut": "PROPOSITION NON RELUE : règles écrites par l'assistant, à faire relire indépendamment (voir HANDOFF.md)",
   "portee": "Faits companyfacts (SEC) en USD ; correspondance UN concept d'origine -> UN concept du projet, sans agrégation ni calcul. Aucune normalisation sans le document du dépôt.",
   "regles": [
     {
@@ -25,7 +25,37 @@
           "us-gaap:Revenues",
           "us-gaap:RevenueNotFromContractWithCustomer"
         ],
-        "explication": "Retenu comme total_revenue seulement si le document ne déclare, pour l'entité entière et la même période exacte, ni l'agrégat Revenues ni de revenus hors contrats clients ; marqué « REPLI : » dans le fait."
+        "explication": "Retenu comme total_revenue seulement si le document ne déclare, pour l'entité entière, la même période exacte et la même devise, ni Revenues, ni RevenueNotFromContractWithCustomer, ni AUCUN autre concept dont le nom évoque un revenu (motifs/exclusions ci-dessous, extensions de l'émetteur comprises). Heuristique prudente : dans le doute, pas de total. Marqué « REPLI : » dans le fait.",
+        "autres_revenus": {
+          "motifs": [
+            "Revenue",
+            "LeaseIncome",
+            "InterestAndDividendIncome",
+            "InterestIncomeOperating",
+            "PremiumsEarned",
+            "NoninterestIncome",
+            "Sales"
+          ],
+          "exclusions": [
+            "CostOf",
+            "Deferred",
+            "RemainingPerformanceObligation",
+            "ContractWithCustomerLiability",
+            "Receivable",
+            "Recognized",
+            "Payable",
+            "IncomeTax",
+            "TaxExpense",
+            "TaxBenefit",
+            "Unearned",
+            "Unbilled",
+            "PercentOf",
+            "IncreaseDecrease",
+            "ProceedsFrom",
+            "GainLoss",
+            "ProForma"
+          ]
+        }
       }
     },
     {
@@ -43,7 +73,8 @@
     "P3_contexte": "le contexte est l'identifiant XBRL du document (X1 retirée).",
     "T1_transformation": "aucune : valeur normalisée = valeur brute, unité « monnaie » + devise USD.",
     "K1_conflit": "Conflit seulement entre concepts d'origine proposés vers le MÊME concept du projet (équivalents) ; un agrégat (R0) et son composant (R1) visent des concepts différents et ne sont jamais en conflit.",
-    "P4_total_composant": "Revenues présent ⇒ total_revenue ; RevenueFromContractWithCustomer… reste un composant. Revenues absent ⇒ repli contrôlé (voir R1)."
+    "P4_total_composant": "Revenues présent ⇒ total_revenue ; RevenueFromContractWithCustomer… reste un composant. Revenues absent ⇒ repli contrôlé (voir R1).",
+    "P5_repli_prudent": "Sonde sur 19 émetteurs (docs/SONDE_REVENUS.md) : American Express déclare des revenus d'intérêts et hors intérêts sans agrégat Revenues ; le repli y est désormais bloqué."
   },
   "non_normalises_volontairement": {
     "us-gaap:SalesRevenueNet": "Concept retiré (2018) : non repris.",

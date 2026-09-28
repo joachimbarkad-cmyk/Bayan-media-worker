@@ -1,15 +1,16 @@
-# Exemples vérifiables : normalisation de faits réels (règles edgar_v3)
+# Exemples vérifiables : normalisation de faits réels (règles edgar_v4)
 
-**Statut (V1.18).** Cinq documents ont été téléchargés de `www.sec.gov` le 28/09/2026 (heure exacte et empreinte dans
+**Statut (V1.19).** Six documents ont été téléchargés de `www.sec.gov` le 28/09/2026 (heure exacte et empreinte dans
 `documents.csv` et `journal_saisies.csv`). Leurs faits proposés ont été **normalisés et rapprochés automatiquement** :
 même entité (identifiant au schéma CIK de la SEC), même période exacte, même unité (devise ISO 4217), concept résolu par
 espace de noms, contexte sans segment ni scénario, valeur affichée égale à la valeur companyfacts. Les autres dépôts
 restent « proposés ». Rapprochement automatique = concordance des chiffres ; le choix des règles reste à relire.
 
-**Revenu total (revue n° 14).** `us-gaap:Revenues` est le total prioritaire. `RevenueFromContractWithCustomer…`
-(contrats clients, ASC 606) est un **composant** (`revenue_from_contracts_with_customers`) ; il n'est retenu comme
-total que **par repli**, marqué « REPLI : » dans le fait, si le document ne déclare pour la même période ni
-`Revenues` ni `RevenueNotFromContractWithCustomer` (cas d'Apple et de Microsoft ci-dessous).
+**Revenu total.** `us-gaap:Revenues` est le total prioritaire. `RevenueFromContractWithCustomer…` (contrats clients,
+ASC 606) est un **composant** (`revenue_from_contracts_with_customers`) ; il n'est retenu comme total que **par repli**,
+marqué « REPLI : », si le document ne déclare pour l'entité entière, la même période et la même devise ni `Revenues`,
+ni `RevenueNotFromContractWithCustomer`, ni **aucun autre concept de revenu** (motifs de noms dans
+`config/normalisation/edgar_v4.json`). Sonde sur 20 émetteurs : `docs/SONDE_REVENUS.md`.
 
 ## Refaire et vérifier
 
@@ -17,7 +18,7 @@ total que **par repli**, marqué « REPLI : » dans le fait, si le document ne d
 cd trading_halal
 python3 tools/edgar_collect.py verify-trace --raw collecte/apple --audit data/audit_edgar_apple
 python3 tools/edgar_normalize.py verify-normalisation --raw collecte/apple --audit data/audit_edgar_apple \
-    --regles config/normalisation/edgar_v3.json
+    --regles config/normalisation/edgar_v4.json
 python3 -m halal_sim audit-docs data/audit_edgar_apple
 python3 tools/exemple_normalisation.py --audit data/audit_edgar_apple --accn 0000320193-25-000079
 ```
@@ -29,14 +30,30 @@ Pour un autre dépôt (identification SEC obligatoire, jamais enregistrée ; ou 
 python3 tools/edgar_normalize.py fetch-filing --audit data/audit_edgar_apple \
     --doc-id 0000320193-0000320193-24-000123 --user-agent "Prénom Nom adresse@domaine" --raw collecte/apple
 python3 tools/edgar_normalize.py reconcile-ixbrl --audit data/audit_edgar_apple \
-    --doc-id 0000320193-0000320193-24-000123 --raw collecte/apple --regles config/normalisation/edgar_v3.json
+    --doc-id 0000320193-0000320193-24-000123 --raw collecte/apple --regles config/normalisation/edgar_v4.json
 ```
 
-## Black Hills — 10-Q du 30/06/2026 : le cas qui a motivé la V1.18
+## American Express — 10-K 2025 : le repli est bloqué (V1.19)
+
+Pas de `Revenues` ; contrats clients 41 304 M$, mais des revenus d'intérêts et hors intérêts sont déclarés pour
+l'entité entière. edgar_v3 aurait retenu 41 304 M$ comme revenu total ; edgar_v4 ne propose **aucun** total (test
+`test_review_case_american_express_fallback_is_blocked`), le composant reste disponible.
+
+Dépôt 10-K 0000004962-26-000080, accepté le 2026-02-06T17:31:47.000+00:00 ; document : https://www.sec.gov/Archives/edgar/data/4962/000000496226000080/axp-20251231.htm
+
+| Concept du projet | Concept d'origine | Période | Valeur | Statut | Entrée brute (collecte) |
+|---|---|---|---|---|---|
+| revenue_from_contracts_with_customers | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2023-01-01 → 2023-12-31 | 37 218 000 000 USD | normalisé, rapproché (auto), contexte c-16, decimals -6 | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/82` |
+| revenue_from_contracts_with_customers | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2024-01-01 → 2024-12-31 | 38 825 000 000 USD | normalisé, rapproché (auto), contexte c-15, decimals -6 | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/94` |
+| revenue_from_contracts_with_customers | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2025-01-01 → 2025-12-31 | 41 304 000 000 USD | normalisé, rapproché (auto), contexte c-1, decimals -6 | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/103` |
+| total_assets | us-gaap:Assets | au 2023-12-31 | 261 108 000 000 USD | normalisé, rapproché (auto), contexte c-40, decimals -6 | `facts/us-gaap/Assets/units/USD/158` |
+| total_assets | us-gaap:Assets | au 2024-12-31 | 271 461 000 000 USD | normalisé, rapproché (auto), contexte c-29, decimals -6 | `facts/us-gaap/Assets/units/USD/169` |
+| total_assets | us-gaap:Assets | au 2025-12-31 | 300 052 000 000 USD | normalisé, rapproché (auto), contexte c-28, decimals -6 | `facts/us-gaap/Assets/units/USD/175` |
+
+## Black Hills — 10-Q du 30/06/2026 : le composant n'est jamais le total (V1.18)
 
 Revenus des contrats clients 440,6 M$ (trimestre) et 1 200,6 M$ (six mois) ; revenu total (`Revenues`) 452,8 M$ et
-1 233,5 M$. En V1.17, 440,6 M$ aurait été retenu comme revenu total ; désormais le total vient de `Revenues` et le
-composant reste distinct (test `test_review_case_black_hills_component_is_never_the_total`).
+1 233,5 M$ (test `test_review_case_black_hills_component_is_never_the_total`).
 
 Dépôt 10-Q 0001193125-26-337444, accepté le 2026-08-06T17:21:32.000+00:00 ; document : https://www.sec.gov/Archives/edgar/data/1130464/000119312526337444/bkh-20260630.htm
 
@@ -111,4 +128,4 @@ Dépôt 10-K 0001652044-26-000018, accepté le 2026-02-05T02:56:03.000+00:00 ; d
 
 - Nombres d'actions : catégories d'actions ordinaires (cotées ou non) à établir sur le document, à la date du fait.
 - Agrégats et postes à qualifier (dette à intérêt, placements à intérêt, revenus illicites) et capitalisation : voir
-  `config/normalisation/edgar_v3.json` (`non_normalises_volontairement`).
+  `config/normalisation/edgar_v4.json` (`non_normalises_volontairement`).

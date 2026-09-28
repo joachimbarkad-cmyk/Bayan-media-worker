@@ -1,4 +1,4 @@
-# HANDOFF — simulateur de trading halal, V1.18 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.19 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
@@ -6,6 +6,39 @@ Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier
 **Merci de relire de façon critique** : lectures d'information future, ADMISSIBLE erronés, contrôles d'audit
 contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
 au document de fiqh fourni par l'utilisateur**.
+
+## V1.19 — Sonde sur 20 émetteurs : le repli de v3 était encore trop permissif
+
+Travail autonome. Pour tester la question ouverte de la V1.18 (la liste des concepts qui bloquent le repli suffit-elle ?),
+`tools/sonde_revenus.py` lit le dernier 10-K de 20 émetteurs variés (foncières, banques, assureur, énergie, industrie,
+distribution, paiement) et liste les concepts de revenu déclarés pour l'entité entière : `docs/SONDE_REVENUS.md`
+(données : `docs/SONDE_REVENUS.json`).
+
+**Contre-exemple réel trouvé : American Express (10-K 2025).** Ni `Revenues` ni `RevenueNotFromContractWithCustomer` ;
+R1 = 41 304 M$ ; mais `InterestAndDividendIncomeOperating`, `NoninterestIncome` et `RevenuesNetOfInterestExpense` sont
+déclarés pour l'entité entière. edgar_v3 aurait retenu 41 304 M$ comme revenu total : **faux**.
+
+Correction, `config/normalisation/edgar_v4.json` (v3 retirée) : le repli R1 → total est aussi bloqué par **tout autre
+concept dont le nom évoque un revenu** (motifs et exclusions écrits dans les règles, concepts d'extension compris),
+déclaré pour l'entité entière et la même période, dans **n'importe quelle devise** (un ratio ou un montant par action ne
+bloque pas). Heuristique prudente : un faux positif empêche seulement un total (le composant reste disponible).
+L'outil refuse des motifs qui ne reconnaîtraient pas les concepts de la règle eux-mêmes — garde-fou ajouté après une
+erreur de ma première version d'edgar_v4 (l'exclusion « Tax » écartait R1, `…ExcludingAssessedTax` ; repérée par la
+sonde avant toute régénération).
+
+Résultats de la sonde (edgar_v4) : `Revenues` → total pour 14 émetteurs (dont Walmart : 713 163 ≠ R1 706 413) ;
+repli R1 → total pour Apple, Microsoft, Visa, Ford (aucun autre revenu déclaré ; Ford à confirmer humainement) ;
+repli bloqué pour American Express ; aucun total pour Duke Energy (concepts réglementés).
+
+Dossiers réels régénérés avec edgar_v4 (6 documents, tous contrôles à 0) ; American Express ajouté
+(`data/audit_edgar_american_express`) : 6 faits rapprochés, **aucun total_revenue**, composant 41 304 M$ disponible.
+
+Tests : 7 nouveaux (blocage par autres revenus, non-blocage par coût/autre période/fait ventilé/ratio, toute devise,
+motifs incohérents refusés, American Express réel, conditions v3 réunies dans le document). Mutations : 7, toutes
+détectées (dont deux après ajout de tests). **231 tests.**
+
+Points nécessitant une revue indépendante : les motifs de noms (faux négatifs possibles : un revenu dont le nom ne
+contient aucun motif) ; Ford ; faut-il traiter `RevenueFromContractWithCustomerIncludingAssessedTax` (Duke Energy) ?
 
 ## V1.18 — Revue n° 14 : le revenu des contrats clients n'est pas le revenu total
 
@@ -352,9 +385,9 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 
 - Simulation de bout en bout (12 contrôles), avec `--ruleset` pour choisir le référentiel et `--db` pour la base.
 - `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE.
-- **225 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+- **231 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
   test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
-  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 45, test_ruleset_validation 10, test_screening 11.
+  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 51, test_ruleset_validation 10, test_screening 11.
 
 ## Limites connues (générales)
 

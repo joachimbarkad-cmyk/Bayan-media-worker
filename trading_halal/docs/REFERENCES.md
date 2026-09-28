@@ -78,3 +78,4 @@ effectué ; d'ici là, la position reste gelée. Aucune vente n'est simulée san
 - **V1.16** (revue n° 13) : aucune règle de portefeuille modifiée.
 - **V1.17** : aucune règle de portefeuille modifiée.
 - **V1.18** (revue n° 14) : aucune règle de portefeuille modifiée.
+- **V1.19** : aucune règle de portefeuille modifiée.
