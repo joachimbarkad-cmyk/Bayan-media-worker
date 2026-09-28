@@ -56,7 +56,7 @@ class DelistingConsiderationTimingTests(unittest.TestCase):
         _, store = run(ds=ds)
         dates = {r[0] for r in store.conn.execute(
             "SELECT date FROM corporate_events WHERE event='RADIATION_CONTREPARTIE_DOCUMENTEE'")}
-        self.assertEqual(dates, {"2024-09-30"})
+        self.assertEqual(dates, {"2024-10-01"})  # séance suivant la date de paiement (revue n° 5)
 
     def test_loader_requires_dated_consideration(self):
         for fields in ({"delisting_cash_per_share": "5", "delisting_source": "x"},

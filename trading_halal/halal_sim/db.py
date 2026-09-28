@@ -43,12 +43,13 @@ CREATE TABLE IF NOT EXISTS orders(
   ticker TEXT NOT NULL, side TEXT NOT NULL CHECK (side IN ('BUY','SELL')),
   qty INTEGER, ref_price REAL, exec_price REAL, notional REAL, fees REAL, slippage_cost REAL,
   status TEXT NOT NULL CHECK (status IN ('EXECUTE_SIMULE','REJETE')),
-  reason TEXT, screening_status_at_decision TEXT NOT NULL,
+  reason TEXT, screening_status_at_decision TEXT NOT NULL, screening_status_at_execution TEXT,
   CHECK (execution_date IS NULL OR execution_date > decision_date)
 );
 CREATE TRIGGER IF NOT EXISTS buy_requires_admissible BEFORE INSERT ON orders
-WHEN NEW.side = 'BUY' AND NEW.status = 'EXECUTE_SIMULE' AND NEW.screening_status_at_decision <> 'ADMISSIBLE'
-BEGIN SELECT RAISE(ABORT, 'Achat interdit : statut non ADMISSIBLE'); END;
+WHEN NEW.side = 'BUY' AND NEW.status = 'EXECUTE_SIMULE' AND (NEW.screening_status_at_decision <> 'ADMISSIBLE'
+     OR NEW.screening_status_at_execution IS NULL OR NEW.screening_status_at_execution <> 'ADMISSIBLE')
+BEGIN SELECT RAISE(ABORT, 'Achat interdit : statut non ADMISSIBLE à la décision ou à l''exécution'); END;
 CREATE TABLE IF NOT EXISTS equity(
   run_id INTEGER NOT NULL REFERENCES runs(run_id),
   portfolio TEXT NOT NULL, date TEXT NOT NULL,
@@ -116,9 +117,10 @@ class Store:
 
     def add_fill(self, run_id, f):
         self.conn.execute(
-            "INSERT INTO orders VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO orders VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (run_id, f.portfolio, _s(f.decision_date), _s(f.execution_date), f.ticker, f.side, f.qty, f.ref_price,
-             f.exec_price, f.notional, f.fees, f.slippage_cost, "EXECUTE_SIMULE", f.reason, f.screening_status))
+             f.exec_price, f.notional, f.fees, f.slippage_cost, "EXECUTE_SIMULE", f.reason, f.screening_status,
+             f.screening_status_exec or None))
 
     def add_rejected_order(self, run_id, portfolio, decision_date, execution_date, ticker, side, qty, status, reason):
         self.conn.execute(

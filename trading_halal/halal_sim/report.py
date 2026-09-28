@@ -6,6 +6,8 @@ import sqlite3
 from datetime import date
 
 from . import PROJECT_ROOT
+from .data import PointInTimeView
+from .screening import screen_security
 from .safety import network_blocked, scan_package
 
 METRIC_LABELS = [
@@ -224,7 +226,8 @@ def build_report(conn: sqlite3.Connection, run_id: int, sensitivity_run_ids: lis
              "- Activités lues depuis un historique daté, mais aucune durée de validité maximale d'une fiche d'activité.\n"
              "- Pas de conversion de devises : tous les titres doivent être dans la devise du portefeuille (sinon refus).\n"
              "- Titre radié sans contrepartie publiée et payée : valeur inconnue, deux scénarios (0, dernier cours), pas des bornes.\n"
-             "- Exécution : prix d'ouverture du fichier, volume du jour non nul, au plus 5 % du volume de la veille (hypothèses).\n"
+             "- Exécution : ordre borné par l'information connue à l'ouverture (statut recalculé, 5 % du volume de la veille) ; "
+             "résultat modélisé avec la barre du jour (prix d'ouverture, 5 % du volume du jour). Hypothèses non validées.\n"
              "- Capitalisation vérifiée par nombre d'actions x cours : écarte une valeur aberrante, pas une donnée fausse mais cohérente.\n"
              "- Le référentiel religieux s'applique rétroactivement à toute la période simulée.\n")
     return "\n".join(L) + "\n"
@@ -258,6 +261,24 @@ def run_checks(conn: sqlite3.Connection, run_id: int, ds=None) -> list[tuple[str
         open_check = [("Chaque exécution simulée correspond à un cours d'ouverture présent dans le fichier, un jour de volume non nul", not bad,
                        ("; ".join(bad[:5]) or f"{len(fills)} exécutions vérifiées")
                        + " (ne prouve pas qu'une transaction à ce prix et cette quantité était possible)")]
+        run = conn.execute("SELECT config_json, ruleset_json FROM runs WHERE run_id=?", (run_id,)).fetchone()
+        cfg, rs = json.loads(run["config_json"]), json.loads(run["ruleset_json"])
+        part = float(cfg.get("execution", {}).get("max_volume_participation", 0.05))
+        too_big, not_adm = [], []
+        for r in conn.execute("SELECT ticker, side, qty, execution_date FROM orders WHERE run_id=? AND "
+                              "status='EXECUTE_SIMULE'", (run_id,)).fetchall():
+            d = date.fromisoformat(r["execution_date"])
+            bar = ds.bar_on(r["ticker"], d)
+            if bar is None or r["qty"] > bar.volume * part:
+                too_big.append(f"{r['ticker']} {d} ({r['qty']})")
+            # Recalcul indépendant du statut connu à l'ouverture (documents publiés avant le jour d'exécution).
+            if r["side"] == "BUY" and screen_security(PointInTimeView(ds, d), r["ticker"], rs).status != "ADMISSIBLE":
+                not_adm.append(f"{r['ticker']} {d}")
+        open_check += [
+            (f"Quantité exécutée <= {part:.0%} du volume total du jour", not too_big, "; ".join(too_big[:5]) or "OK"),
+            ("Aucun achat d'un titre non ADMISSIBLE à l'ouverture d'exécution (statut recalculé)", not not_adm,
+             "; ".join(not_adm[:5]) or "OK"),
+        ]
     return open_check + [
         ("Aucun achat d'un titre non ADMISSIBLE (statut enregistré)", bad_buys == 0, f"{bad_buys} cas"),
         ("Aucun achat d'un titre non ADMISSIBLE (recoupement avec le filtrage)", bad_buys2 == 0, f"{bad_buys2} cas"),

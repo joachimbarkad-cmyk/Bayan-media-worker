@@ -1,0 +1,3 @@
+doc_id,issuer_id,doc_type,accession_number,url,local_copy,local_sha256,period_end,accepted_at,public_available_at,retrieved_at,version,amends_doc_id
+D1,FICT-0001,RAPPORT_ANNUEL,FICT-2025-000001,https://example.invalid/fictif/d1,copies/FICT-10K-2024.txt,02f5288b947b3c40e7fcd15cd3d39ced38c803619d64750d1a638b5d68de45eb,2024-12-31,2025-02-20T16:31:05-05:00,2025-02-20T16:31:05-05:00,2026-09-28T10:00:00+00:00,original,
+D2,FICT-0001,RAPPORT_ANNUEL_RECTIFICATIF,FICT-2025-000077,https://example.invalid/fictif/d2,,,2024-12-31,2025-04-02T09:12:40-04:00,2025-04-02T09:12:40-04:00,2026-09-28T10:00:00+00:00,rectificatif,D1

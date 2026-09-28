@@ -114,6 +114,7 @@ class Backtest:
         if not 0 < self.max_participation <= 1:
             raise PolicyError("execution.max_volume_participation doit être dans ]0 ; 1]")
         self.delistings_done: set[str] = set()
+        self._open_status: dict[tuple[str, date], str] = {}
 
     # --- dimensionnement d'un achat, décidé avec le cours de clôture de la date de décision ---
     def _size_buy(self, close: float, budget: float) -> tuple[int, str, str]:
@@ -156,8 +157,10 @@ class Backtest:
 
     def _process_delistings(self, d: date) -> None:
         """Début de journée. (1) Radiation survenue ce jour : la position est toujours GELÉE (valeur inconnue).
-        (2) Contrepartie en espèces documentée : créditée seulement quand sa source est publiée (avant le jour,
-        règle J+1) ET qu'elle est payée (date de paiement atteinte). Jamais avant."""
+        (2) Contrepartie en espèces documentée : créditée seulement quand sa source est publiée avant le jour
+        (règle J+1) ET que sa date de paiement est passée : sans heure de paiement, rien ne garantit que les fonds
+        soient disponibles à l'ouverture du jour même, d'où la séance suivante. Un échange de titres n'est pas
+        modélisé : la position reste gelée."""
         for t, sec in self.ds.securities.items():
             dl = sec["delisted_date"]
             if dl is None or d < dl or t in self.delistings_done:
@@ -168,16 +171,20 @@ class Backtest:
                     continue
                 last = self.ds.last_close_on_or_before(t, d)
                 qty = br.freeze(t, last, d)
+                src_d = sec["delisting_source_date"]
+                known = sec["delisting_cash_per_share"] is not None and src_d is not None and src_d < d
+                # Le journal ne mentionne une contrepartie que si elle était publiée AVANT ce jour.
                 self.store.add_corporate_event(self.run_id, pf, d, t, "RADIATION_VALEUR_INCONNUE", qty, last, 0.0,
-                                               "contrepartie non encore publiée et payée" if sec["delisting_cash_per_share"]
-                                               is not None else "aucune contrepartie documentée")
+                                               f"contrepartie publiée le {src_d}, paiement annoncé le "
+                                               f"{sec['delisting_cash_date']}" if known
+                                               else "aucune contrepartie publiée à cette date")
         for pf, br in self.brokers.items():
             for t in sorted(br.frozen):
                 sec = self.ds.securities[t]
                 cash = sec["delisting_cash_per_share"]
                 src_d, pay_d = sec["delisting_source_date"], sec["delisting_cash_date"]
-                if cash is None or src_d is None or pay_d is None or src_d >= d or pay_d > d:
-                    continue  # non documentée, pas encore publiée ou pas encore payée : reste gelée
+                if cash is None or src_d is None or pay_d is None or src_d >= d or pay_d >= d:
+                    continue  # non documentée, pas encore publiée, ou fonds pas encore disponibles à l'ouverture
                 qty, received = br.release_frozen(t, cash)
                 self.store.add_corporate_event(self.run_id, pf, d, t, "RADIATION_CONTREPARTIE_DOCUMENTEE", qty, cash,
                                                received, f"{sec['delisting_source']} (publiée le "
@@ -298,9 +305,23 @@ class Backtest:
             self._record(pf, d, ADMISSIBLE, dec, BUY, code_ok, f"{dec.detail} ; {detail}")
         return orders
 
+    def _status_at_open(self, ticker: str, d: date) -> str:
+        """Statut religieux avec les seuls documents publiés AVANT le jour d (règle J+1) : c'est ce qui est connu
+        à l'ouverture. Une exclusion publiée le jour de la décision est donc prise en compte avant d'acheter."""
+        key = (ticker, d)
+        if key not in self._open_status:
+            self._open_status[key] = screen_security(PointInTimeView(self.ds, d), ticker, self.ruleset).status
+        return self._open_status[key]
+
     def _execute(self, pf: str, orders: list[PendingOrder], d: date, universe: set[str]) -> list[PendingOrder]:
-        """Exécution à l'ouverture de d. Un prix présent dans le fichier ne suffit pas : titre dans l'univers ce
-        jour-là (pas radié), volume du jour non nul, quantité plafonnée par le volume de la veille."""
+        """Simulation de l'exécution à l'ouverture de d.
+
+        Deux natures d'information, volontairement séparées :
+        - ce que l'investisseur sait à l'ouverture (documents publiés avant d, volume de la veille) conditionne
+          l'ORDRE : titre dans l'univers, statut encore ADMISSIBLE, quantité <= participation x volume de la veille ;
+        - la barre du jour (prix d'ouverture, volume total du jour) sert uniquement à MODÉLISER ce que le marché a
+          permis : prix d'exécution et quantité exécutable <= participation x volume du jour. Elle n'alimente
+          jamais une décision de stratégie (vérifié par test_review5)."""
         br, carry = self.brokers[pf], []
         for o in sorted(orders, key=lambda o: (o.side != "SELL", o.ticker)):
             bar = self.ds.bar_on(o.ticker, d)
@@ -317,10 +338,18 @@ class Backtest:
                 self.store.add_rejected_order(self.run_id, pf, o.decision_date, d, o.ticker, "BUY", o.qty, o.status,
                                               "HORS_UNIVERS_A_L_EXECUTION")
                 continue
-            cap = self._volume_cap(o.ticker, d)
-            if bar.volume <= 0 or cap < 1:
+            open_status = self._status_at_open(o.ticker, d) if o.side == "BUY" else ""
+            if o.side == "BUY" and open_status != ADMISSIBLE:
+                self.store.add_rejected_order(self.run_id, pf, o.decision_date, d, o.ticker, "BUY", o.qty, o.status,
+                                              f"STATUT_{open_status}_A_L_OUVERTURE")
+                continue
+            cap_known = self._volume_cap(o.ticker, d)                      # connu à l'ouverture (veille)
+            cap_market = int(bar.volume * self.max_participation)          # modèle de marché (volume du jour)
+            cap = min(cap_known, cap_market)
+            if cap < 1:
+                reason = ("VOLUME_VEILLE_INSUFFISANT" if cap_known < 1 else "VOLUME_DU_JOUR_INSUFFISANT (modèle de marché)")
                 self.store.add_rejected_order(self.run_id, pf, o.decision_date, d, o.ticker, o.side, o.qty, o.status,
-                                              "VOLUME_NUL_OU_INSUFFISANT" + (" (vente reportée)" if o.side == "SELL" else ""))
+                                              reason + (" (vente reportée)" if o.side == "SELL" else ""))
                 if o.side == "SELL":
                     carry.append(o)
                 continue
@@ -342,7 +371,8 @@ class Backtest:
                 self.store.add_rejected_order(self.run_id, pf, o.decision_date, d, o.ticker, "BUY", qty, o.status,
                                               f"COUT_DISPROPORTIONNE_A_L_EXECUTION ({rt:.2f} %)")
                 continue
-            self.store.add_fill(self.run_id, br.buy(o.ticker, qty, bar.open, o.decision_date, d, o.status, o.reason))
+            self.store.add_fill(self.run_id, br.buy(o.ticker, qty, bar.open, o.decision_date, d, o.status, o.reason,
+                                                    status_at_execution=open_status))
         return carry
 
     def run(self) -> BacktestResult:

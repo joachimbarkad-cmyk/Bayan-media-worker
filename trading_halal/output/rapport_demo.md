@@ -21,7 +21,7 @@
 | Référence « réinvestie » | Chaque fin de mois : mêmes ventes imposées, puis liquidités réparties à parts cibles égales entre les titres admissibles du moment, sans moyenne mobile (docs/REFERENCES.md) |
 | Frais (fictifs) | 1.0 EUR fixe + 0 % (min 1.0 EUR) par ordre ; glissement 10 pb ; refus si coût aller-retour > 1.5 % |
 | Politique titres détenus | EXCLU → SELL, INCERTAIN → SELL |
-| Empreinte du code / des données | 21a5bb0cb0b3 / 8973b58e3308 |
+| Empreinte du code / des données | da07c8bdd2bf / 8973b58e3308 |
 
 ## Résultats : stratégie contre deux références
 
@@ -145,8 +145,8 @@ Aucune vente n'est simulée faute de prix négociable. Sans contrepartie documen
 
 | Date | Portefeuille | Titre | Événement | Qté | Dernier cours / contrepartie | Espèces reçues | Source |
 |---|---|---|---|---|---|---|---|
-| 2024-06-28 | reference | FXMU | RADIATION_VALEUR_INCONNUE | 10 | 8.42 | 0.00 | aucune contrepartie documentée |
-| 2024-06-28 | reference_reinvestie | FXMU | RADIATION_VALEUR_INCONNUE | 10 | 8.42 | 0.00 | aucune contrepartie documentée |
+| 2024-06-28 | reference | FXMU | RADIATION_VALEUR_INCONNUE | 10 | 8.42 | 0.00 | aucune contrepartie publiée à cette date |
+| 2024-06-28 | reference_reinvestie | FXMU | RADIATION_VALEUR_INCONNUE | 10 | 8.42 | 0.00 | aucune contrepartie publiée à cette date |
 
 ## Journal des ordres simulés (15 derniers, stratégie)
 
@@ -173,6 +173,8 @@ Aucune vente n'est simulée faute de prix négociable. Sans contrepartie documen
 | Contrôle | Résultat | Détail |
 |---|---|---|
 | Chaque exécution simulée correspond à un cours d'ouverture présent dans le fichier, un jour de volume non nul | OK | 65 exécutions vérifiées (ne prouve pas qu'une transaction à ce prix et cette quantité était possible) |
+| Quantité exécutée <= 5% du volume total du jour | OK | OK |
+| Aucun achat d'un titre non ADMISSIBLE à l'ouverture d'exécution (statut recalculé) | OK | OK |
 | Aucun achat d'un titre non ADMISSIBLE (statut enregistré) | OK | 0 cas |
 | Aucun achat d'un titre non ADMISSIBLE (recoupement avec le filtrage) | OK | 0 cas |
 | Aucune décision n'a lu une donnée postérieure à sa date | OK | 0 cas |
@@ -180,7 +182,7 @@ Aucune vente n'est simulée faute de prix négociable. Sans contrepartie documen
 | Exécution toujours après la décision | OK | 0 cas sur 65 ordres |
 | Jamais de solde de liquidités négatif (pas de marge) | OK | 0 jours |
 | Exécution marquée simulation uniquement | OK | runs.simulation_only = 1 |
-| Code sans bibliothèque réseau/courtage ni lecture de clés (analyse statique à ce lancement) | OK | 11 fichiers analysés |
+| Code sans bibliothèque réseau/courtage ni lecture de clés (analyse statique à ce lancement) | OK | 12 fichiers analysés |
 | Réseau effectivement coupé pendant cette exécution | OK | socket.connect / create_connection / getaddrinfo remplacés par un refus |
 
 Ces contrôles portent sur le code Python de ce projet et sur ce processus ; ils ne remplacent pas une isolation au niveau du système. Le projet ne contient aucun connecteur de courtage.
@@ -194,7 +196,7 @@ Ces contrôles portent sur le code Python de ce projet et sur ce processus ; ils
 - Activités lues depuis un historique daté, mais aucune durée de validité maximale d'une fiche d'activité.
 - Pas de conversion de devises : tous les titres doivent être dans la devise du portefeuille (sinon refus).
 - Titre radié sans contrepartie publiée et payée : valeur inconnue, deux scénarios (0, dernier cours), pas des bornes.
-- Exécution : prix d'ouverture du fichier, volume du jour non nul, au plus 5 % du volume de la veille (hypothèses).
+- Exécution : ordre borné par l'information connue à l'ouverture (statut recalculé, 5 % du volume de la veille) ; résultat modélisé avec la barre du jour (prix d'ouverture, 5 % du volume du jour). Hypothèses non validées.
 - Capitalisation vérifiée par nombre d'actions x cours : écarte une valeur aberrante, pas une donnée fausse mais cohérente.
 - Le référentiel religieux s'applique rétroactivement à toute la période simulée.
 

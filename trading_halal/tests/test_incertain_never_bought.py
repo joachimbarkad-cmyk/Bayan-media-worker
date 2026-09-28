@@ -17,9 +17,11 @@ class IncertainNeverBoughtTests(unittest.TestCase):
         br = PaperBroker("t", 10_000, CostModel())
         for st in (INCERTAIN, EXCLU, "", None):
             with self.assertRaises(ForbiddenOrderError):
-                br.buy("X", 1, 10.0, date(2024, 1, 1), date(2024, 1, 2), st, "test")
+                br.buy("X", 1, 10.0, date(2024, 1, 1), date(2024, 1, 2), st, "test", status_at_execution=st)
+            with self.assertRaises(ForbiddenOrderError):  # admissible à la décision, plus à l'ouverture
+                br.buy("X", 1, 10.0, date(2024, 1, 1), date(2024, 1, 2), ADMISSIBLE, "test", status_at_execution=st)
         self.assertEqual(br.positions, {})
-        br.buy("X", 1, 10.0, date(2024, 1, 1), date(2024, 1, 2), ADMISSIBLE, "test")
+        br.buy("X", 1, 10.0, date(2024, 1, 1), date(2024, 1, 2), ADMISSIBLE, "test", status_at_execution=ADMISSIBLE)
         self.assertEqual(br.positions, {"X": 1})
 
     def test_strategy_never_emits_buy_for_incertain_even_with_uptrend(self):

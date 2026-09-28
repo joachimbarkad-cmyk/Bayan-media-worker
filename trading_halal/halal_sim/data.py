@@ -243,7 +243,10 @@ def load_dataset(root: str | Path) -> Dataset:
             raise DataError(f"{ctx} : prix manquant ou non positif")
         if not (lo <= min(o, c) + 1e-9 and max(o, c) <= h + 1e-9):
             raise DataError(f"{ctx} : incohérence plus bas/ouverture/clôture/plus haut")
-        bars[t].append(Bar(d, o, h, lo, c, int(float(row["volume"] or 0))))
+        vol = _num(row["volume"], ctx)
+        if vol is None or vol < 0 or vol != int(vol):
+            raise DataError(f"{ctx} : volume manquant, négatif ou non entier ({row['volume']!r})")
+        bars[t].append(Bar(d, o, h, lo, c, int(vol)))
     for t in bars:
         bars[t].sort(key=lambda b: b.date)
 
@@ -272,6 +275,14 @@ def load_dataset(root: str | Path) -> Dataset:
     calendar = sorted({b.date for bs in bars.values() for b in bs})
     if not calendar:
         raise DataError("Aucun prix chargé")
+    if manifest["nature"] == "REEL":
+        # Garde-fou minimal : un jeu déclaré réel ne peut pas citer de sources de démonstration.
+        cited = [a["source"] for acts in activities.values() for a in acts]
+        cited += [f["source"] for fs in fundamentals.values() for f in fs]
+        cited += [s["delisting_source"] for s in securities.values() if s["delisting_source"]]
+        suspicious = sorted({c for c in cited if any(w in c.upper() for w in ("DEMO", "FICTIF", "TEST"))})
+        if suspicious:
+            raise DataError(f"Jeu déclaré REEL citant des sources de démonstration : {suspicious[:3]}")
     hashes = {k: _sha256(p) for k, p in paths.items()}
     hashes["manifest"] = _sha256(manifest_path)
     return Dataset(root, manifest, securities, bars, fundamentals, activities, calendar, hashes)

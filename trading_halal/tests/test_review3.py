@@ -94,7 +94,7 @@ class DelistingValuationTests(unittest.TestCase):
         self.assertTrue(rows)
         for r in rows:
             self.assertAlmostEqual(r[3], r[2] * 5.0)
-            self.assertEqual(r[4], "2024-07-15")  # créditée au paiement, pas à la radiation
+            self.assertEqual(r[4], "2024-07-16")  # séance suivant le paiement (revue n° 5), pas à la radiation
         for br in res.brokers.values():
             self.assertEqual(br.frozen, {})
 

@@ -60,3 +60,6 @@ effectué ; d'ici là, la position reste gelée. Aucune vente n'est simulée san
 - **V1.4** (revue n° 4) : une contrepartie de radiation n'est créditée qu'après publication de sa source (J+1) et
   à sa date de paiement ; aucun achat possible le jour de la radiation ou après ; exécution refusée sans volume et
   plafonnée à 5 % du volume de la veille. Les deux scénarios de radiation ne sont plus présentés comme des bornes.
+- **V1.5** (revue n° 5) : achat refusé si le statut n'est plus ADMISSIBLE à l'ouverture d'exécution ; quantité
+  exécutée bornée aussi par 5 % du volume du jour (modèle de marché) ; contrepartie créditée à la séance qui suit
+  sa date de paiement ; le journal d'une radiation ne cite que ce qui était publié à cette date.

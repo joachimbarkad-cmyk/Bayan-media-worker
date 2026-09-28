@@ -55,6 +55,7 @@ class Fill:
     slippage_cost: float
     screening_status: str
     reason: str
+    screening_status_exec: str = ""  # statut recalculé à l'ouverture d'exécution (achats)
 
 
 @dataclass
@@ -97,9 +98,12 @@ class PaperBroker:
             raise LookaheadError("L'exécution doit être strictement postérieure à la décision")
 
     def buy(self, ticker: str, qty: int, ref_price: float, decision_date: date, execution_date: date,
-            screening_status: str, reason: str) -> Fill:
-        if screening_status != ADMISSIBLE:
-            raise ForbiddenOrderError(f"Achat de {ticker} interdit : statut {screening_status} (seul ADMISSIBLE est achetable)")
+            screening_status: str, reason: str, *, status_at_execution: str) -> Fill:
+        """Achat simulé. Le statut doit être ADMISSIBLE à la décision ET à l'ouverture d'exécution (une exclusion
+        publiée entre les deux, donc connue à l'ouverture selon la règle J+1, bloque l'achat)."""
+        for label, st in (("à la décision", screening_status), ("à l'exécution", status_at_execution)):
+            if st != ADMISSIBLE:
+                raise ForbiddenOrderError(f"Achat de {ticker} interdit : statut {st} {label} (seul ADMISSIBLE est achetable)")
         self._check(qty, decision_date, execution_date)
         price = self.costs.fill_price(ref_price, "BUY")
         notional = qty * price
@@ -109,7 +113,7 @@ class PaperBroker:
         self.cash -= notional + fees
         self.positions[ticker] = self.positions.get(ticker, 0) + qty
         fill = Fill(self.name, ticker, "BUY", qty, decision_date, execution_date, ref_price, price, notional, fees,
-                    qty * (price - ref_price), screening_status, reason)
+                    qty * (price - ref_price), screening_status, reason, status_at_execution)
         self.fills.append(fill)
         return fill
 

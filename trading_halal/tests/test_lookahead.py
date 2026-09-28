@@ -104,7 +104,7 @@ class LookaheadTests(unittest.TestCase):
     def test_broker_refuses_execution_not_after_decision(self):
         br = PaperBroker("t", 1000, CostModel())
         with self.assertRaises(LookaheadError):
-            br.buy("X", 1, 10.0, date(2024, 1, 2), date(2024, 1, 2), ADMISSIBLE, "t")
+            br.buy("X", 1, 10.0, date(2024, 1, 2), date(2024, 1, 2), ADMISSIBLE, "t", status_at_execution=ADMISSIBLE)
 
 
 if __name__ == "__main__":

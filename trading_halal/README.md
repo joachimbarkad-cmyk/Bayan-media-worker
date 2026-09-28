@@ -23,7 +23,8 @@ Depuis la racine du dépôt :
 cd trading_halal
 python3 -m halal_sim check-data                 # valide les fichiers de données de démonstration
 python3 -m halal_sim run                        # simulation complète + rapport + sensibilité au capital
-python3 -m unittest discover -s tests -v        # 81 vérifications automatiques
+python3 -m unittest discover -s tests -v        # 99 vérifications automatiques
+python3 -m halal_sim audit-docs                  # contrôle du dossier d'audit documentaire d'exemple (FICTIF)
 ```
 
 Options utiles :
@@ -52,6 +53,7 @@ Résultats :
 | `halal_sim/strategy.py` | Stratégie unique : filtre de tendance SMA 200 jours |
 | `halal_sim/broker.py` | Courtier **simulé** (frais, glissement, actions entières, ni marge ni découvert) |
 | `halal_sim/backtest.py` | Moteur chronologique : stratégie + deux références |
+| `halal_sim/audit.py`, `docs/AUDIT_DOCUMENTAIRE.md`, `data/audit_exemple_FICTIF/` | Format et contrôle d'un dossier d'audit de documents réels, sans simulation ni statut religieux |
 | `docs/REFERENCES.md` | Règles des deux portefeuilles de référence, fixées avant le test |
 | `halal_sim/report.py` | Rapport Markdown et contrôles recalculés depuis SQLite |
 | `halal_sim/safety.py` | Coupure du réseau au lancement |

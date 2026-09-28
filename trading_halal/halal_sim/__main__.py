@@ -37,8 +37,24 @@ def cmd_check_data(args) -> int:
         hist = " → ".join(f"{a['available_date']}:{';'.join(a['activity_codes']) or '?'}" for a in acts) or "aucune fiche"
         print(f"  {t:6} {ds.securities[t]['instrument_type']:28} {ds.securities[t]['currency']}  {len(ds.bars[t]):5} prix  "
               f"{len(f):3} états financiers  activité {hist}")
-    print("Validation OK.")
+    print("Contrôles de format et de cohérence réussis. Cela ne prouve ni l'authenticité, ni l'exactitude, ni "
+          "l'exhaustivité des données : leur provenance reste à auditer.")
     return 0
+
+
+def cmd_audit_docs(args) -> int:
+    from .audit import audit_folder
+    res = audit_folder(_path(args.folder))
+    print(f"Dossier d'audit documentaire — nature : {res.nature}")
+    print("  " + ", ".join(f"{k} : {v}" for k, v in res.counts.items()))
+    for e in res.errors:
+        print(f"  ERREUR   {e}")
+    for u in res.unknowns:
+        print(f"  INCONNUE {u}")
+    print(f"{len(res.errors)} erreur(s) bloquante(s), {len(res.unknowns)} inconnue(s) signalée(s).")
+    print("Ce contrôle vérifie la forme, la chronologie et l'intégrité des copies locales ; il ne prouve pas l'exactitude "
+          "des valeurs et ne produit aucun statut religieux.")
+    return 0 if res.ok else 1
 
 
 def cmd_run(args) -> int:
@@ -88,8 +104,10 @@ def main(argv=None) -> int:
     r.add_argument("--no-sensitivity", action="store_true", help="Ne pas lancer les simulations de sensibilité au capital")
     c = sub.add_parser("check-data", help="Valider les fichiers de données")
     c.add_argument("--dataset", help="Dossier du jeu de données (défaut : celui de la configuration)")
+    a = sub.add_parser("audit-docs", help="Contrôler un dossier d'audit documentaire (sans simulation)")
+    a.add_argument("folder", nargs="?", default="data/audit_exemple_FICTIF")
     args = p.parse_args(argv)
-    return {"run": cmd_run, "check-data": cmd_check_data}[args.cmd](args)
+    return {"run": cmd_run, "check-data": cmd_check_data, "audit-docs": cmd_audit_docs}[args.cmd](args)
 
 
 if __name__ == "__main__":

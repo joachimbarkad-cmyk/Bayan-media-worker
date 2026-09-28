@@ -25,9 +25,9 @@ class CostTests(unittest.TestCase):
         br = PaperBroker("t", 100.0, CostModel(1, 0, 1, 0))
         self.assertEqual(br.max_affordable_qty(33.5), 2)       # 3 x 33.5 + 1 > 100
         with self.assertRaises(ForbiddenOrderError):
-            br.buy("X", 3, 33.5, date(2024, 1, 1), date(2024, 1, 2), ADMISSIBLE, "t")
+            br.buy("X", 3, 33.5, date(2024, 1, 1), date(2024, 1, 2), ADMISSIBLE, "t", status_at_execution=ADMISSIBLE)
         with self.assertRaises(ValueError):
-            br.buy("X", 0, 33.0, date(2024, 1, 1), date(2024, 1, 2), ADMISSIBLE, "t")
+            br.buy("X", 0, 33.0, date(2024, 1, 1), date(2024, 1, 2), ADMISSIBLE, "t", status_at_execution=ADMISSIBLE)
         with self.assertRaises(ForbiddenOrderError):
             br.sell("X", 1, 33.0, date(2024, 1, 1), date(2024, 1, 2), ADMISSIBLE, "t")
 
