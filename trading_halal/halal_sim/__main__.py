@@ -63,21 +63,24 @@ class IncompatibleDatabase(SystemExit):
     pass
 
 
-def _open_store(path: Path, archive: bool = False):
-    """Ouvre la base. Une base d'un autre schéma est REFUSÉE par défaut ; elle n'est archivée que sur demande
-    explicite (--archiver-ancienne-base), par copie vérifiée, jamais par écrasement."""
-    from .db import Store, StoreSchemaError, archive_database
+def _open_store(path: Path):
+    """Ouvre la base. Une base d'un autre schéma est REFUSÉE et laissée intacte (jamais déplacée ni supprimée)."""
+    from .db import Store, StoreSchemaError
     try:
         return Store(path)
     except StoreSchemaError as exc:
-        if not archive:
-            print(f"REFUS : la base {path} est au schéma v{exc.found}, incompatible avec cette version. Rien n'a été "
-                  "modifié. Relancez avec --archiver-ancienne-base pour l'archiver (copie vérifiée) et en créer une "
-                  "neuve, ou indiquez une autre base dans la configuration (db_path).")
-            raise IncompatibleDatabase(2)
-        backup = archive_database(path)
-        print(f"Base au schéma v{exc.found} archivée sous {backup.name} (copie vérifiée) ; nouvelle base créée.")
-        return Store(path)
+        print(f"REFUS : la base {path} est au schéma v{exc.found}, incompatible avec cette version. Rien n'a été "
+              "modifié. Choisissez un autre fichier : --db CHEMIN (ou db_path dans la configuration). Pour garder une "
+              f"copie de l'ancienne base : python3 -m halal_sim snapshot-db {path}")
+        raise IncompatibleDatabase(2)
+
+
+def cmd_snapshot_db(args) -> int:
+    from .db import snapshot_database
+    target = snapshot_database(_path(args.path))
+    print(f"Instantané vérifié : {target}. L'original n'a pas été modifié. Si un autre programme écrivait encore dans "
+          "la base, ses écritures postérieures ne figurent pas dans cet instantané.")
+    return 0
 
 
 def cmd_run(args) -> int:
@@ -90,7 +93,8 @@ def cmd_run(args) -> int:
     cfg = load_config(args.config)
     ds = load_dataset(_path(cfg["dataset_dir"]))
     ruleset = load_ruleset(_path(cfg["ruleset"]))
-    store = _open_store(_path(cfg["db_path"]), archive=args.archiver_ancienne_base)
+    db_path = _path(args.db) if args.db else _path(cfg["db_path"])
+    store = _open_store(db_path)
     capital = args.capital or cfg["initial_capital"]
     main = run_backtest(ds, cfg, ruleset, store, capital=capital, label="principal")
     sens_ids = []
@@ -111,7 +115,7 @@ def cmd_run(args) -> int:
               f"coûts {m['couts_total_pct_capital']:5.2f} % du capital   ordres {m['nb_achats'] + m['nb_ventes']}")
     failed = [n for n, ok, _ in checks if not ok]
     print(f"Vérifications : {len(checks) - len(failed)}/{len(checks)} OK" + (f" — ÉCHECS : {failed}" if failed else ""))
-    print(f"Rapport : {out}\nBase SQLite : {_path(cfg['db_path'])}")
+    print(f"Rapport : {out}\nBase SQLite : {db_path}")
     print("Modèle d'exécution rétrospectif : exécutions reconstruites à partir des barres journalières, non prouvées.")
     if ds.nature == "FICTIF":
         print("RAPPEL : données fictives — ces chiffres ne disent rien de la rentabilité réelle.")
@@ -126,14 +130,15 @@ def main(argv=None) -> int:
     r = sub.add_parser("run", help="Lancer la simulation et produire le rapport")
     r.add_argument("--capital", type=float, help="Capital initial (remplace la configuration)")
     r.add_argument("--no-sensitivity", action="store_true", help="Ne pas lancer les simulations de sensibilité au capital")
-    r.add_argument("--archiver-ancienne-base", action="store_true",
-                   help="Si la base existante a un schéma incompatible : l'archiver (copie vérifiée) et en créer une neuve")
+    r.add_argument("--db", help="Base SQLite à utiliser (remplace db_path de la configuration)")
     c = sub.add_parser("check-data", help="Valider les fichiers de données")
     c.add_argument("--dataset", help="Dossier du jeu de données (défaut : celui de la configuration)")
+    s = sub.add_parser("snapshot-db", help="Instantané vérifié d'une base SQLite (l'original n'est jamais modifié)")
+    s.add_argument("path")
     a = sub.add_parser("audit-docs", help="Contrôler un dossier d'audit documentaire (sans simulation)")
     a.add_argument("folder", nargs="?", default="data/audit_exemple_FICTIF")
     args = p.parse_args(argv)
-    return {"run": cmd_run, "check-data": cmd_check_data, "audit-docs": cmd_audit_docs}[args.cmd](args)
+    return {"run": cmd_run, "check-data": cmd_check_data, "audit-docs": cmd_audit_docs, "snapshot-db": cmd_snapshot_db}[args.cmd](args)
 
 
 if __name__ == "__main__":

@@ -15,7 +15,12 @@ HYPOTHÈSES À VÉRIFIER (documentation SEC non consultable depuis l'environneme
 - submissions : filings.recent = listes parallèles accessionNumber, filingDate, reportDate, acceptanceDateTime,
   form, primaryDocument ;
 - companyfacts : facts.<taxonomie>.<concept>.units.<unité> = liste de {accn, end, [start], val, form, filed, ...} ;
-  pas de contexte XBRL ni de précision (decimals) ; faits a priori sans dimension (à confirmer) ;
+  pas de contexte XBRL ni de précision (decimals). Selon la SEC (rapporté par le relecteur), companyfacts n'agrège
+  que certains faits de taxonomies standard s'appliquant à l'entité : ce n'est PAS l'ensemble des faits du dépôt,
+  et l'absence de contexte ne prouve pas l'absence de dimensions -> dimensions et contexte laissés INCONNUS ;
+- submissions : filings.recent ne couvre que les dépôts récents ; les plus anciens sont référencés dans
+  filings.files (non collectés ici : signalé comme historique incomplet) ;
+- chaque JSON porte le CIK de l'émetteur (champ « cik ») : il doit correspondre au CIK du journal ;
 - accès équitable : au plus 10 requêtes par seconde (l'outil en fait au plus 2).
 L'analyse est STRICTE : un champ attendu absent arrête la conversion avec un message explicite.
 
@@ -125,12 +130,18 @@ def convert(raw: Path, out: Path, forms: set[str]) -> dict:
         if hashlib.sha256((raw / e["file"]).read_bytes()).hexdigest() != e["sha256"]:
             raise EdgarFormatError(f"{e['file']} modifié depuis sa collecte (SHA-256 différent)")
     rows = {k: [] for k in AUDIT_HEADERS}
-    amendments_to_link, skipped_facts = [], 0
+    amendments_to_link, skipped_facts, incomplete, merged = [], 0, [], 0
+    seen: dict[str, tuple] = {}
     for (kind, c10), entry in sorted(retrieved.items()):
         if kind != "submissions":
             continue
         sub = json.loads((raw / entry["file"]).read_text(encoding="utf-8"))
+        _check_cik(sub, c10, entry["file"])
         name = _need(sub, "name", entry["file"])
+        older = _need(sub, "filings", entry["file"]).get("files") or []
+        if older:
+            incomplete.append(f"{c10} : {len(older)} fichier(s) de dépôts plus anciens non collecté(s) "
+                              f"({', '.join(str(f.get('name', '?')) for f in older[:3])}{'…' if len(older) > 3 else ''})")
         rows["issuers"].append({"issuer_id": c10, "name": name, "id_scheme": "CIK",
                                 "source": "SEC EDGAR submissions API", "source_url": entry["url"]})
         recent = _need(_need(sub, "filings", entry["file"]), "recent", entry["file"])
@@ -165,6 +176,7 @@ def convert(raw: Path, out: Path, forms: set[str]) -> dict:
         if facts_entry is None:
             continue
         cf = json.loads((raw / facts_entry["file"]).read_text(encoding="utf-8"))
+        _check_cik(cf, c10, facts_entry["file"])
         for taxonomy, concepts in _need(cf, "facts", facts_entry["file"]).items():
             for concept, body in concepts.items():
                 for unit, items in _need(body, "units", f"{taxonomy}:{concept}").items():
@@ -174,10 +186,20 @@ def convert(raw: Path, out: Path, forms: set[str]) -> dict:
                             skipped_facts += 1
                             continue
                         start = it.get("start", "")
+                        fid = f"{doc_id}-{taxonomy}:{concept}-{unit}-{start}-{_need(it, 'end', concept)}".replace("/", "_")
+                        val = _need(it, "val", concept)
+                        if fid in seen:
+                            if seen[fid][0] != val:  # même dépôt, concept, unité et période, valeurs différentes
+                                raise EdgarFormatError(
+                                    f"Doublon contradictoire {fid} : {seen[fid][1]} contre {json.dumps(it)} ; "
+                                    "conversion arrêtée, les deux entrées brutes restent dans le fichier source")
+                            merged += 1
+                            continue
+                        seen[fid] = (val, json.dumps(it))
                         rows["facts"].append({
-                            "fact_id": f"{doc_id}-{taxonomy}:{concept}-{unit}-{start}-{it['end']}".replace("/", "_"),
+                            "fact_id": fid,
                             "doc_id": doc_id, "source_concept": f"{taxonomy}:{concept}",
-                            "source_context": "API companyfacts : contexte XBRL non fourni", "source_dimensions": "",
+                            "source_context": "", "source_dimensions": "INCONNU",
                             "source_unit": unit, "raw_value": str(_need(it, "val", concept)), "decimals": "",
                             "normalized_concept": "", "transformation": "", "normalization_justification": "",
                             "definition": body.get("label") or concept, "value": "",
@@ -186,20 +208,16 @@ def convert(raw: Path, out: Path, forms: set[str]) -> dict:
                             "period_type": "duration" if start else "instant", "period_start": start,
                             "period_end": _need(it, "end", concept),
                             "measure_date": it["end"] if unit == "shares" else "",
-                            "share_class": "non établie" if unit == "shares" else "",
+                            "share_class": "INCONNU" if unit == "shares" else "",
                             "price_adjusted": "", "corrects_fact_id": "", "reconciled": "", "reconciled_note": ""})
-    # Doublons d'identifiant (même fait repris par plusieurs dépôts) : on garde la première occurrence.
-    seen, unique = set(), []
-    for f in rows["facts"]:
-        if f["fact_id"] not in seen:
-            seen.add(f["fact_id"])
-            unique.append(f)
-    rows["facts"] = unique
     out.mkdir(parents=True, exist_ok=True)
+    warning = ("Données SEC EDGAR converties automatiquement (companyfacts : sous-ensemble des faits du dépôt). "
+               "Contexte, dimensions et catégorie d'actions INCONNUS. Aucun fait normalisé ni rapproché : dossier "
+               "NON EXPLOITABLE tant qu'un humain n'a pas établi, mappé, justifié et rapproché chaque fait.")
+    if incomplete:
+        warning += " HISTORIQUE INCOMPLET : " + " ; ".join(incomplete)
     (out / "manifest.json").write_text(json.dumps({
-        "name": f"edgar_{datetime.now(timezone.utc):%Y%m%d}", "nature": "REEL",
-        "warning": "Données SEC EDGAR converties automatiquement. Aucun fait normalisé ni rapproché : dossier "
-                   "NON EXPLOITABLE tant qu'un humain n'a pas mappé, justifié et rapproché chaque fait."},
+        "name": f"edgar_{datetime.now(timezone.utc):%Y%m%d}", "nature": "REEL", "warning": warning},
         ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     for name, header in AUDIT_HEADERS.items():
         with open(out / f"{name}.csv", "w", newline="", encoding="utf-8") as f:
@@ -207,7 +225,18 @@ def convert(raw: Path, out: Path, forms: set[str]) -> dict:
             w.writeheader()
             w.writerows(rows[name])
     return {"documents": len(rows["documents"]), "facts": len(rows["facts"]),
-            "amendments_to_link": amendments_to_link, "facts_skipped_other_documents": skipped_facts}
+            "amendments_to_link": amendments_to_link, "facts_skipped_other_documents": skipped_facts,
+            "identical_duplicates_merged": merged, "incomplete_history": incomplete}
+
+
+def _check_cik(obj: dict, c10: str, ctx: str) -> None:
+    found = _need(obj, "cik", ctx)
+    try:
+        same = int(str(found)) == int(c10)
+    except ValueError:
+        same = False
+    if not same:
+        raise EdgarFormatError(f"{ctx} : CIK {found!r} différent du CIK attendu {c10} (fichier d'un autre émetteur ?)")
 
 
 def main(argv=None) -> int:

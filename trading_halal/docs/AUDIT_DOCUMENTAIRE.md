@@ -35,7 +35,9 @@ sans copie locale) sont listées, jamais comblées.
 - `REJETE` : au moins une contradiction ;
 - `NON EXPLOITABLE` : aucune contradiction détectée, mais au moins un fait normalisé n'a pas été rapproché à la main
   de sa pièce (`reconciled=oui`) — c'est l'état normal d'un dossier fraîchement collecté ;
-- `RAPPROCHE` : forme cohérente et chaque fait normalisé rapproché ; l'exactitude repose sur ce rapprochement humain.
+- `RAPPROCHEMENT DECLARE` : forme cohérente et chaque fait normalisé déclaré rapproché (`reconciled=oui`) **avec une
+  note** indiquant la pièce et l'endroit vérifiés (page, section, tableau). Le logiciel enregistre cette déclaration,
+  il ne la vérifie pas : elle doit être relue par une autre personne.
 
 ## Collecte EDGAR (outil séparé, avec réseau)
 
@@ -53,3 +55,19 @@ python3 -m halal_sim audit-docs data/audit_edgar_REEL
 - La conversion ne normalise rien et ne rattache aucun rectificatif automatiquement (les `10-K/A`, `10-Q/A` sont listés
   à rattacher à la main) ; l'heure de diffusion publique reste inconnue.
 - Les formats d'API supposés sont listés en tête du script ; l'analyse s'arrête net si un champ attendu manque.
+
+## Valeur « INCONNU »
+
+Dans `source_dimensions` et `share_class`, le **vide** signifie « aucune » (pas de dimension, pas de catégorie requise),
+tandis que `INCONNU` signifie « non établi ». Un fait `INCONNU` est signalé ; il ne peut **pas** être normalisé tant
+que l'information n'a pas été établie à partir du document. `source_context` vide signifie « non fourni ».
+
+## Ce que la conversion EDGAR ne garantit pas (revue n° 8)
+
+- **companyfacts n'est qu'un sous-ensemble** des faits XBRL d'un dépôt (faits de taxonomies standard s'appliquant à
+  l'entité, selon la SEC d'après le relecteur) : l'absence d'un fait ne prouve pas qu'il n'existe pas.
+- Contexte et dimensions ne sont pas fournis : ils restent `INCONNU` / vides.
+- `filings.recent` ne couvre que les dépôts récents : si `filings.files` référence des dépôts plus anciens, la
+  conversion l'indique (`HISTORIQUE INCOMPLET` dans le manifeste) ; ils ne sont pas collectés.
+- Le CIK de chaque fichier doit correspondre à celui du journal ; un doublon contradictoire (même dépôt, concept,
+  unité et période, valeurs différentes) arrête la conversion ; un doublon identique est regroupé et compté.

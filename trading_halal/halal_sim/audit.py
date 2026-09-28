@@ -47,6 +47,7 @@ SHARE_CONCEPTS = {"shares_outstanding", "market_cap"}
 # Nature de chaque concept normalisé : monétaire (unité « monnaie » + devise) ou nombre d'actions (sans devise).
 MONETARY_CONCEPTS = PROJECT_CONCEPTS - {"shares_outstanding"}
 MONETARY_UNIT = "monnaie"
+UNKNOWN = "INCONNU"   # valeur explicite « non établi » (distincte du vide, qui signifie « aucune » pour les dimensions)
 CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 
 
@@ -77,8 +78,9 @@ class AuditResult:
         if self.reconciled < self.to_reconcile:
             return (f"NON EXPLOITABLE : {self.to_reconcile - self.reconciled} fait(s) normalisé(s) non rapproché(s) "
                     "de leur pièce")
-        return ("RAPPROCHE : forme cohérente et faits normalisés rapprochés à la main ; l'exactitude repose sur ce "
-                "rapprochement humain, pas sur le logiciel")
+        return ("RAPPROCHEMENT DECLARE : forme cohérente et chaque fait normalisé déclaré rapproché, avec une note ; "
+                "le logiciel ne vérifie pas ce rapprochement, l'exactitude repose sur la personne qui l'a déclaré "
+                "(à relire)")
 
 
 def _read(path: Path, expected: list[str]) -> list[dict]:
@@ -286,7 +288,11 @@ def audit_folder(root: str | Path) -> AuditResult:
             U(f"{ctx} : concept {r['source_concept']!r} non normalisé (inutilisable par le projet en l'état)")
         if not r["source_unit"]:
             E(f"{ctx} : unité d'origine manquante")
-        if r["source_dimensions"]:
+        if r["source_dimensions"] == UNKNOWN:
+            U(f"{ctx} : dimensions d'origine non établies")
+            if norm:
+                E(f"{ctx} : normalisation impossible tant que les dimensions d'origine ne sont pas établies")
+        elif r["source_dimensions"]:
             U(f"{ctx} : fait dimensionnel ({r['source_dimensions']}) : à ne pas confondre avec le total de l'entité")
         if r["decimals"] and r["decimals"] != "INF" and not re.fullmatch(r"-?\d+", r["decimals"]):
             E(f"{ctx} : précision (decimals) invalide {r['decimals']!r}")
@@ -312,15 +318,21 @@ def audit_folder(root: str | Path) -> AuditResult:
             elif r["unit"].lower() not in SHARE_UNITS or r["currency"]:
                 E(f"{ctx} : {norm} est un nombre d'actions : unité « actions », sans devise")
             if r["reconciled"] == "oui":
-                res.reconciled += 1
+                if not r["reconciled_note"]:
+                    E(f"{ctx} : rapprochement déclaré sans note (indiquer la pièce et l'endroit vérifiés : page, "
+                      "section, tableau)")
+                else:
+                    res.reconciled += 1
             elif r["reconciled"] not in ("", "non"):
                 E(f"{ctx} : reconciled doit valoir oui, non ou rester vide")
         if r["unit"] == MONETARY_UNIT and not r["currency"]:
             E(f"{ctx} : unité monétaire sans devise")
         if r["unit"].lower() in SHARE_UNITS and r["currency"]:
             E(f"{ctx} : nombre d'actions exprimé avec une devise ({r['currency']})")
-        if r["value"] == "":
-            U(f"{ctx} ({r['source_concept']}) : valeur inconnue (null)")
+        if r["value"] == "" and r["raw_value"] == "":
+            U(f"{ctx} ({r['source_concept']}) : valeur inconnue (ni brute ni normalisée)")
+        elif r["value"] == "":
+            U(f"{ctx} ({r['source_concept']}) : valeur brute connue ({r['raw_value']}), valeur normalisée absente")
         else:
             try:
                 v = float(r["value"])
@@ -350,7 +362,12 @@ def audit_folder(root: str | Path) -> AuditResult:
         if r["measure_date"] and md is None:
             E(f"{ctx} : date de mesure invalide")
         if is_share and (md is None or not r["share_class"]):
-            E(f"{ctx} ({r['source_concept']}) : date de mesure et catégorie d'actions obligatoires")
+            E(f"{ctx} ({r['source_concept']}) : date de mesure et catégorie d'actions obligatoires "
+              f"(« {UNKNOWN} » si la catégorie n'est pas établie)")
+        if r["share_class"] == UNKNOWN:
+            U(f"{ctx} : catégorie d'actions non établie")
+            if norm:
+                E(f"{ctx} : normalisation impossible tant que la catégorie d'actions n'est pas établie")
         if md and acc_date and md > acc_date:
             E(f"{ctx} : mesuré le {md}, après l'acceptation de son document ({acc_date})")
         if norm == "market_cap" and r["price_adjusted"] not in ("oui", "non"):

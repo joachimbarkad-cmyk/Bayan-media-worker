@@ -67,3 +67,4 @@ effectué ; d'ici là, la position reste gelée. Aucune vente n'est simulée san
   « simulation avec modèle d'exécution rétrospectif » (exécutions reconstruites à partir des barres journalières,
   non prouvées).
 - **V1.7** (revue n° 7) : aucune règle de portefeuille modifiée.
+- **V1.8** (revue n° 8) : aucune règle de portefeuille modifiée.

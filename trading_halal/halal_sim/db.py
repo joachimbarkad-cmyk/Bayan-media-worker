@@ -76,8 +76,8 @@ def _s(v):
 
 
 # Version du schéma, enregistrée dans PRAGMA user_version. À incrémenter à chaque changement de SCHEMA.
-# Une base d'une autre version n'est jamais modifiée en place (colonnes, contraintes et triggers ont changé) :
-# StoreSchemaError est levée et la ligne de commande archive l'ancienne base avant d'en créer une nouvelle.
+# Une base d'une autre version n'est jamais modifiée, déplacée ni supprimée : StoreSchemaError est levée ; la ligne
+# de commande indique d'utiliser un autre chemin (--db) et propose un instantané (snapshot-db).
 SCHEMA_VERSION = 6
 
 
@@ -87,18 +87,21 @@ class StoreSchemaError(RuntimeError):
         self.path, self.found = path, found
 
 
-def archive_database(path: Path) -> Path:
-    """Archive explicite d'une base : copie COHÉRENTE par l'API de sauvegarde SQLite (elle intègre un éventuel
-    journal WAL) vers un nom réservé de façon exclusive (jamais d'écrasement, même dans la même seconde),
-    vérification de la copie, puis seulement suppression de l'original et de ses fichiers -wal / -shm."""
+def snapshot_database(path: Path) -> Path:
+    """INSTANTANÉ vérifié d'une base : copie cohérente par l'API de sauvegarde SQLite (elle intègre un éventuel journal
+    WAL) vers un nom réservé de façon exclusive (jamais d'écrasement). L'original et ses fichiers -wal / -shm ne sont
+    JAMAIS modifiés ni supprimés. Si d'autres connexions écrivent encore dans la base, leurs écritures postérieures ne
+    figurent pas dans l'instantané : fermer les autres programmes avant de s'y fier comme copie complète."""
     from datetime import datetime
     path = Path(path)
-    src = sqlite3.connect(str(path))
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    src = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     version = src.execute("PRAGMA user_version").fetchone()[0]
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     n = 0
     while True:
-        target = path.with_name(f"{path.name}.schema-v{version}-{stamp}-{n}.bak")
+        target = path.with_name(f"{path.name}.instantane-v{version}-{stamp}-{n}.sqlite")
         try:
             with open(target, "xb"):  # réservation exclusive du nom
                 break
@@ -108,14 +111,10 @@ def archive_database(path: Path) -> Path:
     try:
         src.backup(dst)
         if dst.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
-            raise RuntimeError(f"Copie {target} invalide : original conservé")
+            raise RuntimeError(f"Instantané {target} invalide")
     finally:
         dst.close()
         src.close()
-    for suffix in ("", "-wal", "-shm"):
-        extra = Path(str(path) + suffix)
-        if extra.exists():
-            extra.unlink()
     return target
 
 

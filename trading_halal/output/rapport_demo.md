@@ -23,7 +23,7 @@
 | Référence « réinvestie » | Chaque fin de mois : mêmes ventes imposées, puis liquidités réparties à parts cibles égales entre les titres admissibles du moment, sans moyenne mobile (docs/REFERENCES.md) |
 | Frais (fictifs) | 1.0 EUR fixe + 0 % (min 1.0 EUR) par ordre ; glissement 10 pb ; refus si coût aller-retour > 1.5 % |
 | Politique titres détenus | EXCLU → SELL, INCERTAIN → SELL |
-| Empreinte du code / des données | 276673e098f2 / 8973b58e3308 |
+| Empreinte du code / des données | 0c3cfed82614 / 8973b58e3308 |
 
 ## Résultats : stratégie contre deux références
 

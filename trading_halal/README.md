@@ -23,7 +23,7 @@ Depuis la racine du dépôt :
 cd trading_halal
 python3 -m halal_sim check-data                 # valide les fichiers de données de démonstration
 python3 -m halal_sim run                        # simulation complète + rapport + sensibilité au capital
-python3 -m unittest discover -s tests -v        # 125 vérifications automatiques
+python3 -m unittest discover -s tests -v        # 133 vérifications automatiques
 python3 -m halal_sim audit-docs                  # contrôle du dossier d'audit documentaire d'exemple (FICTIF)
 python3 tools/edgar_collect.py collect --cik 320193 --dry-run --out collecte_brute   # collecte EDGAR (voir docs/AUDIT_DOCUMENTAIRE.md)
 ```
@@ -88,3 +88,10 @@ Tous les titres doivent être dans la devise du portefeuille (pas encore de conv
 Le moteur refusera de tourner tant que le référentiel choisi n'est pas **complet** : texte source daté, chaque seuil
 renseigné et sourcé, source du classement des activités, nom et date de la validation, `validated: true` et
 `demo_only: false`. Basculer les booléens ne suffit pas (voir `docs/REFERENTIEL_ET_SOURCES.md`).
+
+## Base SQLite d'une version antérieure
+
+Le schéma de la base est versionné. Une base créée par une version antérieure du code est **refusée et laissée
+intacte** (jamais déplacée ni supprimée). Pour continuer : `python3 -m halal_sim run --db output/nouvelle.sqlite`.
+Pour garder une copie : `python3 -m halal_sim snapshot-db output/simulation.sqlite` (instantané vérifié ; l'original
+n'est pas modifié ; fermez les autres programmes qui l'utilisent pour que la copie soit complète).

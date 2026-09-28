@@ -235,8 +235,39 @@ class Review7AuditTests(unittest.TestCase):
         self.assertTrue(res.verdict.startswith("NON EXPLOITABLE"))
         d = self._copy()
         for fid in ("F1", "F2", "F3", "F5"):
+            self._edit(d, "facts", "fact_id", fid, reconciled="oui", reconciled_note=f"copie D, page 3, ligne {fid}")
+        self.assertTrue(audit_folder(d).verdict.startswith("RAPPROCHEMENT DECLARE"))
+
+
+class Review8AuditTests(unittest.TestCase):
+    _copy, _edit, _errors = AuditTests._copy, AuditTests._edit, AuditTests._errors
+
+    def test_review_case_reconciliation_without_note_is_refused(self):
+        d = self._copy()
+        for fid in ("F1", "F2", "F3", "F5"):
             self._edit(d, "facts", "fact_id", fid, reconciled="oui")
-        self.assertTrue(audit_folder(d).verdict.startswith("RAPPROCHE"))
+        res = audit_folder(d)
+        self.assertIn("rapprochement déclaré sans note", " | ".join(res.errors))
+        self.assertTrue(res.verdict.startswith("REJETE"))
+
+    def test_unknown_dimensions_or_share_class_block_normalization(self):
+        d = self._copy()
+        self._edit(d, "facts", "fact_id", "F1", source_dimensions="INCONNU")
+        self.assertIn("dimensions d'origine ne sont pas établies", self._errors(d))
+        d = self._copy()
+        self._edit(d, "facts", "fact_id", "F3", share_class="INCONNU")
+        self.assertIn("catégorie d'actions n'est pas établie", self._errors(d))
+        d = self._copy()   # non normalisé : simple inconnue, pas d'erreur
+        self._edit(d, "facts", "fact_id", "F4", source_dimensions="INCONNU")
+        res = audit_folder(d)
+        self.assertEqual(res.errors, [])
+        self.assertTrue(any("dimensions d'origine non établies" in u for u in res.unknowns))
+
+    def test_raw_value_known_is_reported_distinctly(self):
+        d = self._copy()
+        self._edit(d, "facts", "fact_id", "F4", raw_value="12345")
+        self.assertTrue(any("valeur brute connue (12345), valeur normalisée absente" in u
+                            for u in audit_folder(d).unknowns))
 
 
 if __name__ == "__main__":

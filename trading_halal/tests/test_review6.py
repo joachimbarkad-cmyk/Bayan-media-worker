@@ -60,42 +60,27 @@ class SchemaVersionTests(unittest.TestCase):
             con = sqlite3.connect(db)
             self.assertEqual(len(con.execute("PRAGMA table_info(orders)").fetchall()), 15)  # intacte
             con.close()
+            self.assertIn("--db", out.stdout)
 
-    def test_cli_archives_old_database_only_on_request(self):
+    def test_cli_runs_on_another_path_and_leaves_old_database_untouched(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = self._old_db(tmp)
-            out = self._cli(tmp, db, "--archiver-ancienne-base")
+            before = db.read_bytes()
+            out = self._cli(tmp, db, "--db", str(Path(tmp) / "nouvelle.sqlite"))
             self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
-            self.assertIn("archivée", out.stdout)
-            backups = list(Path(tmp).glob("s.sqlite.schema-v0-*.bak"))
-            self.assertEqual(len(backups), 1)
-            con = sqlite3.connect(backups[0])
-            self.assertEqual(len(con.execute("PRAGMA table_info(orders)").fetchall()), 15)  # contenu conservé
-            con.close()
+            self.assertEqual(db.read_bytes(), before)
             self.assertIn("modèle d'exécution rétrospectif", (Path(tmp) / "r.md").read_text(encoding="utf-8"))
 
-    def test_review7_two_archives_in_the_same_second_never_overwrite(self):
-        from halal_sim.db import archive_database
+    def test_review7_two_snapshots_in_the_same_second_never_overwrite(self):
+        from halal_sim.db import snapshot_database
         with tempfile.TemporaryDirectory() as tmp:
-            names = set()
-            for marker in ("premiere", "seconde"):
-                db = self._old_db(tmp)
-                con = sqlite3.connect(db)
-                con.execute("CREATE TABLE marqueur(v TEXT)")
-                con.execute("INSERT INTO marqueur VALUES(?)", (marker,))
-                con.commit()
-                con.close()
-                names.add(archive_database(db))
-            self.assertEqual(len(names), 2)
-            contents = set()
-            for n in names:
-                con = sqlite3.connect(n)
-                contents.add(con.execute("SELECT v FROM marqueur").fetchone()[0])
-                con.close()
-            self.assertEqual(contents, {"premiere", "seconde"})
+            db = self._old_db(tmp)
+            names = [snapshot_database(db), snapshot_database(db)]
+            self.assertEqual(len(set(names)), 2)
+            self.assertTrue(db.exists())
 
-    def test_archive_includes_wal_content(self):
-        from halal_sim.db import archive_database
+    def test_snapshot_includes_wal_content_and_never_touches_original(self):
+        from halal_sim.db import snapshot_database
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "w.sqlite"
             writer = sqlite3.connect(db)
@@ -104,11 +89,29 @@ class SchemaVersionTests(unittest.TestCase):
             writer.execute("CREATE TABLE t(v)")
             writer.execute("INSERT INTO t VALUES('dans le wal')")
             writer.commit()
-            self.assertTrue(Path(str(db) + "-wal").exists())
-            backup = archive_database(db)
-            writer.close()
-            con = sqlite3.connect(backup)
+            snap = snapshot_database(db)
+            self.assertTrue(db.exists() and Path(str(db) + "-wal").exists())
+            con = sqlite3.connect(snap)
             self.assertEqual(con.execute("SELECT v FROM t").fetchone()[0], "dans le wal")
+            con.close()
+
+    def test_review8_writer_keeps_working_after_snapshot(self):
+        """Cas signalé : une connexion ouverte écrivait dans une base supprimée. L'original reste désormais en place ;
+        l'instantané, lui, ne contient pas les écritures postérieures (comportement documenté)."""
+        from halal_sim.db import snapshot_database
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "c.sqlite"
+            writer = sqlite3.connect(db)
+            writer.execute("CREATE TABLE t(v)")
+            writer.execute("INSERT INTO t VALUES('avant')")
+            writer.commit()
+            snap = snapshot_database(db)
+            writer.execute("INSERT INTO t VALUES('apres')")
+            writer.commit()
+            self.assertEqual([r[0] for r in writer.execute("SELECT v FROM t ORDER BY rowid")], ["avant", "apres"])
+            writer.close()
+            con = sqlite3.connect(snap)
+            self.assertEqual([r[0] for r in con.execute("SELECT v FROM t")], ["avant"])
             con.close()
 
 if __name__ == "__main__":

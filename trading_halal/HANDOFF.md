@@ -1,74 +1,64 @@
-# HANDOFF — simulateur de trading halal, V1.7 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.8 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
 
 **Merci de relire de façon critique** : lectures d'information future, ADMISSIBLE erronés, contrôles d'audit
-contournables, collecte réseau hors de son périmètre, affirmations non justifiées.
+contournables, informations inventées par la conversion, opérations destructives, affirmations non justifiées.
 
-**Le logiciel n'implémente encore aucun référentiel religieux réel complet.** L'utilisateur indique que ses règles de fiqh
-se trouvent dans une conversation séparée, **non accessible ici** : aucune règle n'en a été reprise (voir
-`docs/REFERENTIEL_ET_SOURCES.md` § 9). Merci de ne pas en supposer le contenu.
+**Le logiciel n'implémente encore aucun référentiel religieux réel complet.** Les règles de fiqh de l'utilisateur sont
+dans une conversation séparée **non accessible ici** ; aucune n'a été reprise (`docs/REFERENTIEL_ET_SOURCES.md` § 9).
 
-## 0. Suite donnée à la revue n° 7
+## 0. Suite donnée à la revue n° 8
 
-Les trois dossiers incohérents signalés (`ok=True` sur 340871e) ont été reproduits, puis corrigés ; chaque défaut
-réintroduit fait échouer au moins un test (6 variantes).
+Tous les cas ont été reproduits sur 4fdca20 (le dernier plus gravement que décrit : après l'archivage, la connexion
+restée ouverte ne pouvait plus écrire, la base ayant été supprimée sous elle). Chaque défaut réintroduit fait échouer
+au moins un test (7 variantes).
 
 | Cas signalé | Correction | Test |
 |---|---|---|
-| `shares_outstanding` en `monnaie`/`USD` | Nature de chaque concept normalisé : monétaire ⇒ unité `monnaie` + devise ; nombre d'actions ⇒ unité `actions`, sans devise ; toute unité `actions` avec devise refusée | `test_share_count_cannot_be_monetary` |
-| `unit=monnaie` sans devise | Refusé pour tout fait | `test_monetary_fact_needs_currency` |
-| Rectificatif public avant le document rectifié | Diffusion connue (ou, à défaut, acceptation) du rectificatif strictement postérieure à celle du document rectifié | `test_amendment_cannot_be_public_before_original` |
-| Mappage XBRL par seul concept (question 2) | Nouveaux champs du fait d'origine : `source_dimensions`, `source_unit`, `raw_value`, `decimals` ; normalisation : `transformation` (« aucune » ⇒ valeur = valeur brute) et `normalization_justification` **propre au fait** (le mappage général ne suffit plus) ; fait dimensionnel signalé | `test_normalization_needs_fact_level_justification_and_transformation`, `test_raw_fact_fields` |
-| Archivage automatique ; collision dans la même seconde ; WAL (question 3) | **Refus par défaut** (code 2, base intacte). Archivage seulement avec `--archiver-ancienne-base` : copie par l'API de sauvegarde SQLite (WAL inclus), nom réservé de façon exclusive (`open(..., "xb")` + compteur), `PRAGMA integrity_check` sur la copie, puis suppression de l'original et de ses `-wal`/`-shm` | `test_review7_old_database_refused_by_default`, `test_review7_two_archives_in_the_same_second_never_overwrite`, `test_archive_includes_wal_content`, `test_cli_archives_old_database_only_on_request` |
-| « 0 erreur » pris pour un audit (question 4) | Verdict distinct : `REJETE` / `NON EXPLOITABLE` (faits normalisés non rapprochés, état normal après collecte) / `RAPPROCHE` (chaque fait normalisé marqué `reconciled=oui` par un humain) | `test_zero_errors_is_not_a_usable_verdict_without_reconciliation` |
+| JSON companyfacts d'un autre CIK rattaché à l'émetteur 123 | Le champ `cik` de chaque JSON (submissions et companyfacts) doit correspondre au CIK du journal, sinon arrêt | `test_review8_cik_mismatch_is_refused_even_with_consistent_journal` |
+| `reconciled=oui` sans note ⇒ verdict « RAPPROCHE » | Un « oui » exige `reconciled_note` (pièce et endroit vérifiés) ; verdict renommé **RAPPROCHEMENT DECLARE** : déclaration humaine enregistrée, non vérifiée par le logiciel, à relire | `test_review_case_reconciliation_without_note_is_refused` |
+| `filings.files` ignoré (historique incomplet sans avertissement) | Signalé : `incomplete_history` dans le résultat et **HISTORIQUE INCOMPLET** dans l'avertissement du manifeste (non collecté) | `test_review8_older_filings_reported_as_incomplete_history` |
+| Contexte décrit par une phrase ; dimensions vides = « aucune » ; catégorie « non établie » | `source_context` vide (non fourni) ; `source_dimensions=INCONNU` ; `share_class=INCONNU`. Dans l'audit, `INCONNU` est signalé et **bloque toute normalisation** tant que l'information n'est pas établie | `test_review8_unknowns_stay_unknown`, `test_unknown_dimensions_or_share_class_block_normalization` |
+| « valeur inconnue » alors que la valeur brute est connue | Message distinct : « valeur brute connue (x), valeur normalisée absente » | `test_raw_value_known_is_reported_distinctly` |
+| Doublon contradictoire gardé silencieusement | Même dépôt, concept, unité et période avec valeurs différentes ⇒ **arrêt** citant les deux entrées brutes ; doublon identique regroupé et compté | `test_review8_contradictory_duplicate_stops_conversion` |
+| Archivage qui supprime l'original pendant qu'une connexion écrit | **Plus aucune suppression ni déplacement.** Base d'ancien schéma refusée (code 2) ; nouvelle base via `--db CHEMIN` ; commande `snapshot-db` : instantané vérifié (API de sauvegarde, source ouverte en lecture seule, nom exclusif, `integrity_check`), présenté comme ne contenant pas les écritures postérieures | `test_review8_writer_keeps_working_after_snapshot`, `test_snapshot_includes_wal_content_and_never_touches_original`, `test_review7_two_snapshots_in_the_same_second_never_overwrite`, `test_cli_runs_on_another_path_and_leaves_old_database_untouched`, `test_review7_old_database_refused_by_default` |
 
-## 1. Nouvel outil : collecte EDGAR (`tools/edgar_collect.py`)
+Hypothèses EDGAR : merci pour les confirmations (URL, CIK sur 10 chiffres, présentation en colonnes, faits par unité,
+10 requêtes/s). L'en-tête du script reprend désormais que companyfacts n'est qu'un sous-ensemble des faits du dépôt et
+que l'absence de contexte ne prouve pas l'absence de dimensions. Les noms exacts des champs restent **non éprouvés** sur
+une vraie réponse SEC (sec.gov inaccessible depuis l'environnement de développement).
 
-- **Hors du paquet `halal_sim`**, qui reste sans code réseau (vérifié par `scan_package`, y compris dans les tests de l'outil).
-- `collect` : télécharge les JSON bruts `submissions` et `companyfacts` ; journal avec URL, horodatage UTC et SHA-256 ;
-  `--user-agent` **obligatoire à chaque lancement, sans valeur par défaut**, refusé s'il ressemble à un exemple, et
-  **non enregistré** dans le journal ; au plus 2 requêtes par seconde ; `--dry-run` n'effectue aucune requête.
-- `convert` : JSON bruts → dossier d'audit `REEL`. Vérifie l'empreinte des fichiers bruts ; analyse **stricte** (champ
-  attendu absent ⇒ arrêt) ; aucune normalisation, aucun rattachement automatique de rectificatif (les `/A` sont listés
-  pour traitement manuel) ; diffusion publique laissée inconnue ; précision (`decimals`) et contexte XBRL non fournis par
-  l'API, donc signalés. Résultat attendu : 0 erreur, verdict **NON EXPLOITABLE**.
-- **Non testé contre la vraie SEC** : sec.gov est bloqué depuis l'environnement de développement. Les formats d'API sont
-  des **hypothèses listées en tête du script** ; les 6 tests tournent hors ligne sur un jeu fictif
-  (`tests/fixtures/edgar_FICTIF/`). L'utilisateur lancera la collecte sur sa machine, avec son identification, le moment venu.
+## 1. Ce qui fonctionne réellement (vérifié en lançant le code)
 
-## 2. Ce qui fonctionne réellement (vérifié en lançant le code)
-
-- Simulation de bout en bout, rapport depuis SQLite (12 contrôles), base versionnée ; `audit-docs` sur l'exemple fictif :
-  0 erreur, verdict NON EXPLOITABLE (0/4 fait rapproché).
-- **125 tests**, tous au vert : test_audit 23, test_costs_and_data 9, test_edgar_tool 6, test_incertain_never_bought 5,
-  test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 6,
+- Simulation de bout en bout, rapport depuis SQLite (12 contrôles), base versionnée, refus non destructif d'un ancien schéma.
+- `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE (0/4 fait rapproché).
+- Collecte EDGAR testée hors ligne uniquement (jeu fictif).
+- **133 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+  test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
   test_ruleset_validation 10, test_screening 11.
 
-## 3. Résultats de la démonstration (FICTIFS, modèle d'exécution rétrospectif, sans valeur probante)
+## 2. Résultats de la démonstration (FICTIFS, modèle d'exécution rétrospectif, sans valeur probante)
 
 Inchangés : stratégie +25,86 % ; référence achat-conservation −8,07 % ; référence réinvestie +4,43 %.
 
-## 4. Limites connues
+## 3. Limites connues
 
 1. Données de simulation fictives ; aucun référentiel réel complet ; simulation sur données REEL refusée.
 2. Exécutions reconstruites, non prouvées.
-3. Collecte EDGAR non éprouvée sur l'API réelle ; formats supposés.
-4. L'audit détecte des contradictions de forme et de chronologie ; l'exactitude dépend du rapprochement humain.
-5. Pas de passerelle testée audit → jeu de simulation ; fiche titre de simulation non historisée.
+3. Collecte EDGAR non éprouvée sur l'API réelle ; companyfacts partiel ; dépôts anciens non collectés.
+4. Le rapprochement est une déclaration humaine ; le logiciel ne vérifie que forme, chronologie et cohérence.
+5. Pas de passerelle audit → simulation ; fiche titre de simulation non historisée.
 
-## 5. Prochaines décisions (utilisateur)
+## 4. Prochaines décisions (utilisateur)
 
-- **Fiqh** : fournir les passages de la conversation où figurent les règles (texte, références, autorité), pour qu'ils
-  soient consignés avec leur source puis codés et testés.
-- **Collecte EDGAR** : choisir 2 ou 3 sociétés et lancer l'outil sur sa machine avec sa propre identification SEC
-  (l'utilisateur préfère ne pas fournir son adresse avant une version définitive).
+- **Fiqh** : coller les passages de la conversation où figurent les règles (texte, références, autorité).
+- **Collecte EDGAR** : quand l'utilisateur le souhaitera, sur sa machine, avec sa propre identification SEC.
 
-## 6. Questions pour le relecteur
+## 5. Questions pour le relecteur
 
-1. Un dossier incohérent peut-il encore obtenir 0 erreur avec ces règles ?
-2. Les hypothèses de format EDGAR listées dans `tools/edgar_collect.py` te paraissent-elles exactes (champs de
-   `filings.recent`, structure `facts.<taxonomie>.<concept>.units`, absence de dimensions dans companyfacts) ?
-3. La conversion laisse-t-elle passer une information qui devrait rester inconnue, ou en invente-t-elle une ?
-4. L'archivage explicite (copie par l'API de sauvegarde, nom exclusif, vérification d'intégrité, puis suppression) est-il sûr ?
+1. Reste-t-il une information inventée ou perdue par la conversion EDGAR, ou un dossier incohérent à 0 erreur ?
+2. Le traitement `INCONNU` / vide est-il cohérent partout (dimensions, catégorie, contexte, diffusion publique) ?
+3. La gestion non destructive des bases (refus, `--db`, `snapshot-db`) te paraît-elle sûre ?
+4. Faut-il collecter aussi les fichiers `filings.files` dès la première version, ou le signalement suffit-il pour un premier dossier ?
