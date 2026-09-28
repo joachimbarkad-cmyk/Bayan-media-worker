@@ -134,7 +134,7 @@ def normalize(raw: Path, audit: Path, rules_path: Path) -> dict:
     before = ec.verify_trace(raw, audit)
     if before:
         raise NormalizeError("le dossier ne passe pas verify-trace avant normalisation :\n  " + "\n  ".join(before[:10]))
-    s = Session(audit, f"{TOOL} (règles {version}, automatique)")
+    s = Session(audit, normalize_author(rules_path))
     with open(audit / ec.TRACE_FILE, newline="", encoding="utf-8") as f:
         trace = {r["fact_id"]: r for r in csv.DictReader(f)}
     raw_cache: dict[str, dict] = {}
@@ -146,7 +146,8 @@ def normalize(raw: Path, audit: Path, rules_path: Path) -> dict:
 
     by_concept = {r["source_concept"]: r for r in rules["regles"]}
     docs = s.index["documents"]
-    report = {"version": version, "normalises": defaultdict(int), "ecartes": [], "conflits": []}
+    report = {"version": version, "regles_sha256": _sha(rules_path), "normalises": defaultdict(int), "ecartes": [],
+              "conflits": []}
     candidates, excluded = [], {}
     for fact in s.tables["facts"]:
         rule = by_concept.get(fact["source_concept"])
@@ -231,6 +232,70 @@ def normalize(raw: Path, audit: Path, rules_path: Path) -> dict:
     (audit / "rapport_normalisation.json").write_text(json.dumps(report, ensure_ascii=False, indent=1) + "\n",
                                                       encoding="utf-8")
     return report
+
+
+def _sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def normalize_author(rules_path: Path) -> str:
+    """Auteur des saisies de normalisation : l'outil, la version ET l'empreinte exacte du fichier de règles."""
+    version = json.loads(rules_path.read_text(encoding="utf-8"))["version"]
+    return f"{TOOL} (règles {version} sha256:{_sha(rules_path)[:16]}, automatique)"
+
+
+# Colonnes écrites par `normalize` ; `reconcile-ixbrl` remplace ensuite source_context (et renseigne decimals).
+NORMALIZE_FACT_COLUMNS = ["normalized_concept", "transformation", "value", "source_dimensions", "share_class",
+                          "normalization_justification", "source_context"]
+
+
+def verify_normalisation(raw: Path, audit: Path, rules_path: Path) -> tuple[list[str], list[str]]:
+    """Refait conversion + normalisation dans un dossier temporaire avec CES règles et compare chaque cellule de
+    normalisation. Renvoie (écarts, saisies humaines hors règles). Une cellule attribuée à l'outil mais différente de ce
+    que produisent les règles est un écart ; une cellule dont la dernière saisie est humaine est seulement listée."""
+    problems, human = [], []
+    author = normalize_author(rules_path)
+    journal = _load_journal(audit)
+    last_author = {(e["fichier"], e["cle"], e["colonne"]): e["auteur"] for e in journal}
+    tool_authors = {e["auteur"] for e in journal if e["auteur"].startswith(f"{TOOL} (règles")}
+    for a in sorted(tool_authors - {author}):
+        problems.append(f"saisies attribuées à d'autres règles que celles fournies : « {a} » (attendu « {author} »)")
+    forms = set(json.loads((audit / ec.JOURNAL_FILE).read_text(encoding="utf-8")).get("formulaires") or [])
+    tmp = Path(tempfile.mkdtemp(prefix="verif_normalisation_"))
+    try:
+        ref = tmp / "ref"
+        ec.convert(raw, ref, forms)
+        normalize(raw, ref, rules_path)
+        mine = _load_tables(audit)
+        for doc in mine["documents"]:  # rejouer import + rapprochement automatique sur les mêmes copies locales
+            if doc["local_copy"]:
+                src = audit / doc["local_copy"]
+                if not src.is_file() or _sha(src) != doc["local_sha256"]:
+                    problems.append(f"{doc['doc_id']} : copie locale absente ou différente de local_sha256")
+                    continue
+                import_filing(ref, doc["doc_id"], src, "2000-01-01T00:00:00+00:00", raw)
+                reconcile_ixbrl(ref, doc["doc_id"], raw)
+        theirs = _load_tables(ref)
+        checks = {"facts": NORMALIZE_FACT_COLUMNS + ["decimals", "reconciled", "reconciled_note"],
+                  "concept_map": FILES["concept_map"]}
+        for name, cols in checks.items():
+            m = {ec._row_key(name, r): r for r in mine[name]}
+            th = {ec._row_key(name, r): r for r in theirs[name]}
+            for key in sorted(m.keys() | th.keys()):
+                a, b = m.get(key, {}), th.get(key, {})
+                for col in cols:
+                    va, vb = a.get(col, ""), b.get(col, "")
+                    if va == vb:
+                        continue
+                    who = last_author.get((name, key, col), "")
+                    if who and not who.startswith(TOOL):
+                        human.append(f"{name}.csv {key} : {col} = {va!r} (règles : {vb!r}), saisi par {who}")
+                    else:
+                        problems.append(f"{name}.csv {key} : {col} = {va!r}, les règles donnent {vb!r}"
+                                        + (f" (saisie attribuée à « {who} »)" if who else ""))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return problems, human
 
 
 def _map_concept(s: Session, rule: dict, raw: Path, issuer: str, version: str) -> None:
@@ -413,12 +478,24 @@ def main(argv=None) -> int:
     r.add_argument("--audit", required=True, type=Path)
     r.add_argument("--doc-id", required=True)
     r.add_argument("--raw", type=Path)
+    v = sub.add_parser("verify-normalisation", help="Refaire la normalisation avec ces règles et comparer")
+    v.add_argument("--raw", required=True, type=Path)
+    v.add_argument("--audit", required=True, type=Path)
+    v.add_argument("--regles", required=True, type=Path)
     a = p.parse_args(argv)
     try:
         if a.cmd == "normalize":
             res = normalize(a.raw, a.audit, a.regles)
             print(json.dumps({k: (v if k != "ecartes" else len(v)) for k, v in res.items()}, ensure_ascii=False,
                              indent=1))
+        elif a.cmd == "verify-normalisation":
+            problems, human = verify_normalisation(a.raw, a.audit, a.regles)
+            for msg in problems[:50]:
+                print("  ÉCART", msg)
+            for msg in human[:50]:
+                print("  SAISIE HUMAINE HORS RÈGLES (à relire)", msg)
+            print(f"{len(problems)} écart(s) avec les règles ; {len(human)} saisie(s) humaine(s) hors règles.")
+            return 1 if problems else 0
         elif a.cmd == "import-filing":
             print("sha256", import_filing(a.audit, a.doc_id, a.fichier, a.retrieved_at, a.raw))
         else:

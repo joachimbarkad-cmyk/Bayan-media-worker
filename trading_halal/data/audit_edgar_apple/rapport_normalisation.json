@@ -1,5 +1,6 @@
 {
  "version": "edgar_v1",
+ "regles_sha256": "f95d7e2287bb49a3ae00f40add53ec909ecb160e1e6fa5c608d45aeb491e25c0",
  "normalises": {
   "shares_outstanding": 132,
   "total_assets": 88,

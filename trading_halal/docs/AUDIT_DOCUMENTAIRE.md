@@ -112,3 +112,9 @@ une contre-vérification humaine indépendante restent nécessaires.
   « NON NORMALISÉ : motif » (exclusion explicite) ; sinon, erreur bloquante.
 - Outil : `tools/edgar_normalize.py` (`normalize`, `import-filing`, `reconcile-ixbrl`), règles
   `config/normalisation/edgar_v1.json`, exemples `docs/EXEMPLE_NORMALISATION_APPLE.md`.
+
+## Conformité aux règles (V1.14)
+
+`verify-trace` et `audit-docs` vérifient la forme et l'historique, pas le fond. `verify-normalisation` refait la
+normalisation (et le rapprochement automatique) avec le fichier de règles fourni et compare chaque cellule : un écart
+attribué à l'outil est une erreur ; une saisie humaine différente est listée pour relecture.

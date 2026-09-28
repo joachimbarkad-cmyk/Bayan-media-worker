@@ -278,6 +278,92 @@ class ImportAndReconcileTests(Base):
         self.assertTrue(any("AUTOMATIQUE" in e for e in audit_folder(self.out).errors))
 
 
+def _forge(audit: Path, table: str, key: str, col: str, value: str, author: str, proof: str) -> None:
+    """Falsification « cohérente » : cellule modifiée ET saisie journalisée qui la justifie (passe verify-trace)."""
+    with open(audit / f"{table}.csv", newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    fields = list(rows[0]) if rows else None
+    k = ec.ROW_KEYS[table]
+    target = next(r for r in rows if "|".join(r[c] for c in k) == key)
+    old = target[col]
+    target[col] = value
+    with open(audit / f"{table}.csv", "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        w.writerows(rows)
+    journal = en._load_journal(audit)
+    journal.append({"n": str(len(journal) + 1), "fichier": table, "cle": key, "colonne": col, "ancienne_valeur": old,
+                    "nouvelle_valeur": value, "auteur": author, "saisi_le": journal[-1]["saisi_le"], "preuve": proof,
+                    "note": ""})
+    with open(audit / ec.SAISIES_FILE, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=ec.SAISIES_HEADERS)
+        w.writeheader()
+        w.writerows(journal)
+
+
+class VerifyNormalisationTests(Base):
+    """Un fait normalisé faux mais « cohérent » (journal à jour) passe verify-trace et l'audit : verify-normalisation
+    refait la normalisation avec les règles et le détecte."""
+
+    def setUp(self):
+        super().setUp()
+        en.normalize(self.raw, self.out, self.rules)
+        self.author = en.normalize_author(self.rules)
+        self.rev = next(k for k, r in self.normalized().items() if r["normalized_concept"] == "total_revenue")
+
+    def test_clean_folder_verifies(self):
+        self.assertEqual(en.verify_normalisation(self.raw, self.out, self.rules), ([], []))
+
+    def test_forged_concept_attributed_to_the_tool_is_detected(self):
+        _forge(self.out, "facts", self.rev, "normalized_concept", "total_assets", self.author, "doc:" + K10)
+        _forge(self.out, "concept_map", "us-gaap:Revenues", "normalized_concept", "total_assets", self.author,
+               "url:https://data.sec.gov/companyfacts")
+        # le faux passe les contrôles de forme…
+        self.assertTrue(all("total_assets" not in m for m in ec.verify_trace(self.raw, self.out)))
+        # …mais pas la comparaison avec les règles
+        problems, human = en.verify_normalisation(self.raw, self.out, self.rules)
+        self.assertTrue(any("normalized_concept" in m and "total_assets" in m for m in problems))
+        self.assertEqual(human, [])
+
+    def test_forged_value_with_consistent_transformation_is_detected(self):
+        _forge(self.out, "facts", self.rev, "transformation", "multiplié par 1,1 (correction)", self.author,
+               "doc:" + K10)
+        _forge(self.out, "facts", self.rev, "value", "1375000000", self.author, "doc:" + K10)
+        problems, _ = en.verify_normalisation(self.raw, self.out, self.rules)
+        self.assertTrue(any("value" in m for m in problems))
+
+    def test_human_override_is_listed_not_hidden(self):
+        _forge(self.out, "facts", self.rev, "share_class", "", "Relecteur B", "doc:" + K10)
+        _forge(self.out, "facts", self.rev, "normalization_justification", "Revu à la main : identique, page 3",
+               "Relecteur B", "doc:" + K10)
+        problems, human = en.verify_normalisation(self.raw, self.out, self.rules)
+        self.assertEqual(problems, [])
+        self.assertTrue(any("Relecteur B" in m for m in human))
+
+    def test_other_rules_file_is_detected(self):
+        other = self.tmp / "autres.json"
+        data = json.loads(self.rules.read_text(encoding="utf-8"))
+        data["regles"][0]["justification"] = "texte modifié"
+        other.write_text(json.dumps(data), encoding="utf-8")
+        problems, _ = en.verify_normalisation(self.raw, self.out, other)
+        self.assertTrue(any("autres règles" in m for m in problems))
+
+    def test_forged_auto_reconciliation_is_detected(self):
+        src = self.tmp / "fxei-10k.htm"
+        src.write_text(ixbrl(GOOD), encoding="utf-8")
+        en.import_filing(self.out, K10, src, "2026-09-28T14:05:00+02:00", self.raw)
+        en.reconcile_ixbrl(self.out, K10, self.raw)
+        self.assertEqual(en.verify_normalisation(self.raw, self.out, self.rules)[0], [])
+        q10 = next(k for k, r in self.normalized().items() if not r["reconciled"])  # fait du 10-Q, sans copie
+        with open(self.out / "facts.csv", newline="", encoding="utf-8") as f:
+            note = next(r for r in csv.DictReader(f) if r["reconciled"] == "auto")["reconciled_note"]
+        _forge(self.out, "facts", q10, "reconciled", "auto", f"{en.TOOL} reconcile-ixbrl (automatique)", "doc:" + K10)
+        _forge(self.out, "facts", q10, "reconciled_note", note, f"{en.TOOL} reconcile-ixbrl (automatique)",
+               "doc:" + K10)
+        problems, _ = en.verify_normalisation(self.raw, self.out, self.rules)
+        self.assertTrue(any(q10 in m and "reconciled" in m for m in problems))
+
+
 @unittest.skipUnless(APPLE.exists() and APPLE_RAW.exists(), "dossier Apple absent")
 class AppleNormalizedTests(unittest.TestCase):
     """Dossier réel Apple normalisé avec edgar_v1 (valeurs vérifiables dans docs/EXEMPLE_NORMALISATION_APPLE.md)."""
@@ -325,6 +411,9 @@ class AppleNormalizedTests(unittest.TestCase):
         cp = tmp / "cp"
         shutil.copytree(APPLE, cp)
         self.assertEqual(en.normalize(APPLE_RAW, cp, RULES_V1)["saisies"], 0)
+
+    def test_apple_folder_matches_the_rules_exactly(self):
+        self.assertEqual(en.verify_normalisation(APPLE_RAW, APPLE, RULES_V1), ([], []))
 
 
 if __name__ == "__main__":

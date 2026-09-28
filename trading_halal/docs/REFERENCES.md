@@ -73,3 +73,4 @@ effectué ; d'ici là, la position reste gelée. Aucune vente n'est simulée san
 - **V1.11** (revue n° 11) : aucune règle de portefeuille modifiée.
 - **V1.12** (revue n° 12) : aucune règle de portefeuille modifiée.
 - **V1.13** (normalisation EDGAR) : aucune règle de portefeuille modifiée.
+- **V1.14** : aucune règle de portefeuille modifiée.

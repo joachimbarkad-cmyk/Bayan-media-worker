@@ -1,4 +1,4 @@
-# HANDOFF — simulateur de trading halal, V1.13 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.14 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
@@ -6,6 +6,29 @@ Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier
 **Merci de relire de façon critique** : lectures d'information future, ADMISSIBLE erronés, contrôles d'audit
 contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
 au document de fiqh fourni par l'utilisateur**.
+
+## V1.14 — Un fait normalisé faux ne passe plus inaperçu
+
+Constat (auto-relecture) : sur la V1.13, un fait normalisé faux accompagné d'une saisie journalisée « cohérente »
+(ex. chiffre d'affaires reclassé en total_assets, mappage modifié en conséquence, ou valeur multipliée avec une
+transformation décrite) passait `verify-trace` et `audit-docs` à 0 : ces contrôles vérifient la forme et l'historique,
+pas la conformité aux règles.
+
+Correction : `tools/edgar_normalize.py verify-normalisation --raw … --audit … --regles …` refait, dans un dossier
+temporaire, la conversion puis la normalisation avec **ces** règles, rejoue l'import et le rapprochement automatique
+sur les mêmes copies locales, et compare chaque cellule de normalisation et de rapprochement ainsi que `concept_map`.
+- cellule attribuée à l'outil mais différente des règles ⇒ **écart** ;
+- cellule dont la dernière saisie est humaine ⇒ listée « saisie humaine hors règles (à relire) », jamais masquée ;
+- l'auteur des saisies porte désormais l'empreinte du fichier de règles (`règles edgar_v1 sha256:f95d7e2287bb49a3`) :
+  des règles modifiées sous le même nom de version sont détectées.
+
+Le dossier Apple a été régénéré depuis une conversion neuve (mêmes 337 faits ; seul l'auteur des saisies change) :
+`verify-normalisation` ⇒ 0 écart, 0 saisie humaine. Tests : 7 nouveaux (falsification du concept, de la valeur, d'un
+rapprochement automatique, autre fichier de règles, saisie humaine listée, dossier Apple conforme). Mutations : 6,
+toutes détectées. **206 tests.**
+
+Limite : une saisie **humaine** fausse reste possible (elle est seulement listée) ; c'est le rôle de la relecture
+indépendante. `www.sec.gov` reste bloqué (vérifié à nouveau) : aucun rapprochement réel.
 
 ## V1.13 — Normalisation EDGAR sur données réelles (travail autonome demandé par l'utilisateur)
 
@@ -187,9 +210,9 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 
 - Simulation de bout en bout (12 contrôles), avec `--ruleset` pour choisir le référentiel et `--db` pour la base.
 - `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE.
-- **199 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+- **206 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
   test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
-  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 19, test_ruleset_validation 10, test_screening 11.
+  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 26, test_ruleset_validation 10, test_screening 11.
 
 ## Limites connues (générales)
 

@@ -15,7 +15,10 @@ python3 -m halal_sim audit-docs data/audit_edgar_apple
 # 3. rejouer la normalisation : 0 saisie nouvelle attendue (idempotente)
 cp -r data/audit_edgar_apple /tmp/copie && python3 tools/edgar_normalize.py normalize --raw collecte/apple \
     --audit /tmp/copie --regles config/normalisation/edgar_v1.json
-# 4. régénérer les tableaux ci-dessous (un test vérifie qu'ils sont identiques)
+# 4. chaque cellule normalisée est-elle exactement ce que donnent les règles ? (0 écart attendu)
+python3 tools/edgar_normalize.py verify-normalisation --raw collecte/apple --audit data/audit_edgar_apple \
+    --regles config/normalisation/edgar_v1.json
+# 5. régénérer les tableaux ci-dessous (un test vérifie qu'ils sont identiques)
 python3 tools/exemple_normalisation.py --audit data/audit_edgar_apple --accn 0000320193-25-000079
 ```
 
