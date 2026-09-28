@@ -63,3 +63,6 @@ effectué ; d'ici là, la position reste gelée. Aucune vente n'est simulée san
 - **V1.5** (revue n° 5) : achat refusé si le statut n'est plus ADMISSIBLE à l'ouverture d'exécution ; quantité
   exécutée bornée aussi par 5 % du volume du jour (modèle de marché) ; contrepartie créditée à la séance qui suit
   sa date de paiement ; le journal d'une radiation ne cite que ce qui était publié à cette date.
+- **V1.6** (revue n° 6) : aucune règle de portefeuille modifiée ; les résultats sont désormais intitulés
+  « simulation avec modèle d'exécution rétrospectif » (exécutions reconstruites à partir des barres journalières,
+  non prouvées).

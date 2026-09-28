@@ -1,13 +1,16 @@
 """Dossier d'AUDIT DOCUMENTAIRE : collecte et contrôle de documents réels, sans simulation ni statut religieux.
 
-Distinct du jeu de simulation (data.py) : il conserve la provenance que la simulation n'exige pas encore
-(identifiants d'émetteur, numéro d'accès, horodatages avec fuseau, versions, empreintes, unités), et signale les
-inconnues au lieu de les combler. Aucun champ de statut religieux n'y figure : ADMISSIBLE/EXCLU/INCERTAIN ne
-peuvent pas être produits à partir d'un dossier d'audit.
+Distinct du jeu de simulation (data.py) : il conserve la provenance (identifiants d'émetteur, numéro d'accès,
+horodatages avec fuseau, versions et rectificatifs, empreintes, concepts et contextes d'origine, unités) et signale
+les inconnues au lieu de les combler.
 
-Fichiers (CSV UTF-8) : issuers, securities, documents, facts, activities + manifest.json.
-Le contrôle vérifie la forme, la cohérence chronologique et l'intégrité des copies locales. Il ne prouve pas que
-les valeurs sont exactes : la comparaison avec la source reste humaine.
+Principes du contrôle :
+- colonnes en LISTE FERMÉE : toute colonne non prévue est refusée (aucun statut religieux ne peut s'y glisser) ;
+- chronologie : aucune mesure, activité ou correction ne peut être antérieure à la pièce qui la porte ;
+- concept d'origine (ex. XBRL) distinct du concept normalisé du projet, reliés par un mappage explicite ;
+- une heure de diffusion publique non établie reste INCONNUE (elle n'est jamais recopiée de l'heure d'acceptation) ;
+- les copies locales doivent se trouver dans le dossier audité.
+Le contrôle ne prouve pas que les valeurs sont exactes : la comparaison avec la source reste humaine.
 """
 from __future__ import annotations
 
@@ -26,13 +29,18 @@ FILES = {
                    "currency", "source"],
     "documents": ["doc_id", "issuer_id", "doc_type", "accession_number", "url", "local_copy", "local_sha256",
                   "period_end", "accepted_at", "public_available_at", "retrieved_at", "version", "amends_doc_id"],
-    "facts": ["fact_id", "doc_id", "concept", "definition", "value", "unit", "currency", "period_type",
-              "period_start", "period_end", "measure_date", "share_class", "price_adjusted"],
-    "activities": ["issuer_id", "proposed_code", "available_at", "source", "source_url", "justification"],
+    "facts": ["fact_id", "doc_id", "source_concept", "source_context", "normalized_concept", "definition", "value",
+              "unit", "currency", "period_type", "period_start", "period_end", "measure_date", "share_class",
+              "price_adjusted", "corrects_fact_id"],
+    "concept_map": ["source_concept", "normalized_concept", "justification"],
+    "activities": ["issuer_id", "proposed_code", "evidence_doc_id", "available_at", "source", "source_url",
+                   "justification"],
 }
-# Concepts qui exigent la date de la mesure et la catégorie d'actions (revue n° 5).
+# Concepts normalisés du projet (ceux qu'utiliserait un futur jeu de simulation).
+PROJECT_CONCEPTS = {"market_cap", "shares_outstanding", "total_assets", "interest_bearing_debt",
+                    "cash_and_interest_bearing_investments", "total_revenue", "non_compliant_revenue"}
+SHARE_UNITS = {"shares", "actions"}
 SHARE_CONCEPTS = {"shares_outstanding", "market_cap"}
-FORBIDDEN_COLUMNS = {"status", "statut", "admissible", "halal", "compliant"}
 CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 
 
@@ -52,19 +60,24 @@ class AuditResult:
         return not self.errors
 
 
-def _read(path: Path, required: list[str]) -> list[dict]:
+def _read(path: Path, expected: list[str]) -> list[dict]:
     if not path.exists():
         raise AuditFormatError(f"Fichier manquant : {path.name}")
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        cols = set(reader.fieldnames or [])
-        missing = set(required) - cols
+        cols = list(reader.fieldnames or [])
+        missing, extra = set(expected) - set(cols), set(cols) - set(expected)
         if missing:
             raise AuditFormatError(f"{path.name} : colonnes manquantes {sorted(missing)}")
-        forbidden = {c for c in cols if c.lower() in FORBIDDEN_COLUMNS}
-        if forbidden:
-            raise AuditFormatError(f"{path.name} : colonnes de statut religieux interdites dans un audit {sorted(forbidden)}")
-        return [{k: (v or "").strip() for k, v in row.items()} for row in reader]
+        if extra:
+            raise AuditFormatError(f"{path.name} : colonnes non prévues {sorted(extra)} (liste fermée ; aucun statut "
+                                   "religieux ni champ libre n'est admis dans un dossier d'audit)")
+        rows = []
+        for n, row in enumerate(reader, start=2):
+            if None in row:
+                raise AuditFormatError(f"{path.name} ligne {n} : plus de valeurs que de colonnes")
+            rows.append({k: (v or "").strip() for k, v in row.items()})
+        return rows
 
 
 def _dt(value: str) -> datetime | None:
@@ -83,12 +96,26 @@ def _d(value: str) -> date | None:
         return None
 
 
+def _inside(root: Path, rel: str) -> Path | None:
+    """Chemin de copie locale, seulement s'il reste dans le dossier audité (pas de chemin absolu ni de « .. »)."""
+    if not rel or Path(rel).is_absolute():
+        return None
+    resolved = (root / rel).resolve()
+    try:
+        resolved.relative_to(root.resolve())
+    except ValueError:
+        return None
+    return resolved
+
+
 def audit_folder(root: str | Path) -> AuditResult:
     root = Path(root)
     manifest_path = root / "manifest.json"
     if not manifest_path.exists():
         raise AuditFormatError("manifest.json manquant")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if set(manifest) - {"name", "nature", "warning"}:
+        raise AuditFormatError(f"manifest.json : clés non prévues {sorted(set(manifest) - {'name', 'nature', 'warning'})}")
     nature = manifest.get("nature")
     if nature not in ("FICTIF", "REEL"):
         raise AuditFormatError("manifest.json : nature doit valoir FICTIF ou REEL")
@@ -96,18 +123,21 @@ def audit_folder(root: str | Path) -> AuditResult:
     res = AuditResult(nature, {k: len(v) for k, v in t.items()})
     E, U = res.errors.append, res.unknowns.append
 
+    # --- émetteurs et titres ---
     issuers = {}
     for r in t["issuers"]:
         if not r["issuer_id"] or r["issuer_id"] in issuers:
             E(f"émetteur vide ou en double : {r['issuer_id']!r}")
         issuers[r["issuer_id"]] = r
-        if not r["id_scheme"]:
-            E(f"émetteur {r['issuer_id']} : schéma d'identifiant manquant (ex. CIK)")
-        if not r["source"]:
-            E(f"émetteur {r['issuer_id']} : source manquante")
+        if not r["id_scheme"] or not r["source"]:
+            E(f"émetteur {r['issuer_id']} : schéma d'identifiant (ex. CIK) ou source manquant")
 
+    seen_sec = set()
     for r in t["securities"]:
         ctx = f"titre {r['security_id']}"
+        if not r["security_id"] or r["security_id"] in seen_sec:
+            E(f"identifiant de titre vide ou en double : {r['security_id']!r}")
+        seen_sec.add(r["security_id"])
         if r["issuer_id"] not in issuers:
             E(f"{ctx} : émetteur inconnu {r['issuer_id']!r}")
         vf, vt = _d(r["valid_from"]), _d(r["valid_to"]) if r["valid_to"] else None
@@ -120,6 +150,7 @@ def audit_folder(root: str | Path) -> AuditResult:
         if not (r["ticker"] and r["exchange"] and r["instrument_type"] and r["source"]):
             E(f"{ctx} : ticker, place, type d'instrument ou source manquant")
 
+    # --- documents ---
     docs, accessions = {}, set()
     for r in t["documents"]:
         ctx = f"document {r['doc_id']}"
@@ -133,48 +164,103 @@ def audit_folder(root: str | Path) -> AuditResult:
         accessions.add(r["accession_number"])
         if not (r["doc_type"] and r["url"]):
             E(f"{ctx} : type ou URL manquant")
-        acc, pub, ret = _dt(r["accepted_at"]), _dt(r["public_available_at"]), _dt(r["retrieved_at"])
-        pe = _d(r["period_end"])
-        if None in (acc, pub, ret):
-            E(f"{ctx} : horodatages accepted_at / public_available_at / retrieved_at invalides ou sans fuseau")
-        else:
-            if pub < acc:
-                E(f"{ctx} : disponibilité publique antérieure à l'acceptation")
-            if ret < pub:
-                E(f"{ctx} : récupéré avant d'être public")
-            if pe and pe > acc.date():
-                E(f"{ctx} : fin de période postérieure à l'acceptation")
-        if pe is None:
+        acc, ret = _dt(r["accepted_at"]), _dt(r["retrieved_at"])
+        pub = _dt(r["public_available_at"]) if r["public_available_at"] else None
+        r["_acc"], r["_pub"], r["_pe"] = acc, pub, _d(r["period_end"])
+        if acc is None or ret is None:
+            E(f"{ctx} : accepted_at ou retrieved_at invalide ou sans fuseau")
+        if r["public_available_at"] and pub is None:
+            E(f"{ctx} : public_available_at invalide ou sans fuseau")
+        if not r["public_available_at"]:
+            U(f"{ctx} : heure de diffusion publique non établie (l'heure d'acceptation ne la remplace pas)")
+        if acc and pub and pub < acc:
+            E(f"{ctx} : disponibilité publique antérieure à l'acceptation")
+        if ret and (pub or acc) and ret < (pub or acc):
+            E(f"{ctx} : récupéré avant d'être accepté ou public")
+        if r["_pe"] is None:
             E(f"{ctx} : fin de période invalide")
+        elif acc and r["_pe"] > acc.date():
+            E(f"{ctx} : fin de période postérieure à l'acceptation")
         if r["version"] not in ("original", "rectificatif"):
             E(f"{ctx} : version doit valoir original ou rectificatif")
-        if r["version"] == "rectificatif" and not r["amends_doc_id"]:
-            E(f"{ctx} : rectificatif sans document rectifié")
+        if (r["version"] == "rectificatif") != bool(r["amends_doc_id"]):
+            E(f"{ctx} : un rectificatif (et seulement lui) doit désigner le document rectifié")
         if r["local_copy"]:
-            path = root / r["local_copy"]
-            if not path.exists():
+            path = _inside(root, r["local_copy"])
+            if path is None:
+                E(f"{ctx} : copie locale hors du dossier audité ({r['local_copy']})")
+            elif not path.is_file():
                 E(f"{ctx} : copie locale introuvable {r['local_copy']}")
             elif hashlib.sha256(path.read_bytes()).hexdigest() != r["local_sha256"].lower():
                 E(f"{ctx} : empreinte SHA-256 de la copie locale différente")
         else:
             U(f"{ctx} : pas de copie locale (seule l'URL permet la vérification)")
-    for r in t["documents"]:
-        if r["amends_doc_id"] and r["amends_doc_id"] not in docs:
-            E(f"document {r['doc_id']} : rectifie un document inconnu {r['amends_doc_id']!r}")
 
-    seen_facts = set()
+    # --- rectificatifs : cible distincte, même émetteur, antérieure, même période, sans boucle ---
+    for r in t["documents"]:
+        target_id = r["amends_doc_id"]
+        if not target_id:
+            continue
+        ctx = f"rectificatif {r['doc_id']}"
+        target = docs.get(target_id)
+        if target_id == r["doc_id"]:
+            E(f"{ctx} : se rectifie lui-même")
+            continue
+        if target is None:
+            E(f"{ctx} : rectifie un document inconnu {target_id!r}")
+            continue
+        if target["issuer_id"] != r["issuer_id"]:
+            E(f"{ctx} : émetteur différent du document rectifié")
+        if target["_acc"] and r["_acc"] and target["_acc"] >= r["_acc"]:
+            E(f"{ctx} : accepté avant (ou en même temps que) le document qu'il rectifie")
+        if target["_pe"] != r["_pe"]:
+            E(f"{ctx} : période {r['period_end']} différente du document rectifié ({target['period_end']})")
+        chain, cur = {r["doc_id"]}, target
+        while cur is not None and cur["amends_doc_id"]:
+            if cur["doc_id"] in chain:
+                E(f"{ctx} : boucle de rectificatifs")
+                break
+            chain.add(cur["doc_id"])
+            cur = docs.get(cur["amends_doc_id"])
+
+    # --- mappage des concepts ---
+    cmap = {}
+    for r in t["concept_map"]:
+        if r["source_concept"] in cmap:
+            E(f"mappage en double pour {r['source_concept']!r}")
+        if r["normalized_concept"] not in PROJECT_CONCEPTS:
+            E(f"mappage {r['source_concept']} : concept normalisé inconnu {r['normalized_concept']!r}")
+        if not r["justification"]:
+            E(f"mappage {r['source_concept']} : justification manquante")
+        cmap[r["source_concept"]] = r["normalized_concept"]
+
+    # --- faits ---
+    facts = {}
     for r in t["facts"]:
         ctx = f"fait {r['fact_id']}"
-        if not r["fact_id"] or r["fact_id"] in seen_facts:
+        if not r["fact_id"] or r["fact_id"] in facts:
             E(f"fait vide ou en double : {r['fact_id']!r}")
-        seen_facts.add(r["fact_id"])
+        facts[r["fact_id"]] = r
         doc = docs.get(r["doc_id"])
         if doc is None:
             E(f"{ctx} : document d'origine inconnu {r['doc_id']!r}")
-        if not (r["concept"] and r["definition"] and r["unit"]):
-            E(f"{ctx} : concept, définition ou unité manquant")
+        if not (r["source_concept"] and r["definition"] and r["unit"]):
+            E(f"{ctx} : concept d'origine, définition ou unité manquant")
+        if not r["source_context"]:
+            U(f"{ctx} : contexte d'origine (ex. contexte XBRL) non renseigné")
+        norm = r["normalized_concept"]
+        mapped = cmap.get(r["source_concept"])
+        if norm:
+            if mapped is None:
+                E(f"{ctx} : concept normalisé {norm!r} sans mappage explicite de {r['source_concept']!r}")
+            elif mapped != norm:
+                E(f"{ctx} : concept normalisé {norm!r} contraire au mappage ({mapped!r})")
+        elif mapped:
+            E(f"{ctx} : concept {r['source_concept']!r} mappé vers {mapped!r} mais non normalisé dans le fait")
+        else:
+            U(f"{ctx} : concept {r['source_concept']!r} non normalisé (inutilisable par le projet en l'état)")
         if r["value"] == "":
-            U(f"{ctx} ({r['concept']}) : valeur inconnue (null)")
+            U(f"{ctx} ({r['source_concept']}) : valeur inconnue (null)")
         else:
             try:
                 v = float(r["value"])
@@ -193,28 +279,71 @@ def audit_folder(root: str | Path) -> AuditResult:
                 E(f"{ctx} : période (début/fin) invalide")
         else:
             E(f"{ctx} : period_type doit valoir instant ou duration")
+        acc_date = doc["_acc"].date() if doc is not None and doc["_acc"] else None
         if pend is None:
             E(f"{ctx} : fin de période invalide")
-        elif doc is not None and _dt(doc["accepted_at"]) and pend > _dt(doc["accepted_at"]).date():
+        elif acc_date and pend > acc_date:
             E(f"{ctx} : période postérieure à l'acceptation du document")
-        if r["concept"] in SHARE_CONCEPTS:
-            if _d(r["measure_date"]) is None or not r["share_class"]:
-                E(f"{ctx} ({r['concept']}) : date de mesure et catégorie d'actions obligatoires")
-            if r["concept"] == "market_cap" and r["price_adjusted"] not in ("oui", "non"):
-                E(f"{ctx} : préciser si le cours utilisé est ajusté (oui/non)")
+        # Règles « actions » selon l'UNITÉ ou le concept normalisé, quel que soit le nom du concept d'origine.
+        is_share = r["unit"].lower() in SHARE_UNITS or norm in SHARE_CONCEPTS
+        md = _d(r["measure_date"]) if r["measure_date"] else None
+        if r["measure_date"] and md is None:
+            E(f"{ctx} : date de mesure invalide")
+        if is_share and (md is None or not r["share_class"]):
+            E(f"{ctx} ({r['source_concept']}) : date de mesure et catégorie d'actions obligatoires")
+        if md and acc_date and md > acc_date:
+            E(f"{ctx} : mesuré le {md}, après l'acceptation de son document ({acc_date})")
+        if norm == "market_cap" and r["price_adjusted"] not in ("oui", "non"):
+            E(f"{ctx} : préciser si le cours utilisé est ajusté (oui/non)")
 
+    # --- corrections de faits par un rectificatif ---
+    for r in t["facts"]:
+        old_id = r["corrects_fact_id"]
+        if not old_id:
+            continue
+        ctx = f"fait {r['fact_id']}"
+        old, doc = facts.get(old_id), docs.get(r["doc_id"])
+        if old is None or old_id == r["fact_id"]:
+            E(f"{ctx} : corrige un fait inconnu ou lui-même ({old_id!r})")
+            continue
+        if doc is None or doc["version"] != "rectificatif":
+            E(f"{ctx} : une correction doit provenir d'un document rectificatif")
+            continue
+        chain, cur = set(), docs.get(doc["amends_doc_id"])
+        while cur is not None and cur["doc_id"] not in chain:
+            chain.add(cur["doc_id"])
+            cur = docs.get(cur["amends_doc_id"])
+        if old["doc_id"] not in chain:
+            E(f"{ctx} : le fait corrigé n'appartient pas à un document rectifié par {r['doc_id']}")
+        for k in ("source_concept", "period_type", "period_start", "period_end", "unit", "currency", "share_class"):
+            if old[k] != r[k]:
+                E(f"{ctx} : {k} différent du fait corrigé ({old[k]!r} ≠ {r[k]!r})")
+
+    # --- activités : rattachées à une pièce, jamais antérieures à elle ---
     for r in t["activities"]:
         ctx = f"activité {r['issuer_id']}"
         if r["issuer_id"] not in issuers:
             E(f"{ctx} : émetteur inconnu")
-        if _dt(r["available_at"]) is None:
+        avail = _dt(r["available_at"])
+        if avail is None:
             E(f"{ctx} : available_at invalide ou sans fuseau")
         if not r["source"]:
             E(f"{ctx} : source manquante")
-        if r["proposed_code"] in ("", "INCONNU"):
+        unknown_code = r["proposed_code"] in ("", "INCONNU")
+        if unknown_code:
             U(f"{ctx} : classification d'activité non établie")
-        elif not r["justification"]:
-            E(f"{ctx} : code proposé sans justification")
+        elif not (r["justification"] and r["evidence_doc_id"]):
+            E(f"{ctx} : code proposé sans justification ni pièce justificative (evidence_doc_id)")
+        if r["evidence_doc_id"]:
+            ev = docs.get(r["evidence_doc_id"])
+            if ev is None:
+                E(f"{ctx} : pièce justificative inconnue {r['evidence_doc_id']!r}")
+            elif ev["issuer_id"] != r["issuer_id"]:
+                E(f"{ctx} : pièce justificative d'un autre émetteur")
+            elif avail:
+                floor = ev["_pub"] or ev["_acc"]
+                if floor and avail < floor:
+                    E(f"{ctx} : disponible le {avail.isoformat()}, avant sa pièce justificative ({floor.isoformat()})")
 
     if nature == "REEL":
         cited = [r.get(k, "") for tab in t.values() for r in tab for k in ("source", "source_url", "url")]

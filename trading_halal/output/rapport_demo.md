@@ -4,6 +4,8 @@
 
 > **Simulation uniquement.** Aucun courtier connecté, aucun ordre réel envoyé.
 
+> **Simulation avec modèle d'exécution rétrospectif.** Les ordres sont dimensionnés avec l'information connue avant l'ouverture ; leur exécution est reconstruite après coup à partir de la barre journalière (prix d'ouverture, volume du jour). Rien ne prouve qu'elles étaient possibles à ce prix et pour cette quantité : une confirmation exigerait des données horodatées de l'ouverture.
+
 > **Pas une certification religieuse.** Le filtre applique mécaniquement le référentiel indiqué ; ADMISSIBLE ne signifie pas « 100 % halal ».
 
 > **Référentiel non validé** (`DEMO_FICTIF_v1`) : RÉFÉRENTIEL DE DÉMONSTRATION. Les seuils financiers ci-dessous sont des valeurs ARBITRAIRES choisies pour tester le logiciel. Ce ne sont PAS les seuils AAOIFI ni ceux d'un indice. Interdit sur des données réelles (le moteur refuse).
@@ -21,7 +23,7 @@
 | Référence « réinvestie » | Chaque fin de mois : mêmes ventes imposées, puis liquidités réparties à parts cibles égales entre les titres admissibles du moment, sans moyenne mobile (docs/REFERENCES.md) |
 | Frais (fictifs) | 1.0 EUR fixe + 0 % (min 1.0 EUR) par ordre ; glissement 10 pb ; refus si coût aller-retour > 1.5 % |
 | Politique titres détenus | EXCLU → SELL, INCERTAIN → SELL |
-| Empreinte du code / des données | da07c8bdd2bf / 8973b58e3308 |
+| Empreinte du code / des données | 64e9aae715b9 / 8973b58e3308 |
 
 ## Résultats : stratégie contre deux références
 

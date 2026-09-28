@@ -86,6 +86,10 @@ def build_report(conn: sqlite3.Connection, run_id: int, sensitivity_run_ids: lis
         L.append("> **DONNÉES FICTIVES DE DÉMONSTRATION.** Sociétés, prix et états financiers inventés pour tester le logiciel. "
                  "Les chiffres ci-dessous ne disent RIEN de la rentabilité réelle de la stratégie.\n")
     L.append("> **Simulation uniquement.** Aucun courtier connecté, aucun ordre réel envoyé.\n")
+    L.append("> **Simulation avec modèle d'exécution rétrospectif.** Les ordres sont dimensionnés avec l'information "
+             "connue avant l'ouverture ; leur exécution est reconstruite après coup à partir de la barre journalière "
+             "(prix d'ouverture, volume du jour). Rien ne prouve qu'elles étaient possibles à ce prix et pour cette "
+             "quantité : une confirmation exigerait des données horodatées de l'ouverture.\n")
     L.append("> **Pas une certification religieuse.** Le filtre applique mécaniquement le référentiel indiqué ; "
              "ADMISSIBLE ne signifie pas « 100 % halal ».\n")
     if not rs.get("validated"):

@@ -57,6 +57,20 @@ def cmd_audit_docs(args) -> int:
     return 0 if res.ok else 1
 
 
+def _open_store(path: Path):
+    """Ouvre la base ; si elle date d'une version incompatible, elle est ARCHIVÉE (renommée, jamais supprimée)."""
+    from datetime import datetime
+    from .db import Store, StoreSchemaError
+    try:
+        return Store(path)
+    except StoreSchemaError as exc:
+        backup = path.with_name(f"{path.name}.schema-v{exc.found}-{datetime.now():%Y%m%d-%H%M%S}.bak")
+        path.rename(backup)
+        print(f"Base existante au schéma v{exc.found} (incompatible) : archivée sous {backup.name}. "
+              "Une nouvelle base est créée ; l'ancienne reste lisible avec la version du code qui l'a produite.")
+        return Store(path)
+
+
 def cmd_run(args) -> int:
     from .backtest import run_backtest
     from .data import load_dataset
@@ -67,7 +81,7 @@ def cmd_run(args) -> int:
     cfg = load_config(args.config)
     ds = load_dataset(_path(cfg["dataset_dir"]))
     ruleset = load_ruleset(_path(cfg["ruleset"]))
-    store = Store(_path(cfg["db_path"]))
+    store = _open_store(_path(cfg["db_path"]))
     capital = args.capital or cfg["initial_capital"]
     main = run_backtest(ds, cfg, ruleset, store, capital=capital, label="principal")
     sens_ids = []
@@ -89,6 +103,7 @@ def cmd_run(args) -> int:
     failed = [n for n, ok, _ in checks if not ok]
     print(f"Vérifications : {len(checks) - len(failed)}/{len(checks)} OK" + (f" — ÉCHECS : {failed}" if failed else ""))
     print(f"Rapport : {out}\nBase SQLite : {_path(cfg['db_path'])}")
+    print("Modèle d'exécution rétrospectif : exécutions reconstruites à partir des barres journalières, non prouvées.")
     if ds.nature == "FICTIF":
         print("RAPPEL : données fictives — ces chiffres ne disent rien de la rentabilité réelle.")
     return 1 if failed else 0

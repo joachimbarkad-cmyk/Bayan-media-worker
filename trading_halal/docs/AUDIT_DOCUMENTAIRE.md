@@ -8,16 +8,17 @@ Commande : `python3 -m halal_sim audit-docs <dossier>` (sans argument : l'exempl
 Code de sortie 1 s'il existe une erreur bloquante. Les **inconnues** (valeur absente, activité non établie, document
 sans copie locale) sont listées, jamais comblées.
 
-## Fichiers
+## Fichiers (colonnes en liste fermée : toute colonne non prévue est refusée)
 
 | Fichier | Champs | Règles contrôlées |
 |---|---|---|
-| `manifest.json` | `name`, `nature` (FICTIF ou REEL), `warning` | Un dossier REEL ne peut citer aucune source contenant DEMO, FICTIF ou TEST |
-| `issuers.csv` | `issuer_id` (ex. CIK pour EDGAR), `name`, `id_scheme`, `source`, `source_url` | Identifiant unique, schéma et source obligatoires |
-| `securities.csv` | `security_id`, `issuer_id`, `ticker`, `exchange`, `valid_from`, `valid_to`, `instrument_type`, `currency`, `source` | Ticker et place **datés** ; devise ISO à 3 lettres |
-| `documents.csv` | `doc_id`, `issuer_id`, `doc_type`, `accession_number`, `url`, `local_copy`, `local_sha256`, `period_end`, `accepted_at`, `public_available_at`, `retrieved_at`, `version` (original / rectificatif), `amends_doc_id` | Horodatages ISO **avec fuseau** ; fin de période ≤ acceptation ≤ disponibilité publique ≤ récupération ; numéro d'accès unique ; empreinte SHA-256 de la copie locale vérifiée ; rectificatif relié au document rectifié |
-| `facts.csv` | `fact_id`, `doc_id`, `concept`, `definition`, `value` (vide = inconnu), `unit`, `currency`, `period_type` (instant / duration), `period_start`, `period_end`, `measure_date`, `share_class`, `price_adjusted` | Document d'origine existant ; valeur finie ou vide ; période cohérente et antérieure à l'acceptation ; nombre d'actions et capitalisation : date de mesure et catégorie d'actions obligatoires ; capitalisation : cours ajusté ou non |
-| `activities.csv` | `issuer_id`, `proposed_code` (ou INCONNU), `available_at`, `source`, `source_url`, `justification` | Code proposé toujours justifié ; INCONNU signalé comme inconnue |
+| `manifest.json` | `name`, `nature` (FICTIF ou REEL), `warning` | Aucune autre clé ; un dossier REEL ne peut citer aucune source contenant DEMO, FICTIF ou TEST |
+| `issuers.csv` | `issuer_id` (ex. CIK), `name`, `id_scheme`, `source`, `source_url` | Identifiant unique ; schéma et source obligatoires |
+| `securities.csv` | `security_id`, `issuer_id`, `ticker`, `exchange`, `valid_from`, `valid_to`, `instrument_type`, `currency`, `source` | Identifiant unique ; ticker et place **datés** ; devise ISO à 3 lettres |
+| `documents.csv` | `doc_id`, `issuer_id`, `doc_type`, `accession_number`, `url`, `local_copy`, `local_sha256`, `period_end`, `accepted_at`, `public_available_at`, `retrieved_at`, `version`, `amends_doc_id` | Horodatages ISO **avec fuseau** ; `public_available_at` peut rester **vide = inconnue** (jamais recopiée de l'acceptation) ; fin de période ≤ acceptation ≤ diffusion ≤ récupération ; copie locale **dans le dossier**, empreinte SHA-256 vérifiée ; rectificatif : cible distincte, même émetteur, acceptée avant, même fin de période, sans boucle |
+| `facts.csv` | `fact_id`, `doc_id`, `source_concept`, `source_context`, `normalized_concept`, `definition`, `value`, `unit`, `currency`, `period_type`, `period_start`, `period_end`, `measure_date`, `share_class`, `price_adjusted`, `corrects_fact_id` | Concept et contexte **d'origine** (ex. XBRL) conservés ; `normalized_concept` seulement via `concept_map.csv` ; valeur finie ou vide ; période et **date de mesure** antérieures à l'acceptation ; unité « actions » ou concept d'actions : date de mesure et catégorie obligatoires, quel que soit le nom du concept ; une correction provient d'un rectificatif du document d'origine et garde concept, période, unité, devise et catégorie ; un rectificatif peut être partiel |
+| `concept_map.csv` | `source_concept`, `normalized_concept`, `justification` | Mappage explicite et justifié vers les concepts du projet ; pas de doublon |
+| `activities.csv` | `issuer_id`, `proposed_code` (ou INCONNU), `evidence_doc_id`, `available_at`, `source`, `source_url`, `justification` | Code proposé : justification **et** pièce justificative obligatoires ; pièce du même émetteur ; disponibilité jamais antérieure à celle de la pièce |
 
 ## Ce que le contrôle ne fait pas
 

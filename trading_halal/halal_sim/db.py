@@ -75,6 +75,18 @@ def _s(v):
     return v.isoformat() if isinstance(v, date) else v
 
 
+# Version du schéma, enregistrée dans PRAGMA user_version. À incrémenter à chaque changement de SCHEMA.
+# Une base d'une autre version n'est jamais modifiée en place (colonnes, contraintes et triggers ont changé) :
+# StoreSchemaError est levée et la ligne de commande archive l'ancienne base avant d'en créer une nouvelle.
+SCHEMA_VERSION = 6
+
+
+class StoreSchemaError(RuntimeError):
+    def __init__(self, path, found):
+        super().__init__(f"Base {path} au schéma v{found}, incompatible avec le schéma v{SCHEMA_VERSION} de cette version")
+        self.path, self.found = path, found
+
+
 class Store:
     def __init__(self, path: str | Path):
         path = Path(path)
@@ -82,7 +94,13 @@ class Store:
             path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(path))
         self.conn.row_factory = sqlite3.Row
+        has_tables = self.conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0] > 0
+        found = self.conn.execute("PRAGMA user_version").fetchone()[0]
+        if has_tables and found != SCHEMA_VERSION:
+            self.conn.close()
+            raise StoreSchemaError(path, found)
         self.conn.executescript(SCHEMA)
+        self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     def start_run(self, *, label, parent_run_id, ds, ruleset, config, code_hash, capital) -> int:
         cur = self.conn.execute(
