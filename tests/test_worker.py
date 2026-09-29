@@ -1,5 +1,5 @@
 from unittest.mock import patch
-import importlib.util, tempfile, pathlib, json, subprocess, unittest, threading, urllib.request, urllib.error, os, sys
+import importlib.util, time, tempfile, pathlib, json, subprocess, unittest, threading, urllib.request, urllib.error, os, sys
 spec=importlib.util.spec_from_file_location('worker',pathlib.Path(__file__).parents[1]/'worker.py');w=importlib.util.module_from_spec(spec);spec.loader.exec_module(w)
 class MediaTest(unittest.TestCase):
     @classmethod
@@ -61,6 +61,25 @@ class MediaTest(unittest.TestCase):
         first=w.new_job(payload);w.process_job(first['id'],payload);self.assertTrue((w.ROOT/first['id']/'export.mp4').exists())
         second=w.new_job(payload);w.process_job(second['id'],payload);self.assertEqual(w.job_state(second['id'])['status'],'complete')
         self.assertFalse((w.ROOT/first['id']/'export.mp4').exists());self.assertTrue((w.ROOT/second['id']/'export.mp4').exists())
+    def test_12_ffmpeg_threads_follow_cpu_quota(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=pathlib.Path(d);(root/'cpu.max').write_text('200000 100000\n');self.assertEqual(w.cpu_quota(root),2)
+            (root/'cpu.max').write_text('max 100000\n');self.assertEqual(w.cpu_quota(root),os.cpu_count())
+        self.assertLessEqual(w.FFMPEG_THREADS,4)
+    def test_13_low_space_evicts_unused_media_oldest_first(self):
+        idle=w.new_job({'kind':'export','project':{'segments':[]},'asset':'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'});w.update(idle['id'],status='complete')
+        busy=w.new_job({'kind':'export','project':{'segments':[]},'asset':'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'})
+        old_asset=w.ROOT/'assets'/'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';busy_asset=w.ROOT/'assets'/'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+        fresh=w.ROOT/'assets'/'cccccccc-cccc-cccc-cccc-cccccccccccc';(w.ROOT/idle['id']).mkdir(exist_ok=True);old_mp4=w.ROOT/idle['id']/'export.mp4'
+        for f,age in ((old_asset,3600),(busy_asset,7200),(old_mp4,1800),(fresh,0)):f.write_bytes(b'x');os.utime(f,(time.time()-age,)*2)
+        existing=lambda:sum(f.exists() for f in (old_asset,old_mp4))
+        # Free space grows by one unit per evicted file; two units are needed.
+        with patch.object(w.shutil,'disk_usage',side_effect=lambda _:type('Usage',(),{'free':w.RESERVE_BYTES+2-existing()})()):
+            w.ensure_space(1);self.assertFalse(old_asset.exists());self.assertTrue(old_mp4.exists())
+            w.ensure_space(2);self.assertFalse(old_mp4.exists())
+            with self.assertRaises(ValueError):w.ensure_space(3)
+        self.assertTrue(busy_asset.exists());self.assertTrue(fresh.exists())
+        w.update(busy['id'],status='failed')
     def test_11_youtube_bot_check_is_actionable(self):
         class DownloadError(Exception):pass
         class FakeYDL:

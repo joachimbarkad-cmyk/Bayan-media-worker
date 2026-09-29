@@ -8,4 +8,6 @@ if os.geteuid() == 0:
     os.setgroups([])
     os.setgid(10001)
     os.setuid(10001)
+    # HOME stays /root otherwise: fontconfig (subtitles) and yt-dlp could not write their caches.
+    os.environ["HOME"] = "/home/bayan"
 os.execvp("python", ["python", "/app/worker.py"])

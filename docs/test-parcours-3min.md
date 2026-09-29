@@ -63,6 +63,62 @@ Limite qui reste : un volume de 500 Mo ne contient pas deux médias différents 
 
 Le service Railway n’a pas pu être appelé depuis l’environnement de test : son domaine est refusé par la politique réseau du bac à sable.
 
+## Test en production (29/09/2026)
+
+`tests/e2e_parcours.py` lancé sur `https://bayan-media-worker-production.up.railway.app` (déploiement `f2a1c16`, 2 vCPU, 1 Go de RAM), vidéo de 3 min générée avec la commande ci-dessous, 2 exports.
+
+| Étape | Résultat |
+|---|---|
+| 1. `GET /health` | OK, version 1.1.0 |
+| 2. `PUT /assets` (88,8 Mo) | OK |
+| 3. Import arabe | `blocked`, **attendu** en mode manuel |
+| **4.1 Export MP4** | **ÉCHEC après 7 s** : `Échec FFmpeg : Fontconfig error: No writable cache directories` (×10) |
+
+**Cause :** FFmpeg est tué par manque de mémoire. Les lignes Fontconfig ne sont que des avertissements : elles remplissent les 600 derniers caractères du journal, sans message d’erreur FFmpeg. Le pic mémoire relevé par Railway atteint 0,84 Go (limite 1 Go, échantillon de 30 s).
+
+- FFmpeg crée ses threads (décodage H.264 et x264) selon les cœurs **visibles**, c’est-à-dire tous ceux de la machine Railway, pas les 2 vCPU alloués.
+- Mesuré sur la même source 1080p : 2 threads 526 Mo, 4 threads 576 Mo, 16 threads 944 Mo, 32 threads 1 451 Mo.
+- `HOME` reste `/root` après le passage à l’uid 10001, d’où les avertissements Fontconfig (cache non inscriptible).
+
+**Correction :**
+
+- `worker.py` : `cpu_quota()` lit le quota CPU du conteneur (`cpu.max`, cgroup v2 ou v1). FFmpeg reçoit `-threads` / `-filter_threads` = ce quota, 4 au maximum (réglable avec `BAYAN_FFMPEG_THREADS`).
+- Un FFmpeg tué par le système renvoie désormais « Le rendu a été interrompu par le système (mémoire insuffisante probable) ». Les lignes Fontconfig sont retirées du message d’erreur.
+- `start.py` : `HOME=/home/bayan` pour l’utilisateur 10001.
+- Test : `test_12_ffmpeg_threads_follow_cpu_quota`.
+
+**Vérification locale** (uid 10001, 2 threads, même vidéo, 2 exports) : 2 × OK en ~180 s, 97,8 Mo, 1920×1080, 180,0 s ; pic mémoire FFmpeg **533 Mo** ; sous-titre 32 incrusté à 1:34. La production doit être redéployée avec ce correctif puis le test relancé.
+
+### Rendu plus rapide et journaux
+
+Le débit étant plafonné, le preset x264 change surtout la vitesse et la mémoire, pas la taille. Mesures sur 60 s de la même source, 2 threads :
+
+| Preset | Temps | Taille | Mémoire FFmpeg | SSIM (30 s, sans sous-titres) |
+|---|---|---|---|---|
+| medium (avant) | 59 s | 32,8 Mo | 518 Mo | 0,9924 |
+| **faster (nouveau défaut)** | **37 s** | 32,8 Mo | **378 Mo** | 0,9920 |
+| veryfast | 25 s | 32,8 Mo | 310 Mo | 0,9915 |
+
+- `BAYAN_X264_PRESET=faster` par défaut (réglable).
+- Le service écrit une ligne par étape de traitement (démarré, terminé avec durée et taille, bloqué, échoué avec le motif) : les échecs apparaissent désormais dans les journaux Railway. Aucun jeton, aucune URL, aucun texte de sous-titre n’y figure.
+
+Parcours complet rejoué (uid 10001, 2 threads, 2 exports) : **117–120 s par export au lieu de 177–180 s**, 97,7 Mo, pic mémoire FFmpeg **393 Mo** (au lieu de 533 Mo).
+
+### « Espace vidéo insuffisant » vu dans le studio (29/09/2026)
+
+Deux rendus MP4 lancés depuis le studio (02:20 et 04:10) échouent avec « Espace vidéo insuffisant ». Les médias et MP4 restaient 24 h sur le volume de 500 Mo, y compris ceux du test en production de 01:54 (89 Mo). Un rendu demande pourtant 250 à 350 Mo libres, réserve de 150 Mo comprise.
+
+Reproduit en local : volume de 500 Mo contenant 3 médias de 89 Mo vieux de 2 h, puis envoi d’un nouveau média et export.
+
+| Version | Résultat |
+|---|---|
+| `main` (`f2a1c16`) | Envoi OK, puis **ÉCHEC export 1** : « Espace vidéo insuffisant… », même message que dans le studio |
+| Correctif | Les 2 médias les plus anciens sont supprimés automatiquement. 2 exports OK (111 s et 114 s, 97,7 Mo) |
+
+**Correction :** `ensure_space()` libère d’abord de la place avant de refuser. Il supprime les médias et MP4 inutilisés, du plus ancien au plus récent. Il ne touche jamais au média d’un traitement en attente ou en cours, ni à un fichier utilisé il y a moins de 15 minutes. Quand le refus reste nécessaire, le message explique pourquoi. Test : `test_13_low_space_evicts_unused_media_oldest_first`.
+
+Les erreurs anglaises « Sign in to confirm you’re not a bot » visibles dans le même écran datent d’avant le déploiement du 28/09 à 17:35. La version actuelle bloque ces cas avec un message en français. YouTube refuse toujours les serveurs Railway : pour le MP4, il faut importer le fichier vidéo original dans le projet.
+
 ## Refaire le test
 
 ```sh

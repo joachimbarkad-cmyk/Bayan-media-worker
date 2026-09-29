@@ -25,10 +25,29 @@ def paid_enabled(payload=None):
 def local_transcription_available():
     return TRANSCRIPTION_BACKEND=='local' and importlib.util.find_spec('faster_whisper') is not None
 
+EVICTION_GRACE_SECONDS=15*60
+
+def evictable_files():
+    """Media and MP4s nobody is using, oldest first. Both can be regenerated: the studio re-sends media and re-runs exports."""
+    with database() as db:
+        rows=db.execute("SELECT id,status,payload FROM jobs").fetchall()
+    active={r['id'] for r in rows if r['status'] in ('queued','running')}
+    protected={str(json.loads(r['payload']).get('asset','')) for r in rows if r['id'] in active}
+    recent=time.time()-EVICTION_GRACE_SECONDS
+    files=[p for p in (ROOT/'assets').glob('*') if re.fullmatch(r'[a-f0-9-]{36}',p.name) and p.name not in protected]
+    files+=[ROOT/r['id']/'export.mp4' for r in rows if r['id'] not in active]
+    files=[(p.stat().st_mtime,p) for p in files if p.is_file()]
+    return [p for mtime,p in sorted(files,key=lambda x:x[0]) if mtime<recent]
+
 def ensure_space(required):
     ROOT.mkdir(parents=True,exist_ok=True)
     if shutil.disk_usage(ROOT).free<required+RESERVE_BYTES:
-        raise ValueError('Espace vidéo insuffisant. Attendez le nettoyage des fichiers temporaires ou importez une vidéo plus courte (100 Mo maximum par défaut).')
+        with STORAGE_LOCK:
+            for file in evictable_files():
+                if shutil.disk_usage(ROOT).free>=required+RESERVE_BYTES:break
+                file.unlink(missing_ok=True)
+    if shutil.disk_usage(ROOT).free<required+RESERVE_BYTES:
+        raise ValueError('Espace vidéo insuffisant : l’espace restant est occupé par des traitements en cours ou lancés il y a moins de 15 minutes. Réessayez dans quelques minutes, ou importez une vidéo plus courte (100 Mo maximum par défaut).')
 
 def cleanup_expired():
     with STORAGE_LOCK:
@@ -276,6 +295,23 @@ def video_bitrate(meta,height):
     budget=int(MAX_BYTES*2*8*.9/max(1,meta['duration']))-AUDIO_BPS
     return max(300_000,min(cap,budget))
 
+def cpu_quota(root=Path('/sys/fs/cgroup')):
+    """CPUs actually granted to the container: os.cpu_count() sees every core of the host."""
+    try:
+        quota,period=(root/'cpu.max').read_text().split()[:2]
+        if quota!='max':return max(1,math.ceil(int(quota)/int(period)))
+    except (OSError,ValueError):pass
+    try:
+        quota=int((root/'cpu'/'cpu.cfs_quota_us').read_text());period=int((root/'cpu'/'cpu.cfs_period_us').read_text())
+        if quota>0:return max(1,math.ceil(quota/period))
+    except (OSError,ValueError):pass
+    return os.cpu_count() or 1
+
+# FFmpeg starts decoder and x264 threads per visible core; on a many-core host that exceeds the memory limit (1 GB on Railway).
+FFMPEG_THREADS=int(os.environ.get('BAYAN_FFMPEG_THREADS','0')) or min(4,cpu_quota())
+# 'faster' vs 'medium' at the capped bitrate: 1.6x quicker, -27 % memory, SSIM 0.9920 vs 0.9924 (docs/test-parcours-3min.md).
+X264_PRESET=os.environ.get('BAYAN_X264_PRESET','faster')
+
 def drop_superseded_exports(id,asset):
     """A new render of the same media replaces older MP4s; they can be regenerated from the studio."""
     with database() as db:
@@ -296,7 +332,8 @@ def render_video(id,source,ass,quality,folder):
     filters=[]
     if quality in ('720','1080'):filters.append(f"scale=w=-2:h='min(ih,{quality})'")
     filters.append("ass=filename='captions.ass'")
-    args=['ffmpeg','-nostdin','-y','-v','error','-i',str(source),'-vf',','.join(filters),'-map','0:v:0','-map','0:a:0?','-c:v','libx264','-preset','medium','-crf','20','-maxrate',str(rate),'-bufsize',str(rate*2),'-pix_fmt','yuv420p','-c:a','aac','-b:a',str(AUDIO_BPS),'-movflags','+faststart','-progress','pipe:1','-nostats',str(output)]
+    threads=str(FFMPEG_THREADS)
+    args=['ffmpeg','-nostdin','-y','-v','error','-threads',threads,'-i',str(source),'-filter_threads',threads,'-vf',','.join(filters),'-map','0:v:0','-map','0:a:0?','-c:v','libx264','-preset',X264_PRESET,'-crf','20','-threads',threads,'-maxrate',str(rate),'-bufsize',str(rate*2),'-pix_fmt','yuv420p','-c:a','aac','-b:a',str(AUDIO_BPS),'-movflags','+faststart','-progress','pipe:1','-nostats',str(output)]
     log=folder/'ffmpeg-error.log';update(id,stage='Incrustation des sous-titres — H.264 / AAC',progress=0)
     with log.open('w') as errors:
         process=subprocess.Popen(args,cwd=folder,stdout=subprocess.PIPE,stderr=errors,text=True)
@@ -313,13 +350,23 @@ def render_video(id,source,ass,quality,folder):
                 except ValueError:pass
         status=process.wait(timeout=30)
         process.stdout.close()
-    if status!=0 or not output.exists():raise RuntimeError('Échec FFmpeg : '+log.read_text()[-600:])
+    if status<0:
+        output.unlink(missing_ok=True)
+        raise RuntimeError('Le rendu a été interrompu par le système (mémoire insuffisante probable). Relancez l’export en 720p ou augmentez la mémoire du service.')
+    if status!=0 or not output.exists():
+        details='\n'.join(l for l in log.read_text().splitlines() if not l.startswith('Fontconfig error'))
+        raise RuntimeError('Échec FFmpeg : '+(details[-600:] or f'code {status}'))
     rendered=probe(output)
     if abs(rendered['duration']-meta['duration'])>2:raise RuntimeError('La durée du fichier exporté ne correspond pas à l’original.')
     return {'file':'export.mp4','size':output.stat().st_size,'duration':rendered['duration'],'width':rendered['width'],'height':rendered['height']}
 
+def log(message):
+    # Job lifecycle only: never tokens, URLs or subtitle text.
+    print(time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),message,flush=True)
+
 def process_job(id,payload):
-    folder=ROOT/id;folder.mkdir(exist_ok=True)
+    folder=ROOT/id;folder.mkdir(exist_ok=True);started=time.time();kind=payload.get('kind')
+    log(f'job {id} {kind} démarré')
     try:
         update(id,status='running',stage='Préparation',progress=None)
         p=payload['project'];kind=payload['kind'];source=None
@@ -353,8 +400,11 @@ def process_job(id,payload):
             if not paid_enabled(payload):raise NeedsConfiguration('Utilisez Traduire avec ChatGPT dans le studio. Les appels à une API payante sont désactivés.')
             result={'segments':translate(id,p['segments'],p,payload.get('glossary',''),payload.get('instruction',''),payload.get('ids'))}
         update(id,status='complete',stage='Traitement terminé',progress=100,result=result)
-    except NeedsConfiguration as e:update(id,status='blocked',error=str(e),progress=None)
-    except Exception as e:update(id,status='failed',error=str(e)[:800],progress=None)
+        log(f'job {id} {kind} terminé en {time.time()-started:.0f} s'+(f" ({result['size']/1e6:.1f} Mo)" if kind=='export' else ''))
+    except NeedsConfiguration as e:
+        update(id,status='blocked',error=str(e),progress=None);log(f'job {id} {kind} bloqué : {e}')
+    except Exception as e:
+        update(id,status='failed',error=str(e)[:800],progress=None);log(f'job {id} {kind} échoué après {time.time()-started:.0f} s : {str(e)[:800]}')
     finally:
         for pattern in ('source.*','audio-*.wav'):
             for temporary in folder.glob(pattern):temporary.unlink(missing_ok=True)
@@ -437,4 +487,5 @@ if __name__=='__main__':
     init_db();threading.Thread(target=worker_loop,daemon=True).start()
     server=ThreadingHTTPServer((os.environ.get('HOST','0.0.0.0'),int(os.environ.get('PORT','8080'))),Handler)
     server.daemon_threads=True
+    log(f'Bayān prêt : FFmpeg {FFMPEG_THREADS} threads, preset {X264_PRESET}, {MAX_BYTES//1024**2} Mo max')
     server.serve_forever()
