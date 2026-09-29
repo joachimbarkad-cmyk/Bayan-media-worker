@@ -39,6 +39,9 @@ import edgar_collect as ec  # noqa: E402
 from halal_sim.audit import EXCLUSION_PREFIX, FALLBACK_PREFIX, FILES, audit_folder  # noqa: E402
 
 TOOL = "edgar_normalize.py"
+# Cache des schémas officiels (FASB, SEC) : URL, empreinte et heure dans taxonomies.json (revue n° 16).
+TAXO_DIR = Path(__file__).resolve().parents[1] / "collecte" / "taxonomies"
+TAXO_MANIFEST = "taxonomies.json"
 
 
 class NormalizeError(RuntimeError):
@@ -148,6 +151,11 @@ def _rules(rules_path: Path) -> dict:
         for spec in (r.get("preuve_position"), (fb or {}).get("preuve_position") if fb else None):
             if spec is not None and (not spec.get("parents") or spec.get("categorie") != "Statement"):
                 raise NormalizeError(f"règle {r['id']} : preuve_position mal formée (parents, categorie Statement)")
+        spec0 = r.get("preuve_position")
+        if spec0 is not None and spec0.get("freres_positifs_interdits", True) is not True and \
+                not (spec0.get("freres_revenus") or {}).get("motifs"):
+            raise NormalizeError(f"règle {r['id']} : des contributeurs positifs voisins ne sont admis qu'avec "
+                                 "freres_revenus (motifs) pour bloquer un autre revenu au même niveau")
         if fb is not None and fb.get("preuve_position", {}).get("freres_positifs_interdits", True) is not True:
             raise NormalizeError(f"règle {r['id']} : un repli exige l'absence de tout autre élément positif")
         if fb is not None and not fb.get("preuve_position"):
@@ -233,7 +241,8 @@ NORMALIZE_FACT_COLUMNS = ["normalized_concept", "transformation", "value", "sour
                           "reconciled_note"]
 
 
-def verify_normalisation(raw: Path, audit: Path, rules_path: Path) -> tuple[list[str], list[str]]:
+def verify_normalisation(raw: Path, audit: Path, rules_path: Path,
+                         taxonomies: Path | None = TAXO_DIR) -> tuple[list[str], list[str]]:
     """Refait conversion, propositions, import et rapprochement (mêmes copies locales) avec CES règles dans un dossier
     temporaire et compare chaque cellule de normalisation, concept_map et le fichier de propositions. Renvoie (écarts,
     saisies humaines hors règles) ; une saisie humaine différente est listée, jamais masquée."""
@@ -261,7 +270,7 @@ def verify_normalisation(raw: Path, audit: Path, rules_path: Path) -> tuple[list
                     continue
                 import_filing(ref, doc["doc_id"], src, "2000-01-01T00:00:00+00:00", raw,
                               annexes=_annexes(src.parent))
-                reconcile_ixbrl(ref, doc["doc_id"], raw, rules_path)
+                reconcile_ixbrl(ref, doc["doc_id"], raw, rules_path, taxonomies)
         theirs = _load_tables(ref)
         for name, cols in (("facts", NORMALIZE_FACT_COLUMNS), ("concept_map", FILES["concept_map"])):
             m = {ec._row_key(name, r): r for r in mine[name]}
@@ -303,6 +312,7 @@ def _map_concept(s: Session, rule: dict, raw: Path, issuer: str, version: str) -
 
 # ----------------------------------------------------------------------------------------------- document d'origine
 ANNEXES_FILE = "annexes.json"
+RECONCILE_REPORT = "rapport_rapprochement.json"
 
 
 def import_filing(audit: Path, doc_id: str, fichier: Path, retrieved_at: str, raw: Path | None = None,
@@ -385,6 +395,69 @@ def fetch_filing(audit: Path, doc_id: str, user_agent: str, raw: Path, fetch=Non
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def schema_urls(annexes: list[Path]) -> list[str]:
+    """Schémas officiels (URL absolues) désignés par les localisateurs de calcul des annexes."""
+    urls = set()
+    for f in annexes:
+        root = ET.parse(f).getroot()
+        for cl in root.iter(f"{{{LINK}}}calculationLink"):
+            for l in cl.iter(f"{{{LINK}}}loc"):
+                url = (l.get(f"{{{XLINK}}}href") or "").partition("#")[0]
+                if "://" in url:
+                    urls.add(url)
+    return sorted(urls)
+
+
+def fetch_taxonomies(audit: Path, doc_id: str, user_agent: str, cache: Path = TAXO_DIR, fetch=None) -> list[str]:
+    """Télécharge dans le cache local les schémas officiels désignés par les calculs d'un document (réseau ;
+    identification obligatoire, jamais enregistrée), avec URL, empreinte et heure. Déjà présents : conservés."""
+    ua = ec.check_user_agent(user_agent)
+    with open(audit / "documents.csv", newline="", encoding="utf-8") as f:
+        doc = next((r for r in csv.DictReader(f) if r["doc_id"] == doc_id), None)
+    if doc is None or not doc["local_copy"]:
+        raise NormalizeError(f"{doc_id} : aucune copie locale")
+    urls = schema_urls(_annexes((audit / doc["local_copy"]).parent))
+    return _store_schemas(cache, {u: None for u in urls}, ua, fetch)
+
+
+def import_taxonomy(url: str, fichier: Path, retrieved_at: str, cache: Path = TAXO_DIR) -> list[str]:
+    """Ajoute au cache un schéma officiel téléchargé à la main (heure déclarée avec fuseau)."""
+    try:
+        if datetime.fromisoformat(retrieved_at).tzinfo is None:
+            raise ValueError
+    except ValueError:
+        raise NormalizeError("--retrieved-at doit être une date-heure avec fuseau")
+    return _store_schemas(cache, {url: (fichier.read_bytes(), f"téléchargé à la main, heure déclarée {retrieved_at}")},
+                          None, None)
+
+
+def _store_schemas(cache: Path, wanted: dict, ua, fetch) -> list[str]:
+    cache.mkdir(parents=True, exist_ok=True)
+    mpath = cache / TAXO_MANIFEST
+    manifest = json.loads(mpath.read_text(encoding="utf-8")) if mpath.exists() else []
+    known = {e["url"] for e in manifest}
+    added = []
+    for url, given in wanted.items():
+        if url in known:
+            continue
+        m = re.fullmatch(r"https?://(xbrl\.fasb\.org|xbrl\.sec\.gov)/([\w./-]+\.xsd)", url)
+        if not m:
+            raise NormalizeError(f"schéma refusé {url!r} (seuls xbrl.fasb.org et xbrl.sec.gov)")
+        if given is None:
+            data, how = (fetch or ec._get)(url, ua), \
+                f"téléchargé automatiquement le {datetime.now(timezone.utc).replace(microsecond=0).isoformat()}"
+        else:
+            data, how = given
+        rel = f"{m.group(1)}/{m.group(2)}"
+        (cache / rel).parent.mkdir(parents=True, exist_ok=True)
+        (cache / rel).write_bytes(data)
+        manifest.append({"url": url, "fichier": rel, "sha256": _sha(cache / rel), "obtenu": how})
+        added.append(url)
+    mpath.write_text(json.dumps(sorted(manifest, key=lambda e: e["url"]), ensure_ascii=False, indent=1) + "\n",
+                     encoding="utf-8")
+    return added
+
+
 IX = "http://www.xbrl.org/2013/inlineXBRL"
 XBRLI = "http://www.xbrl.org/2003/instance"
 SUPPORTED_FORMATS = {"num-dot-decimal", "numdotdecimal", "fixed-zero", "zerodash", "num-comma-decimal"}
@@ -450,25 +523,71 @@ def _canonical(uri: str, local: str) -> str:
 LINK = "http://www.xbrl.org/2003/linkbase"
 XLINK = "http://www.w3.org/1999/xlink"
 SUMMATION = {"http://www.xbrl.org/2003/arcrole/summation-item", "https://xbrl.org/2023/arcrole/summation-item"}
-TAXONOMY_URL = {"us-gaap": re.compile(r"://xbrl\.fasb\.org/us-gaap/\d{4}/"),
-                "dei": re.compile(r"://xbrl\.sec\.gov/dei/\d{4}/"),
-                "srt": re.compile(r"://xbrl\.fasb\.org/srt/\d{4}/")}
 ROLE_DEF = re.compile(r"^\s*\d+\s*-\s*(Statement|Disclosure|Document|Schedule)\s*-\s*(.*)$")
+XS = "http://www.w3.org/2001/XMLSchema"
 
 
-def parse_calculations(files: list[Path]) -> tuple[dict, list]:
-    """Rôles (catégorie EFM Statement/Disclosure…, titre) et relations de calcul (rôle, parent, enfant, poids) du
-    dépôt, depuis son schéma et son fichier _cal.xml. Concepts standard : identifiés par l'URL de la taxonomie et
-    l'identifiant « préfixe_NomLocal » (convention FASB/SEC) ; concepts d'extension : préfixe « ext: »."""
+class SchemaResolver:
+    """Résout un xlink:href « schéma#identifiant » vers le QName de l'xs:element qu'il désigne, dans le schéma qui le
+    déclare (revue n° 16) : schéma du dépôt (annexe) pour une extension, schéma officiel du cache local (empreinte
+    vérifiée) pour un concept standard. Schéma absent, identifiant absent ou ambigu, pointeur non « shorthand » ⇒ None :
+    la preuve qui en dépend échoue (fail-closed). Le préfixe textuel de l'identifiant n'est jamais utilisé."""
+
+    def __init__(self, annexes: list[Path], cache: Path | None):
+        self.local = {a.name: a for a in annexes if a.suffix == ".xsd"}
+        self.cache: dict[str, Path] = {}
+        self.missing: set[str] = set()
+        self.used: set[str] = set()
+        self.problems: list[str] = []
+        self.problems_soft: list[str] = []
+        if cache is not None and (cache / TAXO_MANIFEST).exists():
+            for e in json.loads((cache / TAXO_MANIFEST).read_text(encoding="utf-8")):
+                f = cache / e["fichier"]
+                if f.is_file() and _sha(f) == e["sha256"]:
+                    self.cache[e["url"]] = f
+                else:
+                    self.problems.append(f"schéma {e['url']} absent du cache ou différent de son empreinte")
+        self._maps: dict[Path, dict] = {}
+
+    def _ids(self, path: Path) -> dict:
+        if path not in self._maps:
+            root = ET.parse(path).getroot()
+            tns = root.get("targetNamespace") or ""
+            ids = defaultdict(list)
+            for el in root.iter(f"{{{XS}}}element"):
+                if el.get("id"):
+                    ids[el.get("id")].append((tns, el.get("name") or ""))
+            self._maps[path] = ids
+        return self._maps[path]
+
+    def resolve(self, href: str) -> str | None:
+        url, _, frag = (href or "").partition("#")
+        if not frag or "(" in frag or not url:
+            return None
+        if "://" in url:
+            path = self.cache.get(url)
+            if path is not None:
+                self.used.add(url)
+        else:
+            path = self.local.get(url) if "/" not in url else None
+        if path is None:
+            self.missing.add(url)
+            return None
+        found = self._ids(path).get(frag, [])
+        if len(found) != 1 or not found[0][0] or not found[0][1]:
+            return None
+        name = _canonical(*found[0])
+        if "://" not in url and not name.startswith("{"):
+            # un schéma du dépôt ne peut pas définir un concept d'une taxonomie officielle (espace de noms FASB/SEC)
+            self.problems_soft.append(f"{url} déclare l'espace de noms officiel de {name} : refusé")
+            return None
+        return name
+
+
+def parse_calculations(files: list[Path], resolver: SchemaResolver) -> tuple[dict, list]:
+    """Rôles (catégorie EFM Statement/Disclosure…, titre) et relations de calcul sommatoires (rôle, parent, enfant,
+    poids) du dépôt. Parent ou enfant non résolu : None."""
     roles, arcs = {}, []
-
-    def canon(href: str) -> str:
-        url, _, frag = href.partition("#")
-        local = frag.split("_", 1)[1] if "_" in frag else frag
-        for prefix, pattern in TAXONOMY_URL.items():
-            if pattern.search(url) and frag.startswith(prefix + "_"):
-                return f"{prefix}:{local}"
-        return f"ext:{local}"
     for f in files:
         root = ET.parse(f).getroot()
         for rt in root.iter(f"{{{LINK}}}roleType"):
@@ -478,19 +597,30 @@ def parse_calculations(files: list[Path]) -> tuple[dict, list]:
                                                                                     if d is not None else "")
         for cl in root.iter(f"{{{LINK}}}calculationLink"):
             role = cl.get(f"{{{XLINK}}}role")
-            locs = {l.get(f"{{{XLINK}}}label"): canon(l.get(f"{{{XLINK}}}href") or "") for l in cl.iter(f"{{{LINK}}}loc")}
+            locs = {l.get(f"{{{XLINK}}}label"): resolver.resolve(l.get(f"{{{XLINK}}}href") or "")
+                    for l in cl.iter(f"{{{LINK}}}loc")}
             for a in cl.iter(f"{{{LINK}}}calculationArc"):
                 if a.get(f"{{{XLINK}}}arcrole") not in SUMMATION:
                     continue
-                arcs.append((role, locs.get(a.get(f"{{{XLINK}}}from"), ""), locs.get(a.get(f"{{{XLINK}}}to"), ""),
+                arcs.append((role, locs.get(a.get(f"{{{XLINK}}}from")), locs.get(a.get(f"{{{XLINK}}}to")),
                              float(a.get("weight") or "nan")))
     return roles, arcs
 
 
-def position_proof(concept: str, roles: dict, arcs: list, spec: dict) -> str | None:
-    """Preuve positive qu'un concept est la première ligne de revenu : dans un rôle de catégorie `spec["categorie"]`,
-    enfant de poids +1 d'un parent de `spec["parents"]`, et (par défaut) sans autre enfant de poids positif sous ce
-    parent. `freres_positifs_interdits: false` n'est admis que pour un concept qui est par définition un total."""
+def _tolerance(decimals: list[str]) -> Decimal:
+    return sum((Decimal(5) * Decimal(10) ** (-int(d) - 1) for d in decimals if re.fullmatch(r"-?\d+", d)),
+               Decimal(0))
+
+
+def position_proof(concept: str, roles: dict, arcs: list, spec: dict,
+                   values: dict | None = None) -> tuple[str | None, str]:
+    """Preuve positive qu'un concept est la première ligne de revenu d'un état financier : dans un rôle de catégorie
+    `spec["categorie"]`, enfant de poids +1 d'un parent de `spec["parents"]` ; tous les concepts du calcul résolus ;
+    par défaut aucun autre enfant de poids positif (`freres_positifs_interdits: false` n'est admis que pour un total par
+    définition, et alors aucun frère positif ne doit évoquer un revenu : `freres_revenus`) ; et, si `values` est
+    fourni (faits de l'entité entière pour la période), calcul effectif : parent = Σ poids × enfants, à l'arrondi près.
+    Renvoie (preuve, motif d'échec)."""
+    why = f"{concept} n'est l'enfant +1 d'aucun parent {spec['parents']} dans un rôle {spec['categorie']}"
     for role, parent, child, w in arcs:
         if child != concept or w != 1.0 or parent not in spec["parents"]:
             continue
@@ -498,11 +628,34 @@ def position_proof(concept: str, roles: dict, arcs: list, spec: dict) -> str | N
         if cat != spec["categorie"]:
             continue
         siblings = [(c, w2) for r2, p2, c, w2 in arcs if r2 == role and p2 == parent and c != concept]
-        if spec.get("freres_positifs_interdits", True) and any(w2 > 0 for _, w2 in siblings):
+        if any(c is None for c, _ in siblings):
+            why = f"rôle « {title} » : un contributeur de {parent} n'a pas pu être résolu dans son schéma"
             continue
-        return (f"rôle « {cat} - {title} » : {parent} = {concept} (+1)"
+        if spec.get("freres_positifs_interdits", True) and any(w2 > 0 for _, w2 in siblings):
+            why = f"rôle « {title} » : autre contributeur positif de {parent}"
+            continue
+        rev = [c for c, w2 in siblings if w2 > 0 and spec.get("freres_revenus")
+               and revenue_like(c, spec["freres_revenus"])]
+        if rev:
+            why = f"rôle « {title} » : autre revenu au même niveau que {concept} : {rev}"
+            continue
+        text = (f"rôle « {cat} - {title} » : {parent} = {concept} (+1)"
                 + "".join(f" {'+' if w2 > 0 else '−'} {c}" for c, w2 in siblings))
-    return None
+        if values is not None:
+            needed = [parent, concept] + [c for c, _ in siblings]
+            absent = [c for c in needed if c not in values]
+            if absent:
+                why = f"rôle « {title} » : faits absents ou ambigus pour la période : {absent}"
+                continue
+            total = values[concept][0] + sum(Decimal(str(w2)) * values[c][0] for c, w2 in siblings)
+            tol = _tolerance([values[c][1] for c in needed])
+            if abs(values[parent][0] - total) > tol:
+                why = (f"rôle « {title} » : calcul non vérifié pour la période ({parent} = {values[parent][0]}, "
+                       f"somme pondérée = {total})")
+                continue
+            text += f" ; calcul vérifié pour la période : {values[parent][0]} = {total}"
+        return text, ""
+    return None, why
 
 
 def _annexes(folder: Path) -> list[Path]:
@@ -569,7 +722,7 @@ def parse_ixbrl(path: Path) -> tuple[dict, dict, list]:
     return contexts, units, facts
 
 
-def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> dict:
+def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path, taxonomies: Path | None = TAXO_DIR) -> dict:
     """Normalise ET rapproche les propositions d'un document à partir de sa copie locale XBRL en ligne : même entité,
     même période exacte, même unité, contexte SANS segment, valeur affichée égale à la valeur companyfacts. Le contexte
     et l'absence de dimensions sont alors établis par le document (preuve : fichier + empreinte)."""
@@ -604,11 +757,35 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> di
                    and entity_ok(contexts[f["context"]])}
     proof = f"fichier:{doc['local_copy']}#sha256={sha}"
     annexes = _annexes(path.parent)
+    resolver = SchemaResolver(annexes, taxonomies)
     try:
-        roles, arcs = parse_calculations(annexes)
+        roles, arcs = parse_calculations(annexes, resolver)
     except (ValueError, ET.ParseError) as exc:
         raise NormalizeError(f"annexes illisibles ({exc})")
     annex_note = ", ".join(f"{a.name} (sha256 {_sha(a)[:16]}…)" for a in annexes) or "aucune annexe"
+    if resolver.used:
+        annex_note += " ; schémas officiels : " + ", ".join(
+            f"{u} (sha256 {_sha(resolver.cache[u])[:16]}…)" for u in sorted(resolver.used))
+    if resolver.missing:
+        annex_note += f" ; schémas non disponibles : {sorted(resolver.missing)}"
+    if resolver.problems:
+        raise NormalizeError(" ; ".join(resolver.problems))
+
+    def period_values(start: str, end: str, unit: str) -> dict:
+        """Faits de l'entité entière pour la période et l'unité : nom -> (valeur, decimals) ; ambigus exclus."""
+        seen: dict[str, set] = defaultdict(set)
+        for f in ixfacts:
+            ctx = contexts.get(f["context"])
+            if ctx is None or ctx["segment"] or not entity_ok(ctx) or f["unit"] != unit:
+                continue
+            if (ctx["start"], ctx["end"]) != (start, end):
+                continue
+            try:
+                seen[f["name"]].add((_ix_value(f["el"]), f["decimals"]))
+            except ValueError:
+                seen[f["name"]].add((None, ""))
+        return {n: next(iter(v)) for n, v in seen.items() if len({x for x, _ in v}) == 1 and None not in
+                {x for x, _ in v} and len(v) == 1}
     report = {"rapproches": 0, "echecs": []}
     failures: dict[str, str] = {}
     for prop in proposals:
@@ -640,11 +817,11 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> di
                 reason = f"document {next(iter(values))} ≠ companyfacts {prop['raw_value']}"
         rule = by_rule[prop["regle"]]
         position = None
+        pvals = period_values(prop["period_start"], prop["period_end"], prop["source_unit"])
         if reason is None and rule.get("preuve_position"):
-            position = position_proof(rule["source_concept"], roles, arcs, rule["preuve_position"])
+            position, why = position_proof(rule["source_concept"], roles, arcs, rule["preuve_position"], pvals)
             if position is None:
-                reason = (f"position non prouvée par les calculs du dépôt ({annex_note}) : "
-                          f"{rule['source_concept']} n'est pas la première ligne d'un état financier")
+                reason = f"position non prouvée par les calculs du dépôt ({annex_note}) : {why}"
         if reason:
             report["echecs"].append(f"{fid} : {reason}")
             failures[fid] = reason
@@ -660,10 +837,10 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> di
             blockers = sorted({n for n, _ in same if n in fb["si_absents_du_document"]} |
                               {n for n, u in same if re.fullmatch(r"[A-Z]{3}", u) and n != rule["source_concept"]
                                and revenue_like(n, fb["autres_revenus"])})
-            proof_pos = position_proof(rule["source_concept"], roles, arcs, fb["preuve_position"]) \
-                if not blockers else None
+            proof_pos, why = position_proof(rule["source_concept"], roles, arcs, fb["preuve_position"], pvals) \
+                if not blockers else (None, "")
             if not blockers and proof_pos is None:
-                blockers = [f"aucune preuve positive dans les calculs du dépôt ({annex_note})"]
+                blockers = [f"aucune preuve positive dans les calculs du dépôt ({annex_note}) : {why}"]
             if not blockers:
                 target = fb["concept"]
                 fallback_note = (f"{FALLBACK_PREFIX} preuve positive : {proof_pos} [{annex_note}] ; et le document "
@@ -671,14 +848,15 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> di
                                  f"ni aucun autre concept de revenu (motifs {fb['autres_revenus']['motifs']}) ; le "
                                  f"composant {rule['source_concept']} est retenu comme {target}. ")
             else:
-                fallback_note = ""
+                fallback_note = f"Repli vers {fb['concept']} non retenu : {'; '.join(blockers)}. "
                 report.setdefault("replis_bloques", []).append(f"{fid} : {blockers}")
         decs = {x["decimals"] for x in matches}
         s.set("facts", fid, "source_context", m["context"], proof, "identifiant du contexte XBRL du document")
         s.set("facts", fid, "source_dimensions", "", proof, "établi par le document : contexte sans segment")
         if len(decs) == 1 and m["decimals"]:
             s.set("facts", fid, "decimals", m["decimals"], proof, "attribut decimals du document")
-        s.set("facts", fid, "normalized_concept", target, proof, rule["id"] + (" (repli)" if fallback_note else ""))
+        s.set("facts", fid, "normalized_concept", target, proof,
+              rule["id"] + (" (repli)" if fallback_note.startswith(FALLBACK_PREFIX) else ""))
         s.set("facts", fid, "transformation", "aucune", proof, "valeur reprise telle quelle")
         s.set("facts", fid, "value", prop["raw_value"], proof, "valeur reprise telle quelle")
         s.set("facts", fid, "normalization_justification",
@@ -705,6 +883,8 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path) -> di
         s.set("facts", fid, "normalization_justification", f"{EXCLUSION_PREFIX} {why} ({rules['version']})", pr,
               "exclusion explicite")
     s.commit(raw)
+    (path.parent / RECONCILE_REPORT).write_text(json.dumps(dict(report, regles=tag, annexes=annex_note),
+                                                           ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     return report
 
 
@@ -727,6 +907,16 @@ def main(argv=None) -> int:
     fx.add_argument("--doc-id", required=True)
     fx.add_argument("--user-agent")
     fx.add_argument("--raw", required=True, type=Path)
+    ft = sub.add_parser("fetch-taxonomies", help="Télécharger les schémas officiels désignés par les calculs d'un document")
+    ft.add_argument("--audit", required=True, type=Path)
+    ft.add_argument("--doc-id", required=True)
+    ft.add_argument("--user-agent")
+    ft.add_argument("--cache", type=Path, default=TAXO_DIR)
+    it = sub.add_parser("import-taxonomy", help="Ajouter au cache un schéma officiel téléchargé à la main")
+    it.add_argument("--url", required=True)
+    it.add_argument("--fichier", required=True, type=Path)
+    it.add_argument("--retrieved-at", required=True)
+    it.add_argument("--cache", type=Path, default=TAXO_DIR)
     r = sub.add_parser("reconcile-ixbrl")
     r.add_argument("--audit", required=True, type=Path)
     r.add_argument("--doc-id", required=True)
@@ -752,6 +942,10 @@ def main(argv=None) -> int:
                 print("  SAISIE HUMAINE HORS RÈGLES (à relire)", msg)
             print(f"{len(problems)} écart(s) avec les règles ; {len(human)} saisie(s) humaine(s) hors règles.")
             return 1 if problems else 0
+        elif a.cmd == "fetch-taxonomies":
+            print(json.dumps(fetch_taxonomies(a.audit, a.doc_id, a.user_agent, a.cache), indent=1))
+        elif a.cmd == "import-taxonomy":
+            print(json.dumps(import_taxonomy(a.url, a.fichier, a.retrieved_at, a.cache), indent=1))
         elif a.cmd == "fetch-filing":
             print("sha256", fetch_filing(a.audit, a.doc_id, a.user_agent, a.raw))
         elif a.cmd == "import-filing":

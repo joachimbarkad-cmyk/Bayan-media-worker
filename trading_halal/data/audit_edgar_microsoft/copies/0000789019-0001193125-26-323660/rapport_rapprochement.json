@@ -1,0 +1,11 @@
+{
+ "rapproches": 5,
+ "echecs": [],
+ "replis_bloques": [
+  "0000789019-0001193125-26-323660-us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax-USD-2023-07-01-2024-06-30 : [\"aucune preuve positive dans les calculs du dépôt (msft-20260630.xsd (sha256 29d4cdf7695b7855…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd']) : us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement\"]",
+  "0000789019-0001193125-26-323660-us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax-USD-2024-07-01-2025-06-30 : [\"aucune preuve positive dans les calculs du dépôt (msft-20260630.xsd (sha256 29d4cdf7695b7855…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd']) : us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement\"]",
+  "0000789019-0001193125-26-323660-us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax-USD-2025-07-01-2026-06-30 : [\"aucune preuve positive dans les calculs du dépôt (msft-20260630.xsd (sha256 29d4cdf7695b7855…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd']) : us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement\"]"
+ ],
+ "regles": "règles edgar_v6 sha256:dc11b1cd090c1155",
+ "annexes": "msft-20260630.xsd (sha256 29d4cdf7695b7855…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd']"
+}

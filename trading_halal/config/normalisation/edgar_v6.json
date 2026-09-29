@@ -1,7 +1,7 @@
 {
-  "version": "edgar_v5",
+  "version": "edgar_v6",
   "date": "2026-09-28",
-  "statut": "RETIRÉE (revue n° 16) : identification des concepts de calcul par la convention préfixe_Nom, et R0b sans blocage d'un autre revenu voisin ; remplacée par edgar_v6",
+  "statut": "PROPOSITION NON RELUE : règles écrites par l'assistant, à faire relire indépendamment (voir HANDOFF.md)",
   "portee": "Faits companyfacts (SEC) en USD ; correspondance UN concept d'origine -> UN concept du projet, sans agrégation ni calcul. Aucune normalisation sans le document du dépôt.",
   "regles": [
     {
@@ -25,8 +25,38 @@
           "us-gaap:GrossProfit",
           "us-gaap:OperatingIncomeLoss"
         ],
-        "explication": "Concept total par définition : il suffit qu'il soit un enfant de poids +1 de GrossProfit ou OperatingIncomeLoss dans un état financier ; d'autres éléments positifs (ex. gains de cession chez Duke Energy) sont admis.",
-        "freres_positifs_interdits": false
+        "explication": "Concept total par définition : enfant +1 de GrossProfit ou OperatingIncomeLoss dans un état financier, calcul vérifié pour la période ; d'autres contributeurs positifs sont admis (ex. gain de cession chez Duke Energy) SAUF s'ils évoquent un revenu (freres_revenus) : un autre revenu au même niveau montrerait que R0b n'est qu'une partie du total (revue n° 16).",
+        "freres_positifs_interdits": false,
+        "freres_revenus": {
+          "motifs": [
+            "Revenue",
+            "LeaseIncome",
+            "InterestAndDividendIncome",
+            "InterestIncomeOperating",
+            "PremiumsEarned",
+            "NoninterestIncome",
+            "Sales"
+          ],
+          "exclusions": [
+            "CostOf",
+            "Deferred",
+            "RemainingPerformanceObligation",
+            "ContractWithCustomerLiability",
+            "Receivable",
+            "Recognized",
+            "Payable",
+            "IncomeTax",
+            "TaxExpense",
+            "TaxBenefit",
+            "Unearned",
+            "Unbilled",
+            "PercentOf",
+            "IncreaseDecrease",
+            "ProceedsFrom",
+            "GainLoss",
+            "ProForma"
+          ]
+        }
       }
     },
     {
@@ -109,7 +139,9 @@
     "K1_conflit": "Conflit entre concepts visant le même concept du projet (R0 et R0b pour total_revenue) : valeurs différentes ⇒ aucun des deux.",
     "P4_total_composant": "Revenues présent ⇒ total_revenue ; RevenueFromContractWithCustomer… reste un composant. Revenues absent ⇒ repli contrôlé (voir R1).",
     "P5_repli_prudent": "Sonde sur 19 émetteurs (docs/SONDE_REVENUS.md) : American Express déclare des revenus d'intérêts et hors intérêts sans agrégat Revenues ; le repli y est désormais bloqué.",
-    "P6_preuve_positive": "Un composant ne devient total que par une preuve positive tirée des relations de calcul du dépôt (schéma .xsd et _cal.xml téléchargés avec le document, empreintes dans copies/<doc>/annexes.json) ; l'heuristique de noms reste un bloqueur supplémentaire, jamais une preuve."
+    "P6_preuve_positive": "Un composant ne devient total que par une preuve positive tirée des relations de calcul du dépôt (schéma .xsd et _cal.xml téléchargés avec le document, empreintes dans copies/<doc>/annexes.json) ; l'heuristique de noms reste un bloqueur supplémentaire, jamais une preuve.",
+    "P7_resolution": "Chaque concept d'une relation de calcul est résolu dans le schéma qui le déclare (xs:element désigné par l'identifiant du localisateur, puis nom et targetNamespace) : schéma du dépôt pour une extension, schéma officiel du cache local (collecte/taxonomies, empreintes) pour un concept standard. Schéma absent, identifiant absent ou ambigu ⇒ aucune preuve (revue n° 16).",
+    "P8_calcul_effectif": "La relation de calcul doit se vérifier sur les faits de l'entité entière pour la période : parent = Σ poids × contributeurs, à l'arrondi (decimals) près ; contributeur sans fait ⇒ aucune preuve."
   },
   "non_normalises_volontairement": {
     "us-gaap:SalesRevenueNet": "Concept retiré (2018) : non repris.",

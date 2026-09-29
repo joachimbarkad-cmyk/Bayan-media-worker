@@ -1,4 +1,4 @@
-# HANDOFF — simulateur de trading halal, V1.20 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.21 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
@@ -6,6 +6,54 @@ Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier
 **Merci de relire de façon critique** : lectures d'information future, ADMISSIBLE erronés, contrôles d'audit
 contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
 au document de fiqh fourni par l'utilisateur**.
+
+## V1.21 — Revue n° 16 : concepts de calcul résolus dans leur schéma, calcul vérifié, fail-closed
+
+Le relecteur a demandé de ne pas élargir les preuves et de corriger trois frontières de décision.
+
+1. **Identification normative des concepts de calcul** (priorité). La V1.20 lisait `us-gaap_GrossProfit` comme
+   `us-gaap:GrossProfit` d'après le préfixe textuel de l'identifiant. Désormais `SchemaResolver` résout chaque
+   `xlink:href` vers l'`xs:element` désigné dans le schéma qui le déclare, puis compare `name` et `targetNamespace` ;
+   schéma d'extension = annexe du dépôt ; schéma officiel = cache local `collecte/taxonomies/` (empreintes vérifiées ;
+   `fetch-taxonomies`, `import-taxonomy`, hôtes `xbrl.fasb.org`/`xbrl.sec.gov` seulement). Absent, ambigu, non
+   « shorthand » ⇒ la preuve échoue.
+2. **R0b** : un autre contributeur positif qui évoque un revenu, au même niveau, bloque le total direct
+   (`freres_revenus`, obligatoire dès que des contributeurs positifs voisins sont admis) ; les autres contributeurs
+   restent listés dans la justification.
+3. **R1 sous OperatingIncomeLoss avec un autre contributeur +1** : bloqué (test explicite).
+4. En plus (demande « calcul effectif » de la revue) : la relation doit se vérifier sur les faits de l'entité entière
+   pour la période (parent = Σ poids × contributeurs, tolérance d'intervalle selon `decimals`, comme Calculation 1.1) ;
+   contributeur sans fait ⇒ pas de preuve.
+
+**Conséquence réelle, assumée** : `xbrl.fasb.org` est bloqué dans l'environnement. Sans schéma us-gaap officiel, aucune
+preuve positive n'est possible : **Apple, Microsoft, Ford (repli) et Duke (total direct) n'ont plus de revenu total**
+(fail-closed). La raison est écrite dans chaque composant (« Repli vers total_revenue non retenu : … schémas non
+disponibles : [us-gaap-2025.xsd] ») et dans `copies/<doc>/rapport_rapprochement.json`. Inchangés : Alphabet et Black
+Hills (`Revenues`), American Express (bloqué par les autres revenus). Sonde v6 : même constat sur 20 émetteurs.
+
+Règles `config/normalisation/edgar_v6.json` (v5 retirée). Dossiers réels régénérés en réutilisant les documents et
+annexes déjà téléchargés, avec leur heure d'origine ; tous contrôles à 0.
+
+Trou trouvé pendant les mutations et corrigé : un schéma **du déposant** qui déclarerait l'espace de noms officiel
+FASB (`http://fasb.org/us-gaap/…`) aurait été accepté comme source d'un concept us-gaap ; un concept standard n'est
+désormais résolu que par le cache de schémas officiels, jamais par un schéma du dépôt.
+
+Mutations : 13, dont 12 détectées ; la restante (refus explicite des pointeurs non « shorthand ») est équivalente, un
+identifiant XML ne pouvant pas contenir de parenthèse ; deux autres ne sont devenues détectables qu'avec des tests
+unitaires directs (contributeur non résolu sans faits de période ; chemin relatif avec dossier). **251 tests.**
+
+Tests : 15 nouveaux (identifiant à préfixe trompeur, absent, en double ; schéma absent du cache et schéma altéré ;
+second revenu frère de R0b ; R1 + autre contributeur +1 sous OperatingIncomeLoss ; calcul faux ou incomplet pour la
+période ; R0b laxiste sans `freres_revenus` refusé ; cache de schémas limité aux hôtes officiels, identification jamais
+enregistrée). Correction d'un de mes tests : un écart de 1 M$ sur trois montants arrondis au million est admis par la
+tolérance d'intervalle (Calculation 1.1) ; le test utilise 5 M$.
+
+**Action nécessaire (utilisateur)** : autoriser `xbrl.fasb.org` (et `xbrl.sec.gov`) dans les réglages réseau de
+l'environnement, ou télécharger `us-gaap-2025.xsd` et `us-gaap-2024.xsd` dans un navigateur. Les preuves seront alors
+recalculées sur les vrais schémas ; rien ne garantit d'avance qu'elles passeront.
+
+Points nécessitant une revue indépendante : tolérance d'arrondi retenue ; banques et assureurs volontairement sans total
+automatique ; exigence de faits pour tous les contributeurs (peut bloquer des présentations valides).
 
 ## V1.20 — Revue n° 15 : un composant ne devient total que par une preuve positive
 
@@ -423,9 +471,9 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 
 - Simulation de bout en bout (12 contrôles), avec `--ruleset` pour choisir le référentiel et `--db` pour la base.
 - `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE.
-- **241 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+- **251 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
   test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
-  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 62, test_ruleset_validation 10, test_screening 11.
+  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 72, test_ruleset_validation 10, test_screening 11.
 
 ## Limites connues (générales)
 

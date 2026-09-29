@@ -1,6 +1,6 @@
 # Normalisation des faits pour les trois ratios : ordre de travail (Apple, exercice clos le 27/09/2025)
 
-> V1.20 : règles `edgar_v5`. total_revenue vient de `us-gaap:Revenues` en priorité ; `RevenueFromContractWithCustomer…`
+> V1.21 : règles `edgar_v6`. total_revenue vient de `us-gaap:Revenues` en priorité ; `RevenueFromContractWithCustomer…`
 > est un composant, retenu comme total seulement par repli explicite (« REPLI : ») avec preuve positive tirée des calculs du dépôt, et si aucun autre revenu n'est déclaré. Faits normalisés et rapprochés pour
 > les documents téléchargés : voir `docs/EXEMPLE_NORMALISATION.md`. shares_outstanding n'est pas proposé.
 

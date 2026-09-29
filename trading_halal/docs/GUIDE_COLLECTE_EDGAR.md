@@ -68,7 +68,15 @@ python3 tools/edgar_normalize.py import-filing --audit data/audit_edgar_apple \
     --doc-id 0000320193-0000320193-25-000079 --fichier aapl-20250927.htm \
     --retrieved-at 2026-09-28T14:05:00+02:00 --raw collecte/apple
 python3 tools/edgar_normalize.py reconcile-ixbrl --audit data/audit_edgar_apple \
-    --doc-id 0000320193-0000320193-25-000079 --raw collecte/apple --regles config/normalisation/edgar_v5.json
+    --doc-id 0000320193-0000320193-25-000079 --raw collecte/apple --regles config/normalisation/edgar_v6.json
 ```
 
 Autre voie : ajouter `www.sec.gov` aux domaines autorisés de l'environnement.
+
+## Schémas officiels (V1.21)
+
+Les preuves positives du revenu total exigent les schémas us-gaap officiels, sur `xbrl.fasb.org` (bloqué dans
+l'environnement). Deux voies : ajouter `xbrl.fasb.org` (et `xbrl.sec.gov`) aux domaines autorisés, puis
+`python3 tools/edgar_normalize.py fetch-taxonomies --audit DOSSIER --doc-id DOC --user-agent "Prénom Nom adresse@domaine"` ;
+ou télécharger dans un navigateur `https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd` (et 2024) puis
+`import-taxonomy --url … --fichier … --retrieved-at …`.

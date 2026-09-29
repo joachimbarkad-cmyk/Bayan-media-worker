@@ -1,0 +1,12 @@
+{
+ "rapproches": 6,
+ "echecs": [],
+ "replis_bloques": [
+  "0000320193-0000320193-25-000073-us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax-USD-2023-10-01-2024-06-29 : [\"aucune preuve positive dans les calculs du dépôt (aapl-20250628.xsd (sha256 a040fc3856082149…), aapl-20250628_cal.xml (sha256 7ca2a1a1fa530268…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2024/elts/us-gaap-2024.xsd']) : us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement\"]",
+  "0000320193-0000320193-25-000073-us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax-USD-2024-03-31-2024-06-29 : [\"aucune preuve positive dans les calculs du dépôt (aapl-20250628.xsd (sha256 a040fc3856082149…), aapl-20250628_cal.xml (sha256 7ca2a1a1fa530268…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2024/elts/us-gaap-2024.xsd']) : us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement\"]",
+  "0000320193-0000320193-25-000073-us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax-USD-2024-09-29-2025-06-28 : [\"aucune preuve positive dans les calculs du dépôt (aapl-20250628.xsd (sha256 a040fc3856082149…), aapl-20250628_cal.xml (sha256 7ca2a1a1fa530268…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2024/elts/us-gaap-2024.xsd']) : us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement\"]",
+  "0000320193-0000320193-25-000073-us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax-USD-2025-03-30-2025-06-28 : [\"aucune preuve positive dans les calculs du dépôt (aapl-20250628.xsd (sha256 a040fc3856082149…), aapl-20250628_cal.xml (sha256 7ca2a1a1fa530268…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2024/elts/us-gaap-2024.xsd']) : us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement\"]"
+ ],
+ "regles": "règles edgar_v6 sha256:dc11b1cd090c1155",
+ "annexes": "aapl-20250628.xsd (sha256 a040fc3856082149…), aapl-20250628_cal.xml (sha256 7ca2a1a1fa530268…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2024/elts/us-gaap-2024.xsd']"
+}

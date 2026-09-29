@@ -19,7 +19,7 @@ import edgar_normalize as en  # noqa: E402
 
 R1 = "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"
 BLOCKERS = ["us-gaap:Revenues", "us-gaap:RevenueNotFromContractWithCustomer"]
-RULES = Path(__file__).resolve().parents[1] / "config" / "normalisation" / "edgar_v5.json"
+RULES = Path(__file__).resolve().parents[1] / "config" / "normalisation" / "edgar_v6.json"
 _R = {r["id"]: r for r in json.loads(RULES.read_text(encoding="utf-8"))["regles"]}
 SPEC = _R["R1"]["repli_total"]["autres_revenus"]
 PROOF_R1 = _R["R1"]["repli_total"]["preuve_position"]
@@ -52,8 +52,10 @@ def probe(cik: str, ua: str) -> dict:
                 time.sleep(0.2)
                 (Path(tmp) / n).write_bytes(ec._get(base + n, ua))
                 annexes.append(Path(tmp) / n)
-        roles, arcs = en.parse_calculations(annexes)
-    rows = {}
+        resolver = en.SchemaResolver(annexes, en.TAXO_DIR)
+        roles, arcs = en.parse_calculations(annexes, resolver)
+        missing = sorted(resolver.missing)
+    rows, vals = {}, {}
     for f in facts:
         ctx = contexts.get(f["context"])
         if ctx is None or ctx["segment"] or ctx["end"] != end or not ctx["start"] or f["unit"] != "USD":
@@ -62,6 +64,10 @@ def probe(cik: str, ua: str) -> dict:
             continue
         # exercice : durée la plus longue se terminant à la date du rapport (environ un an)
         rows.setdefault(f["name"], set()).add((ctx["start"], f["text"], f["scale"]))
+        try:
+            vals.setdefault((f["name"], ctx["start"]), set()).add((en._ix_value(f["el"]), f["decimals"]))
+        except ValueError:
+            pass
     starts = sorted({s for v in rows.values() for s, _, _ in v})
     fy_start = starts[0] if starts else ""
     concepts = {n: [(t, sc) for s, t, sc in v if s == fy_start] for n, v in rows.items()}
@@ -69,8 +75,9 @@ def probe(cik: str, ua: str) -> dict:
     has_r1 = R1 in concepts
     blocked = [b for b in BLOCKERS if b in concepts]
     others = sorted(n for n in concepts if n not in BLOCKERS + [R1, R0B])
-    proof_r1 = en.position_proof(R1, roles, arcs, PROOF_R1)
-    proof_r0b = en.position_proof(R0B, roles, arcs, PROOF_R0B) if R0B in concepts else None
+    fyvals = {n: next(iter(v)) for (n, s), v in vals.items() if s == fy_start and len(v) == 1}
+    proof_r1, why_r1 = en.position_proof(R1, roles, arcs, PROOF_R1, fyvals)
+    proof_r0b, why_r0b = en.position_proof(R0B, roles, arcs, PROOF_R0B, fyvals) if R0B in concepts else (None, "")
     if "us-gaap:Revenues" in concepts:
         decision = "Revenues -> total"
     elif proof_r0b:
@@ -78,7 +85,9 @@ def probe(cik: str, ua: str) -> dict:
     elif has_r1 and (blocked or others):
         decision = "repli R1 bloqué (autres revenus)"
     elif has_r1 and not proof_r1:
-        decision = "repli R1 bloqué (aucune preuve positive)"
+        decision = "repli R1 bloqué (aucune preuve positive" + (" : schémas officiels non disponibles)" if missing else ")")
+    elif R0B in concepts and not proof_r0b and not has_r1:
+        decision = "R0b non prouvé" + (" (schémas officiels non disponibles)" if missing else "")
     elif has_r1:
         decision = "REPLI R1 -> total (preuve positive)"
     else:
@@ -86,16 +95,17 @@ def probe(cik: str, ua: str) -> dict:
     return {"cik": c10, "nom": sub.get("name"), "accn": accn, "exercice": f"{fy_start} → {end}", "decision": decision,
             "autres": {n: concepts[n][0] for n in others}, "r1": concepts.get(R1, [None])[0],
             "revenues": concepts.get("us-gaap:Revenues", [None])[0],
-            "r0b": concepts.get(R0B, [None])[0], "preuve": proof_r1 or proof_r0b or ""}
+            "r0b": concepts.get(R0B, [None])[0], "preuve": proof_r1 or proof_r0b or "",
+            "motif": why_r1 if has_r1 else why_r0b, "schemas_absents": missing}
 
 
 def markdown(results: list[dict]) -> str:
-    lines = ["# Sonde : que ferait la règle du revenu total (edgar_v5) sur de vrais 10-K ?", "",
+    lines = ["# Sonde : que ferait la règle du revenu total (edgar_v6) sur de vrais 10-K ?", "",
              "Générée par `tools/sonde_revenus.py` (dernier 10-K de chaque émetteur à la date d'exécution, faits de l'entité",
              "entière, exercice complet, USD). Données brutes : `docs/SONDE_REVENUS.json`. Ni rapprochement ni",
              "normalisation : un repérage des cas où le repli R1 → total serait juste ou faux. Montants tels qu'affichés",
              "(souvent en millions).", "",
-             "| Émetteur | Dépôt | Décision edgar_v5 | Revenues | R0b (réglementé) | R1 (contrats clients) | Autres concepts de revenu déclarés |",
+             "| Émetteur | Dépôt | Décision edgar_v6 | Revenues | R0b (réglementé) | R1 (contrats clients) | Autres concepts de revenu déclarés |",
              "|---|---|---|---|---|---|---|"]
     for x in results:
         if "erreur" in x:

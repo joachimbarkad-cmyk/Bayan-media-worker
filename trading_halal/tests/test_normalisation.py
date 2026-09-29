@@ -26,6 +26,7 @@ RULES_V2 = ROOT / "config" / "normalisation" / "edgar_v2.json"
 RULES_V3 = ROOT / "config" / "normalisation" / "edgar_v3.json"
 RULES_V4 = ROOT / "config" / "normalisation" / "edgar_v4.json"
 RULES_V5 = ROOT / "config" / "normalisation" / "edgar_v5.json"
+RULES_V6 = ROOT / "config" / "normalisation" / "edgar_v6.json"
 R1C = "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"
 K10 = "0000000123-0000000123-25-000004"
 Q10 = "0000000123-0000000123-24-000030"
@@ -111,6 +112,28 @@ def calc_annexes(folder: Path, parent="us-gaap:GrossProfit",
     return [xsd, cal]
 
 
+US_GAAP_2024 = "https://xbrl.fasb.org/us-gaap/2024/elts/us-gaap-2024.xsd"
+TAXO_ELEMENTS = ["GrossProfit", "OperatingIncomeLoss", "NetIncomeLoss", "CostOfRevenue", "OtherIncome",
+                 "RevenueFromContractWithCustomerExcludingAssessedTax", "RegulatedAndUnregulatedOperatingRevenue",
+                 "GainLossOnDispositionOfAssets1", "CostsAndExpenses", "Revenues", "OtherOperatingRevenue",
+                 "OperatingExpenses"]
+
+
+def fake_taxonomy(cache: Path, ids: dict | None = None, extra_xml: str = "") -> Path:
+    """Schéma us-gaap FICTIF (sous-ensemble) dans un cache au format de collecte/taxonomies. `ids` : nom -> id."""
+    ids = ids or {}
+    els = "".join(f'<xs:element id="{ids.get(n, "us-gaap_" + n)}" name="{n}" type="xs:decimal"/>'
+                  for n in TAXO_ELEMENTS) + extra_xml
+    rel = "xbrl.fasb.org/us-gaap/2024/elts/us-gaap-2024.xsd"
+    (cache / rel).parent.mkdir(parents=True, exist_ok=True)
+    (cache / rel).write_text('<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" '
+                             f'targetNamespace="http://fasb.org/us-gaap/2024">{els}</xs:schema>', encoding="utf-8")
+    (cache / en.TAXO_MANIFEST).write_text(json.dumps([{"url": US_GAAP_2024, "fichier": rel,
+                                                       "sha256": en._sha(cache / rel), "obtenu": "FICTIF"}]),
+                                          encoding="utf-8")
+    return cache
+
+
 class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -121,6 +144,7 @@ class Base(unittest.TestCase):
         self.out = self.tmp / "audit"
         ec.convert(self.raw, self.out, {"10-K", "10-Q"})
         self.rules = _rules(self.tmp)
+        self.taxo = fake_taxonomy(self.tmp / "taxo")
 
     def mutate_raw(self, cf_fn):
         log = []
@@ -151,7 +175,7 @@ class Base(unittest.TestCase):
     def reconcile(self, content=None, annexes=None):
         en.normalize(self.raw, self.out, self.rules)
         self.import_doc(content, annexes)
-        return en.reconcile_ixbrl(self.out, K10, self.raw, self.rules)
+        return en.reconcile_ixbrl(self.out, K10, self.raw, self.rules, self.taxo)
 
 
 class ProposalTests(Base):
@@ -218,10 +242,21 @@ def _rules_v3_like(tmp: Path) -> Path:
         {"id": "R0b", "source_concept": "us-gaap:RegulatedAndUnregulatedOperatingRevenue",
          "normalized_concept": "total_revenue", "source_unit": "USD", "period_type": "duration", "justification": "t",
          "preuve_position": {"categorie": "Statement", "parents": ["us-gaap:OperatingIncomeLoss"],
-                             "freres_positifs_interdits": False}}]}
+                             "freres_positifs_interdits": False,
+                             "freres_revenus": {"motifs": ["Revenue"], "exclusions": ["CostOf"]}}}]}
     p = tmp / "v3.json"
     p.write_text(json.dumps(rules), encoding="utf-8")
     return p
+
+
+def with_gross_profit(doc_facts, cost=700):
+    """Ajoute coût des ventes et marge brute (contexte c-1) cohérents avec R1, pour le calcul effectif."""
+    r1 = next((f for f in doc_facts if f[0] == R1C and f[1] == "c-1"), None)
+    if r1 is None:
+        return doc_facts
+    gp = int(r1[3].replace(",", "")) - cost
+    return list(doc_facts) + [("us-gaap:CostOfRevenue", "c-1", "usd", f"{cost:,}", "6", "-6", False),
+                              ("us-gaap:GrossProfit", "c-1", "usd", f"{gp:,}", "6", "-6", False)]
 
 
 def _add_r1(value, drop_revenues=False):
@@ -248,10 +283,11 @@ class TotalAndComponentTests(Base):
             shutil.rmtree(d, ignore_errors=True)
             d.mkdir()
             annexes = calc_annexes(d)
+            doc_facts = with_gross_profit(doc_facts)
         rep = self.reconcile(ixbrl(doc_facts), annexes)
         self.assertEqual(ec.verify_trace(self.raw, self.out), [])
         self.assertEqual(audit_folder(self.out).errors, [])
-        self.assertEqual(en.verify_normalisation(self.raw, self.out, self.rules), ([], []))
+        self.assertEqual(en.verify_normalisation(self.raw, self.out, self.rules, self.taxo), ([], []))
         return rep, {(r["source_concept"], r["period_end"]): r for r in self.facts().values()
                      if r["normalized_concept"] and r["period_start"] == "2024-01-01"}
 
@@ -308,13 +344,14 @@ class TotalAndComponentTests(Base):
                                 ("fx:RevenueGrowthPercent", "c-1", "pure", "12", "0", "INF", False)])
         self.assertEqual(n[(R1C, "2024-12-31")]["normalized_concept"], "total_revenue")
 
-    def _proof_case(self, **kw):
+    def _proof_case(self, doc_extra=None, facts=None, **kw):
         d = self.tmp / "annexes"
         shutil.rmtree(d, ignore_errors=True)
         d.mkdir()
-        rep, n = self.run_case(_add_r1(1250000000, drop_revenues=True),
-                               [(R1C, "c-1", "usd", "1,250", "6", "-6", False)],
-                               annexes=calc_annexes(d, **kw) if kw.get("with_files", True) else None)
+        doc = facts if facts is not None else with_gross_profit([(R1C, "c-1", "usd", "1,250", "6", "-6", False)])
+        rep, n = self.run_case(_add_r1(1250000000, drop_revenues=True), doc + (doc_extra or []),
+                               annexes=calc_annexes(d, **kw))
+        self.last_rep = rep
         return rep, n[(R1C, "2024-12-31")]
 
     def test_review_15_fallback_requires_positive_proof(self):
@@ -351,6 +388,54 @@ class TotalAndComponentTests(Base):
                 rep, f = self._proof_case(**kw)
                 self.assertEqual(f["normalized_concept"], "revenue_from_contracts_with_customers")
 
+    def test_review_16_misleading_absent_or_ambiguous_ids_prove_nothing(self):
+        cases = {"préfixe trompeur": {"ids": {"OperatingExpenses": "us-gaap_GrossProfit",
+                                              "GrossProfit": "us-gaap_GrossProfitReel"}},
+                 "identifiant absent": {"ids": {"GrossProfit": "autre_id"}},
+                 "identifiant en double": {"extra_xml": '<xs:element id="us-gaap_GrossProfit" name="Autre"/>'}}
+        for label, kw in cases.items():
+            with self.subTest(label):
+                shutil.rmtree(self.tmp / "taxo")
+                self.taxo = fake_taxonomy(self.tmp / "taxo", **kw)
+                rep, f = self._proof_case()
+                self.assertEqual(f["normalized_concept"], "revenue_from_contracts_with_customers")
+
+    def test_review_16_standard_schema_missing_or_altered(self):
+        shutil.rmtree(self.tmp / "taxo")
+        (self.tmp / "taxo").mkdir()
+        rep, f = self._proof_case()  # cache vide : fail-closed
+        self.assertEqual(f["normalized_concept"], "revenue_from_contracts_with_customers")
+        self.assertTrue(any("schémas non disponibles" in b and US_GAAP_2024 in b for b in rep["replis_bloques"]))
+        self.taxo = fake_taxonomy(self.tmp / "taxo")
+        schema = self.taxo / "xbrl.fasb.org/us-gaap/2024/elts/us-gaap-2024.xsd"
+        schema.write_text(schema.read_text(encoding="utf-8").replace("GrossProfit", "GrossProfiT"), encoding="utf-8")
+        with self.assertRaisesRegex(en.NormalizeError, "empreinte"):
+            self._proof_case()
+
+    def test_review_16_r1_under_operating_income_with_another_positive_contributor(self):
+        rep, f = self._proof_case(parent="us-gaap:OperatingIncomeLoss",
+                                  children=((R1C, 1.0), ("us-gaap:OtherIncome", 1.0), ("us-gaap:CostsAndExpenses", -1.0)),
+                                  facts=[(R1C, "c-1", "usd", "1,250", "6", "-6", False),
+                                         ("us-gaap:OtherIncome", "c-1", "usd", "10", "6", "-6", False),
+                                         ("us-gaap:CostsAndExpenses", "c-1", "usd", "1,000", "6", "-6", False),
+                                         ("us-gaap:OperatingIncomeLoss", "c-1", "usd", "260", "6", "-6", False)])
+        self.assertEqual(f["normalized_concept"], "revenue_from_contracts_with_customers")
+
+    def test_effective_calculation_must_hold_for_the_period(self):
+        rep, f = self._proof_case(facts=[(R1C, "c-1", "usd", "1,250", "6", "-6", False),
+                                         ("us-gaap:CostOfRevenue", "c-1", "usd", "700", "6", "-6", False),
+                                         ("us-gaap:GrossProfit", "c-1", "usd", "555", "6", "-6", False)])
+        # (551 serait admis : trois arrondis au million, tolérance d'intervalle de 1,5 M$, comme XBRL Calculation 1.1)
+        self.assertEqual(f["normalized_concept"], "revenue_from_contracts_with_customers")
+        self.assertTrue(any("calcul non vérifié" in b for b in rep["replis_bloques"]))
+        rep, f = self._proof_case(facts=[(R1C, "c-1", "usd", "1,250", "6", "-6", False),
+                                         ("us-gaap:GrossProfit", "c-1", "usd", "550", "6", "-6", False)])
+        self.assertEqual(f["normalized_concept"], "revenue_from_contracts_with_customers")
+        self.assertTrue(any("faits absents" in b for b in rep["replis_bloques"]))
+        rep, f = self._proof_case()
+        self.assertIn("calcul vérifié pour la période", f["normalization_justification"])
+        self.assertIn(US_GAAP_2024, f["normalization_justification"])
+
     def test_calculation_1_1_arcrole_is_accepted(self):
         rep, f = self._proof_case(arcrole="https://xbrl.org/2023/arcrole/summation-item")
         self.assertEqual(f["normalized_concept"], "total_revenue")
@@ -363,15 +448,28 @@ class TotalAndComponentTests(Base):
                     {"start": "2024-01-01", "end": "2024-12-31", "val": 1300000000, "accn": "0000000123-25-000004",
                      "form": "10-K", "filed": "2025-02-20"}]}}
             del data["facts"]["us-gaap"]["Revenues"]
-        doc = [(RR, "c-1", "usd", "1,300", "6", "-6", False)]
+        doc = [(RR, "c-1", "usd", "1,300", "6", "-6", False),
+               ("us-gaap:CostsAndExpenses", "c-1", "usd", "1,000", "6", "-6", False),
+               ("us-gaap:GainLossOnDispositionOfAssets1", "c-1", "usd", "50", "6", "-6", False)]
         d = self.tmp / "annexes"
-        for kids, expected in ((((RR, 1.0), ("us-gaap:GainLossOnDispositionOfAssets1", 1.0),
-                                 ("us-gaap:CostsAndExpenses", -1.0)), "total_revenue"),
-                               (((RR, 1.0), ("us-gaap:CostsAndExpenses", -1.0)), "total_revenue")):
+        for kids, oi, expected in ((((RR, 1.0), ("us-gaap:GainLossOnDispositionOfAssets1", 1.0),
+                                     ("us-gaap:CostsAndExpenses", -1.0)), "350", "total_revenue"),
+                                   (((RR, 1.0), ("us-gaap:CostsAndExpenses", -1.0)), "300", "total_revenue")):
             shutil.rmtree(d, ignore_errors=True)
             d.mkdir()
-            rep, n = self.run_case(cf, doc, annexes=calc_annexes(d, parent="us-gaap:OperatingIncomeLoss", children=kids))
+            rep, n = self.run_case(cf, doc + [("us-gaap:OperatingIncomeLoss", "c-1", "usd", oi, "6", "-6", False)],
+                                   annexes=calc_annexes(d, parent="us-gaap:OperatingIncomeLoss", children=kids))
             self.assertEqual(n[(RR, "2024-12-31")]["normalized_concept"], expected)
+        # revue n° 16 : un second revenu au même niveau bloque R0b
+        shutil.rmtree(d, ignore_errors=True)
+        d.mkdir()
+        rep, n = self.run_case(cf, doc + [("us-gaap:OtherOperatingRevenue", "c-1", "usd", "20", "6", "-6", False),
+                                          ("us-gaap:OperatingIncomeLoss", "c-1", "usd", "320", "6", "-6", False)],
+                               annexes=calc_annexes(d, parent="us-gaap:OperatingIncomeLoss",
+                                                    children=((RR, 1.0), ("us-gaap:OtherOperatingRevenue", 1.0),
+                                                              ("us-gaap:CostsAndExpenses", -1.0))))
+        self.assertNotIn((RR, "2024-12-31"), n)
+        self.assertTrue(any("autre revenu au même niveau" in e for e in rep["echecs"]))
         rep, n = self.run_case(cf, doc, annexes=None)  # sans calculs : pas de total direct non plus
         self.assertNotIn((RR, "2024-12-31"), n)
         self.assertTrue(any("position non prouvée" in e for e in rep["echecs"]))
@@ -383,7 +481,15 @@ class TotalAndComponentTests(Base):
         cal = (self.out / local).parent / "fxei-20241231_cal.xml"
         cal.write_text(cal.read_text(encoding="utf-8").replace('weight="-1.0"', 'weight="1.0"'), encoding="utf-8")
         with self.assertRaisesRegex(en.NormalizeError, "annexe"):
-            en.verify_normalisation(self.raw, self.out, self.rules)
+            en.verify_normalisation(self.raw, self.out, self.rules, self.taxo)
+
+    def test_lax_direct_total_without_revenue_sibling_block_is_refused(self):
+        p = _rules_v3_like(self.tmp)
+        data = json.loads(p.read_text(encoding="utf-8"))
+        data["regles"][2]["preuve_position"].pop("freres_revenus")
+        p.write_text(json.dumps(data), encoding="utf-8")
+        with self.assertRaisesRegex(en.NormalizeError, "freres_revenus"):
+            en.normalize(self.raw, self.out, p)
 
     def test_fallback_rules_without_strict_proof_are_refused(self):
         for mutate in (lambda r: r["repli_total"].pop("preuve_position"),
@@ -512,9 +618,83 @@ class FetchFilingTests(Base):
                 self.assertNotIn(b"alice@societe.fr", f.read_bytes(), f.name)
         listed = json.loads(next(self.out.rglob(en.ANNEXES_FILE)).read_text(encoding="utf-8"))
         self.assertEqual({a["fichier"] for a in listed}, {"fxei-20241231.xsd", "fxei-20241231_cal.xml"})
-        rep = en.reconcile_ixbrl(self.out, K10, self.raw, self.rules)
+        rep = en.reconcile_ixbrl(self.out, K10, self.raw, self.rules, self.taxo)
         self.assertEqual(rep["rapproches"], 2)
-        self.assertEqual(en.verify_normalisation(self.raw, self.out, self.rules), ([], []))
+        self.assertEqual(en.verify_normalisation(self.raw, self.out, self.rules, self.taxo), ([], []))
+
+
+class ResolverUnitTests(unittest.TestCase):
+    """Revue n° 16 : résolution normative des localisateurs de calcul."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.cache = fake_taxonomy(self.tmp / "taxo")
+
+    def annex(self, tns, name="fxei-20241231.xsd"):
+        f = self.tmp / name
+        f.write_text('<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" '
+                     f'targetNamespace="{tns}"><xs:element id="us-gaap_GrossProfit" name="GrossProfit"/>'
+                     '<xs:element id="fx_Ventes" name="Ventes"/></xs:schema>', encoding="utf-8")
+        return f
+
+    def test_standard_and_extension_concepts(self):
+        r = en.SchemaResolver([self.annex("http://exemple.invalid/fxei")], self.cache)
+        self.assertEqual(r.resolve(US_GAAP_2024 + "#us-gaap_GrossProfit"), "us-gaap:GrossProfit")
+        self.assertEqual(r.resolve("fxei-20241231.xsd#fx_Ventes"), "{http://exemple.invalid/fxei}Ventes")
+        self.assertEqual(r.resolve("fxei-20241231.xsd#us-gaap_GrossProfit"), "{http://exemple.invalid/fxei}GrossProfit")
+
+    def test_unresolvable_references(self):
+        r = en.SchemaResolver([self.annex("http://exemple.invalid/fxei")], self.cache)
+        for href in ("autre/fxei-20241231.xsd#fx_Ventes",            # chemin relatif avec dossier
+                     "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd#us-gaap_GrossProfit",  # hors cache
+                     US_GAAP_2024 + "#element(/1/2)",                 # pointeur non « shorthand »
+                     US_GAAP_2024 + "#inexistant", "fxei-20241231.xsd", ""):
+            with self.subTest(href):
+                self.assertIsNone(r.resolve(href))
+
+    def test_filer_schema_cannot_claim_an_official_namespace(self):
+        r = en.SchemaResolver([self.annex("http://fasb.org/us-gaap/2024")], self.cache)
+        self.assertIsNone(r.resolve("fxei-20241231.xsd#us-gaap_GrossProfit"))
+        self.assertTrue(r.problems_soft)
+
+    def test_unresolved_contributor_fails_even_without_period_facts(self):
+        roles = {"r": ("Statement", "Résultat")}
+        arcs = [("r", "us-gaap:GrossProfit", R1C, 1.0), ("r", "us-gaap:GrossProfit", None, -1.0)]
+        proof, why = en.position_proof(R1C, roles, arcs, {"categorie": "Statement", "parents": ["us-gaap:GrossProfit"]})
+        self.assertIsNone(proof)
+        self.assertIn("n'a pas pu être résolu", why)
+
+
+class TaxonomyCacheTests(Base):
+    def test_fetch_taxonomies_downloads_only_official_schemas_referenced_by_calculations(self):
+        en.normalize(self.raw, self.out, self.rules)
+        d = self.tmp / "ann"
+        d.mkdir()
+        self.import_doc(annexes=calc_annexes(d))
+        cache = self.tmp / "cache"
+        calls = []
+        added = en.fetch_taxonomies(self.out, K10, "Alice Martin alice@societe.fr", cache,
+                                    fetch=lambda url, ua: calls.append(url) or b"<xs:schema/>")
+        self.assertEqual((added, calls), ([US_GAAP_2024], [US_GAAP_2024]))
+        self.assertEqual(en.fetch_taxonomies(self.out, K10, "Alice Martin alice@societe.fr", cache,
+                                             fetch=lambda url, ua: calls.append(url)), [])  # déjà présent
+        for f in cache.rglob("*"):
+            if f.is_file():
+                self.assertNotIn(b"alice@societe.fr", f.read_bytes())
+        with self.assertRaises(SystemExit):
+            en.fetch_taxonomies(self.out, K10, None, cache, fetch=lambda url, ua: b"")
+
+    def test_import_taxonomy_refuses_other_hosts_and_naive_times(self):
+        f = self.tmp / "s.xsd"
+        f.write_text("<xs:schema/>", encoding="utf-8")
+        with self.assertRaises(en.NormalizeError):
+            en.import_taxonomy("https://exemple.invalid/us-gaap-2024.xsd", f, "2026-09-29T10:00:00+00:00",
+                               self.tmp / "c")
+        with self.assertRaises(en.NormalizeError):
+            en.import_taxonomy(US_GAAP_2024, f, "2026-09-29T10:00:00", self.tmp / "c")
+        self.assertEqual(en.import_taxonomy(US_GAAP_2024, f, "2026-09-29T10:00:00+00:00", self.tmp / "c"),
+                         [US_GAAP_2024])
 
 
 class FetchUrlTests(Base):
@@ -596,7 +776,7 @@ class ReconcileTests(Base):
             doc = next(r for r in csv.DictReader(f) if r["doc_id"] == K10)
         (self.out / doc["local_copy"]).write_text(ixbrl(GOOD) + " ", encoding="utf-8")
         with self.assertRaisesRegex(en.NormalizeError, "empreinte différente de local_sha256"):
-            en.reconcile_ixbrl(self.out, K10, self.raw, self.rules)
+            en.reconcile_ixbrl(self.out, K10, self.raw, self.rules, self.taxo)
 
     def test_failed_checks_write_nothing(self):
         bad = _rules(self.tmp, name="mauvaises.json")
@@ -607,7 +787,7 @@ class ReconcileTests(Base):
         self.import_doc()
         snapshot = {p.name: p.read_bytes() for p in self.out.iterdir() if p.is_file()}
         with self.assertRaises(en.NormalizeError):
-            en.reconcile_ixbrl(self.out, K10, self.raw, bad)
+            en.reconcile_ixbrl(self.out, K10, self.raw, bad, self.taxo)
         self.assertEqual({p.name: p.read_bytes() for p in self.out.iterdir() if p.is_file()}, snapshot)
 
     def test_auto_reconciliation_needs_note(self):
@@ -654,14 +834,14 @@ class VerifyNormalisationTests(Base):
         self.q = self.fact(Q10, "2024-09-30")["fact_id"]
 
     def test_clean_folder_verifies(self):
-        self.assertEqual(en.verify_normalisation(self.raw, self.out, self.rules), ([], []))
+        self.assertEqual(en.verify_normalisation(self.raw, self.out, self.rules, self.taxo), ([], []))
 
     def test_forged_concept_attributed_to_the_tool_is_detected(self):
         _forge(self.out, "facts", self.f24, "normalized_concept", "total_assets", self.author, "doc:" + K10)
         _forge(self.out, "concept_map", REV, "normalized_concept", "total_assets", self.author,
                "url:https://data.sec.gov/companyfacts")
         self.assertEqual(ec.verify_trace(self.raw, self.out), [])  # la forme et l'historique sont cohérents…
-        problems, human = en.verify_normalisation(self.raw, self.out, self.rules)  # …pas le fond
+        problems, human = en.verify_normalisation(self.raw, self.out, self.rules, self.taxo)  # …pas le fond
         self.assertTrue(any("normalized_concept" in m and "total_assets" in m for m in problems))
         self.assertEqual(human, [])
 
@@ -670,13 +850,13 @@ class VerifyNormalisationTests(Base):
                          ("value", "300000000"), ("source_context", "c-9"), ("source_dimensions", ""),
                          ("normalization_justification", "Règle T1")):
             _forge(self.out, "facts", self.q, col, val, self.author, "doc:" + Q10)
-        problems, _ = en.verify_normalisation(self.raw, self.out, self.rules)
+        problems, _ = en.verify_normalisation(self.raw, self.out, self.rules, self.taxo)
         self.assertTrue(any(self.q in m and "normalized_concept" in m for m in problems))
 
     def test_human_override_is_listed_not_hidden(self):
         _forge(self.out, "facts", self.f24, "normalization_justification", "Revu à la main : identique, page 3",
                "Relecteur B", "doc:" + K10)
-        problems, human = en.verify_normalisation(self.raw, self.out, self.rules)
+        problems, human = en.verify_normalisation(self.raw, self.out, self.rules, self.taxo)
         self.assertEqual(problems, [])
         self.assertTrue(any("Relecteur B" in m for m in human))
 
@@ -685,13 +865,13 @@ class VerifyNormalisationTests(Base):
         data = json.loads(self.rules.read_text(encoding="utf-8"))
         data["regles"][0]["justification"] = "texte modifié"
         other.write_text(json.dumps(data), encoding="utf-8")
-        problems, _ = en.verify_normalisation(self.raw, self.out, other)
+        problems, _ = en.verify_normalisation(self.raw, self.out, other, self.taxo)
         self.assertTrue(any("autres règles" in m for m in problems))
 
     def test_tampered_proposals_file_is_detected(self):
         p = self.out / en.PROPOSALS_FILE
         p.write_text(p.read_text(encoding="utf-8").replace("total_revenue", "total_assets", 1), encoding="utf-8")
-        problems, _ = en.verify_normalisation(self.raw, self.out, self.rules)
+        problems, _ = en.verify_normalisation(self.raw, self.out, self.rules, self.taxo)
         self.assertTrue(any(en.PROPOSALS_FILE in m for m in problems))
 
 
@@ -703,7 +883,7 @@ REAL = {"apple": ("0000320193", {"total_assets": 88, "total_revenue": 11,
         "black_hills": ("0001130464", {"revenue_from_contracts_with_customers": 102, "total_assets": 91,
                                        "total_revenue": 120}, 10),
         "american_express": ("0000004962", {"revenue_from_contracts_with_customers": 91, "total_assets": 84}, 6),
-        "duke_energy": ("0001326160", None, 9),
+        "duke_energy": ("0001326160", None, 6),
         "ford": ("0000037996", None, 6)}
 REVENUE = "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"
 
@@ -731,14 +911,14 @@ class RealIssuersTests(unittest.TestCase):
                 if counts is not None:
                     self.assertEqual(rep["propositions"], counts)
                 self.assertEqual(rep["conflits"], [])
-                self.assertEqual(rep["regles_sha256"], en._sha(RULES_V5))
+                self.assertEqual(rep["regles_sha256"], en._sha(RULES_V6))
                 docs, facts = load_audit(audit)
                 norm = [f for f in facts if f["normalized_concept"]]
                 self.assertEqual(len(norm), normalized)
                 self.assertTrue(all(f["reconciled"] == "auto" and f["source_dimensions"] == "" and
                                     docs[f["doc_id"]]["local_copy"] for f in norm))
                 self.assertEqual(ec.verify_trace(raw, audit), [])
-                self.assertEqual(en.verify_normalisation(raw, audit, RULES_V5), ([], []))
+                self.assertEqual(en.verify_normalisation(raw, audit, RULES_V6), ([], []))
                 res = audit_folder(audit)
                 self.assertEqual((res.errors, res.reconciled_auto, res.to_reconcile), ([], normalized, normalized))
                 self.assertIn("RAPPROCHEMENT AUTOMATIQUE", res.verdict)
@@ -746,13 +926,13 @@ class RealIssuersTests(unittest.TestCase):
     def test_apple_fiscal_2025_revenue_is_usable_from_its_document(self):
         audit, _ = self.paths("apple")
         docs, facts = load_audit(audit)
-        s = select_fact(docs, facts, "0000320193", "total_revenue", "monnaie", "2024-09-29", "2025-09-27",
-                        date(2025, 11, 1), concept_field="normalized_concept", currency="USD")
+        s = select_fact(docs, facts, "0000320193", "revenue_from_contracts_with_customers", "monnaie", "2024-09-29",
+                        "2025-09-27", date(2025, 11, 1), concept_field="normalized_concept", currency="USD")
         self.assertEqual((s.fact["value"], s.usable, s.reconciliation), ("416161000000", True, "auto"))
         self.assertEqual((s.fact["source_context"], s.fact["decimals"]), ("c-1", "-6"))
         self.assertIn("« 416,161 »", s.fact["reconciled_note"])
-        q = select_fact(docs, facts, "0000320193", "total_revenue", "monnaie", "2025-03-30", "2025-06-28",
-                        date(2025, 8, 2), concept_field="normalized_concept", currency="USD")
+        q = select_fact(docs, facts, "0000320193", "revenue_from_contracts_with_customers", "monnaie", "2025-03-30",
+                        "2025-06-28", date(2025, 8, 2), concept_field="normalized_concept", currency="USD")
         self.assertEqual((q.fact["value"], q.usable), ("94036000000", True))
 
     def test_known_values(self):
@@ -805,28 +985,16 @@ class RealIssuersTests(unittest.TestCase):
         with self.assertRaises(en.NormalizeError):
             en.normalize(raw, audit, RULES_V3)
 
-    def test_review_15_duke_total_is_regulated_operating_revenue(self):
+    def test_review_15_duke_component_including_tax_stays_distinct(self):
         audit, _ = self.paths("duke_energy")
         docs, facts = load_audit(audit)
         args = ("monnaie", "2025-01-01", "2025-12-31", date(2026, 3, 1))
-        t_ = select_fact(docs, facts, "0001326160", "total_revenue", *args, concept_field="normalized_concept",
-                         currency="USD")
-        self.assertEqual((t_.fact["value"], t_.fact["source_concept"]),
-                         ("32237000000", "us-gaap:RegulatedAndUnregulatedOperatingRevenue"))
         c = select_fact(docs, facts, "0001326160", "revenue_from_contracts_with_customers_including_assessed_tax",
                         *args, concept_field="normalized_concept", currency="USD")
         self.assertEqual(c.fact["value"], "31741000000")
-        self.assertIsNone(select_fact(docs, facts, "0001326160", "revenue_from_contracts_with_customers", *args,
-                                      concept_field="normalized_concept", currency="USD").fact)
-
-    def test_review_15_ford_total_is_a_proven_fallback(self):
-        audit, _ = self.paths("ford")
-        docs, facts = load_audit(audit)
-        s = select_fact(docs, facts, "0000037996", "total_revenue", "monnaie", "2025-01-01", "2025-12-31",
-                        date(2026, 3, 1), concept_field="normalized_concept", currency="USD")
-        self.assertEqual(s.fact["value"], "187267000000")
-        self.assertIn("preuve positive : rôle « Statement - CONSOLIDATED INCOME STATEMENTS » : us-gaap:OperatingIncomeLoss",
-                      s.fact["normalization_justification"])
+        for concept in ("revenue_from_contracts_with_customers", "total_revenue"):
+            self.assertIsNone(select_fact(docs, facts, "0001326160", concept, *args,
+                                          concept_field="normalized_concept", currency="USD").fact)
 
     def test_alphabet_2025_total_comes_from_revenues(self):
         audit, _ = self.paths("alphabet")
@@ -835,13 +1003,22 @@ class RealIssuersTests(unittest.TestCase):
                         date(2026, 3, 1), concept_field="normalized_concept", currency="USD")
         self.assertEqual((s.fact["value"], s.fact["source_concept"]), ("402836000000", "us-gaap:Revenues"))
 
-    def test_apple_total_is_an_explicit_fallback(self):
-        audit, _ = self.paths("apple")
-        _, facts = load_audit(audit)
-        rev = [f for f in facts if f["normalized_concept"] == "total_revenue"]
-        self.assertTrue(rev)
-        self.assertTrue(all(f["source_concept"] == R1C and f["normalization_justification"].startswith("REPLI :")
-                            and "preuve positive" in f["normalization_justification"] for f in rev))
+    def test_review_16_no_proof_without_official_schemas(self):
+        """Schémas us-gaap inaccessibles d'ici : Apple, Microsoft, Ford n'ont plus de total (fail-closed), et la raison
+        est écrite dans le fait ; Duke n'a pas de total direct, raison dans le rapport de rapprochement."""
+        for name in ("apple", "microsoft", "ford"):
+            with self.subTest(name):
+                audit, _ = self.paths(name)
+                _, facts = load_audit(audit)
+                self.assertFalse(any(f["normalized_concept"] == "total_revenue" for f in facts))
+                comp = [f for f in facts if f["normalized_concept"] == "revenue_from_contracts_with_customers"]
+                self.assertTrue(comp)
+                self.assertTrue(all("Repli vers total_revenue non retenu" in f["normalization_justification"]
+                                    and "schémas non disponibles" in f["normalization_justification"] for f in comp))
+        audit, _ = self.paths("duke_energy")
+        rep = json.loads(next(audit.rglob(en.RECONCILE_REPORT)).read_text(encoding="utf-8"))
+        self.assertTrue(rep["echecs"])
+        self.assertTrue(all("schémas non disponibles" in e for e in rep["echecs"]))
 
     def test_later_comparative_never_replaces_the_filing_available_at_the_decision(self):
         docs, before = self.sel("microsoft", "2024-07-01", "2025-06-30", "2025-12-01")

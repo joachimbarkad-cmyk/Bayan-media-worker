@@ -111,7 +111,7 @@ une contre-vérification humaine indépendante restent nécessaires.
 - Un fait dont le concept est mappé mais qui n'est pas normalisé doit porter une justification
   « NON NORMALISÉ : motif » (exclusion explicite) ; sinon, erreur bloquante.
 - Outil : `tools/edgar_normalize.py` (`normalize`, `import-filing`, `reconcile-ixbrl`), règles
-  `config/normalisation/edgar_v5.json` (v1 à v4 retirées), exemples `docs/EXEMPLE_NORMALISATION.md`.
+  `config/normalisation/edgar_v6.json` (v1 à v5 retirées), exemples `docs/EXEMPLE_NORMALISATION.md`.
 
 ## Conformité aux règles (V1.14)
 
@@ -140,3 +140,14 @@ l'enfant +1 de `GrossProfit` ou `OperatingIncomeLoss` dans un rôle de catégori
 positif ; un concept total par définition (`RegulatedAndUnregulatedOperatingRevenue`) doit seulement y être en première
 ligne. Nouveau concept : `revenue_from_contracts_with_customers_including_assessed_tax` (taxes incluses, jamais
 interchangeable avec la version hors taxes).
+
+## Résolution des concepts de calcul et calcul effectif (revue n° 16)
+
+Chaque localisateur de calcul (`schéma#identifiant`) est résolu vers l'`xs:element` désigné dans le schéma qui le
+déclare : schéma du dépôt (annexe) pour une extension ; schéma officiel du cache `collecte/taxonomies/` (URL, empreinte,
+heure dans `taxonomies.json`, vérifiées à chaque lecture) pour un concept standard. Le préfixe textuel de l'identifiant
+n'est jamais utilisé. Schéma absent, identifiant absent ou ambigu, pointeur non « shorthand » ⇒ aucune preuve. La
+relation doit aussi se vérifier sur les faits de l'entité entière pour la période (parent = Σ poids × contributeurs,
+tolérance d'intervalle selon `decimals`, comme XBRL Calculation 1.1). Cache : `fetch-taxonomies` (réseau,
+`xbrl.fasb.org` et `xbrl.sec.gov` seulement) ou `import-taxonomy` (fichier téléchargé à la main, heure déclarée). Chaque
+rapprochement écrit `copies/<doc>/rapport_rapprochement.json` ; un repli refusé est motivé dans le fait.

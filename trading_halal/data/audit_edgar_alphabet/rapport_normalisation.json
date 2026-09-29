@@ -1,6 +1,6 @@
 {
- "version": "edgar_v5",
- "regles_sha256": "5e6b3f281d2e2a8269fcfee1dfae417c4620c8996e28aa6b926265a833148af9",
+ "version": "edgar_v6",
+ "regles_sha256": "dc11b1cd090c11556ee682583464311b15159ca20323e725abef090c0eb63522",
  "propositions": {
   "revenue_from_contracts_with_customers": 26,
   "total_assets": 26,
