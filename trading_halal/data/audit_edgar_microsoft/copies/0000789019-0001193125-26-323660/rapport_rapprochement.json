@@ -1,0 +1,6 @@
+{
+ "rapproches": 5,
+ "echecs": [],
+ "regles": "règles edgar_v7 sha256:10b5c23c53bba18f",
+ "annexes": "msft-20260630.xsd (sha256 29d4cdf7695b7855…) ; schémas officiels : https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd (sha256 4639263ec38aaa5d…)"
+}

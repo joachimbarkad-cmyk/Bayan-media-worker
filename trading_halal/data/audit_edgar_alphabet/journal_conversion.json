@@ -1,0 +1,395 @@
+{
+ "formulaires": [
+  "10-K",
+  "10-Q"
+ ],
+ "entrees_brutes_companyfacts": 20907,
+ "faits_retenus": 6333,
+ "doublons_identiques_fusionnes": [],
+ "faits_ecartes": 14574,
+ "exclusions_par_depot": [
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-15-000005",
+   "form": "10-Q",
+   "filed": "2015-10-29",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 450,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/0"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-16-000012",
+   "form": "10-K",
+   "filed": "2016-02-11",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 637,
+   "exemple": "facts/dei/EntityPublicFloat/units/USD/0"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-16-000021",
+   "form": "10-Q",
+   "filed": "2016-05-03",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 365,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/5"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-16-000022",
+   "form": "8-K",
+   "filed": "2016-05-03",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 637,
+   "exemple": "facts/dei/EntityPublicFloat/units/USD/1"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-16-000032",
+   "form": "10-Q",
+   "filed": "2016-08-04",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 443,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/7"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-16-000038",
+   "form": "10-Q",
+   "filed": "2016-11-03",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 416,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/8"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-17-000008",
+   "form": "10-K",
+   "filed": "2017-02-03",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 566,
+   "exemple": "facts/dei/EntityPublicFloat/units/USD/2"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-17-000014",
+   "form": "10-Q",
+   "filed": "2017-05-02",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 295,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/14"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-17-000026",
+   "form": "10-Q",
+   "filed": "2017-07-25",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 382,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/15"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-17-000042",
+   "form": "10-Q",
+   "filed": "2017-10-27",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 388,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/16"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-18-000007",
+   "form": "10-K",
+   "filed": "2018-02-06",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 542,
+   "exemple": "facts/dei/EntityPublicFloat/units/USD/3"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-18-000016",
+   "form": "10-Q",
+   "filed": "2018-04-24",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 313,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/22"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-18-000027",
+   "form": "10-Q",
+   "filed": "2018-07-24",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 406,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/23"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-18-000035",
+   "form": "10-Q",
+   "filed": "2018-10-26",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 405,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/24"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-19-000004",
+   "form": "10-K",
+   "filed": "2019-02-05",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 559,
+   "exemple": "facts/dei/EntityPublicFloat/units/USD/4"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-19-000015",
+   "form": "10-Q",
+   "filed": "2019-04-30",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 354,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/30"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-19-000023",
+   "form": "10-Q",
+   "filed": "2019-07-26",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 452,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/31"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-19-000032",
+   "form": "10-Q",
+   "filed": "2019-10-29",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 453,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/32"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-20-000008",
+   "form": "10-K",
+   "filed": "2020-02-04",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 586,
+   "exemple": "facts/dei/EntityPublicFloat/units/USD/5"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-20-000021",
+   "form": "10-Q",
+   "filed": "2020-04-29",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 366,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/38"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-20-000032",
+   "form": "10-Q",
+   "filed": "2020-07-31",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 472,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/39"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-20-000050",
+   "form": "10-Q",
+   "filed": "2020-10-30",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 470,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/40"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-21-000010",
+   "form": "10-K",
+   "filed": "2021-02-03",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 568,
+   "exemple": "facts/dei/EntityPublicFloat/units/USD/6"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-21-000020",
+   "form": "10-Q",
+   "filed": "2021-04-28",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 353,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/46"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-21-000047",
+   "form": "10-Q",
+   "filed": "2021-07-28",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 448,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/47"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-21-000057",
+   "form": "10-Q",
+   "filed": "2021-10-27",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 442,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/48"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-22-000019",
+   "form": "10-K",
+   "filed": "2022-02-02",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 562,
+   "exemple": "facts/dei/EntityPublicFloat/units/USD/7"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-22-000029",
+   "form": "10-Q",
+   "filed": "2022-04-27",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 356,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/54"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-22-000071",
+   "form": "10-Q",
+   "filed": "2022-07-27",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 447,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/55"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-22-000090",
+   "form": "10-Q",
+   "filed": "2022-10-26",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 445,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/56"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-23-000016",
+   "form": "10-K",
+   "filed": "2023-02-03",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 558,
+   "exemple": "facts/dei/EntityPublicFloat/units/USD/8"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001652044-23-000045",
+   "form": "10-Q",
+   "filed": "2023-04-26",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 346,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/62"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001308179-26-000342",
+   "form": "DEF 14A",
+   "filed": "2026-04-24",
+   "motif": "formulaire non retenu (DEF 14A)",
+   "faits": 40,
+   "exemple": "facts/us-gaap/NetIncomeLoss/units/USD/97"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001193125-26-212210",
+   "form": "424B2",
+   "filed": "2026-05-07",
+   "motif": "formulaire non retenu (424B2)",
+   "faits": 6,
+   "exemple": "facts/ffd/NetFeeAmt/units/USD/0"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001193125-26-212222",
+   "form": "424B2",
+   "filed": "2026-05-07",
+   "motif": "formulaire non retenu (424B2)",
+   "faits": 6,
+   "exemple": "facts/ffd/NetFeeAmt/units/USD/1"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001193125-26-228923",
+   "form": "424B5",
+   "filed": "2026-05-18",
+   "motif": "formulaire non retenu (424B5)",
+   "faits": 6,
+   "exemple": "facts/ffd/NetFeeAmt/units/USD/2"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001193125-26-252439",
+   "form": "424B5",
+   "filed": "2026-06-02",
+   "motif": "formulaire non retenu (424B5)",
+   "faits": 6,
+   "exemple": "facts/ffd/NetFeeAmt/units/USD/3"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001193125-26-256375",
+   "form": "424B5",
+   "filed": "2026-06-04",
+   "motif": "formulaire non retenu (424B5)",
+   "faits": 6,
+   "exemple": "facts/ffd/NetFeeAmt/units/USD/4"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001193125-26-257690",
+   "form": "424B5",
+   "filed": "2026-06-04",
+   "motif": "formulaire non retenu (424B5)",
+   "faits": 6,
+   "exemple": "facts/ffd/NetFeeAmt/units/USD/5"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001193125-26-257702",
+   "form": "424B5",
+   "filed": "2026-06-04",
+   "motif": "formulaire non retenu (424B5)",
+   "faits": 6,
+   "exemple": "facts/ffd/NetFeeAmt/units/USD/6"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001193125-26-312805",
+   "form": "S-8",
+   "filed": "2026-07-23",
+   "motif": "formulaire non retenu (S-8)",
+   "faits": 4,
+   "exemple": "facts/ffd/NetFeeAmt/units/USD/7"
+  },
+  {
+   "cik": "0001652044",
+   "accn": "0001193125-26-340264",
+   "form": "424B2",
+   "filed": "2026-08-07",
+   "motif": "formulaire non retenu (424B2)",
+   "faits": 6,
+   "exemple": "facts/ffd/NetFeeAmt/units/USD/8"
+  }
+ ],
+ "depots_retenus_puis_ecartes": [],
+ "rectificatifs_a_rattacher": [],
+ "historique_incomplet": [
+  "0001652044 : 1 fichier(s) de dépôts plus anciens non collecté(s) (CIK0001652044-submissions-001.json)"
+ ]
+}

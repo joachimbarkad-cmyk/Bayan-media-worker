@@ -1,0 +1,269 @@
+{
+ "formulaires": [
+  "10-K",
+  "10-Q"
+ ],
+ "entrees_brutes_companyfacts": 25135,
+ "faits_retenus": 15068,
+ "doublons_identiques_fusionnes": [],
+ "faits_ecartes": 10067,
+ "exclusions_par_depot": [
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-09-153165",
+   "form": "10-Q",
+   "filed": "2009-07-22",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 174,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/0"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-09-214859",
+   "form": "10-K",
+   "filed": "2009-10-27",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 210,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/1"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-10-012085",
+   "form": "10-Q",
+   "filed": "2010-01-25",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 141,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/3"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-10-012091",
+   "form": "10-K/A",
+   "filed": "2010-01-25",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 210,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/2"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-10-088957",
+   "form": "10-Q",
+   "filed": "2010-04-21",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 172,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/4"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-10-162840",
+   "form": "10-Q",
+   "filed": "2010-07-21",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 357,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/5"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-10-238044",
+   "form": "10-K",
+   "filed": "2010-10-27",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 570,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/6"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-11-010144",
+   "form": "10-Q",
+   "filed": "2011-01-19",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 267,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/7"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-11-104388",
+   "form": "10-Q",
+   "filed": "2011-04-21",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 326,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/8"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-11-192493",
+   "form": "10-Q",
+   "filed": "2011-07-20",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 331,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/9"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-11-282113",
+   "form": "10-K",
+   "filed": "2011-10-26",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 529,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/10"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-12-023398",
+   "form": "10-Q",
+   "filed": "2012-01-25",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 244,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/11"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-12-182321",
+   "form": "10-Q",
+   "filed": "2012-04-25",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 324,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/12"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-12-314552",
+   "form": "10-Q",
+   "filed": "2012-07-25",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 324,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/13"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-12-444068",
+   "form": "10-K",
+   "filed": "2012-10-31",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 542,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/14"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-13-022339",
+   "form": "10-Q",
+   "filed": "2013-01-24",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 266,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/15"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-13-168288",
+   "form": "10-Q",
+   "filed": "2013-04-24",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 340,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/16"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-13-170623",
+   "form": "8-K",
+   "filed": "2013-04-24",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 549,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/24"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-13-300670",
+   "form": "10-Q",
+   "filed": "2013-07-24",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 357,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/17"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-13-416534",
+   "form": "10-K",
+   "filed": "2013-10-30",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 580,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/18"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-14-024487",
+   "form": "10-Q",
+   "filed": "2014-01-28",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 299,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/19"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-14-157311",
+   "form": "10-Q",
+   "filed": "2014-04-24",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 382,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/20"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-14-277160",
+   "form": "10-Q",
+   "filed": "2014-07-23",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 387,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/21"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-14-383437",
+   "form": "10-K",
+   "filed": "2014-10-27",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 571,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/22"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-15-023697",
+   "form": "10-Q",
+   "filed": "2015-01-28",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 292,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/23"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-15-023732",
+   "form": "8-K",
+   "filed": "2015-01-28",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 569,
+   "exemple": "facts/us-gaap/AccountsPayableCurrent/units/USD/42"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-15-153166",
+   "form": "10-Q",
+   "filed": "2015-04-28",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 375,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/24"
+  },
+  {
+   "cik": "0000320193",
+   "accn": "0001193125-15-259935",
+   "form": "10-Q",
+   "filed": "2015-07-22",
+   "motif": "dépôt absent de filings.recent (historique non collecté)",
+   "faits": 379,
+   "exemple": "facts/dei/EntityCommonStockSharesOutstanding/units/shares/25"
+  }
+ ],
+ "depots_retenus_puis_ecartes": [],
+ "rectificatifs_a_rattacher": [],
+ "historique_incomplet": [
+  "0000320193 : 1 fichier(s) de dépôts plus anciens non collecté(s) (CIK0000320193-submissions-001.json)"
+ ]
+}

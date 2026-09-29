@@ -1,0 +1,5 @@
+{
+  "name": "edgar_20260929",
+  "nature": "REEL",
+  "warning": "Données SEC EDGAR converties automatiquement (companyfacts : sous-ensemble des faits du dépôt). Contexte, dimensions et catégorie d'actions INCONNUS. Aucun fait normalisé ni rapproché : dossier NON EXPLOITABLE tant qu'un humain n'a pas établi, mappé, justifié et rapproché chaque fait. PÉRIMÈTRE : dépôts récents (filings.recent) des formulaires ['10-K', '10-Q'] ; 44 document(s) retenu(s), 0 écarté(s), 0 rectificatif(s) à rattacher à la main. HISTORIQUE INCOMPLET : 0000320193 : 1 fichier(s) de dépôts plus anciens non collecté(s) (CIK0000320193-submissions-001.json)"
+}

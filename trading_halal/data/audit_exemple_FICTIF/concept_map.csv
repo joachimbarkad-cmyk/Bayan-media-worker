@@ -1,0 +1,4 @@
+source_concept,normalized_concept,justification
+us-gaap:Revenues,total_revenue,Chiffre d'affaires total ; correspondance à confirmer document par document
+exemple:InterestBearingDebt,interest_bearing_debt,Concept fictif de démonstration
+dei:EntityCommonStockSharesOutstanding,shares_outstanding,Nombre d'actions en circulation déclaré en page de garde ; date de mesure propre au fait

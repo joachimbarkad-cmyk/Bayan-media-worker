@@ -1,0 +1,2 @@
+security_id,issuer_id,ticker,exchange,valid_from,valid_to,instrument_type,currency,source
+FICT-0001-A,FICT-0001,FXEX,PLACE_FICTIVE,2015-01-01,,ACTION,USD,Exemple fictif du format

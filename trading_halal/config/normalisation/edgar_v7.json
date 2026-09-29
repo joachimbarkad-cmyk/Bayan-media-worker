@@ -1,0 +1,170 @@
+{
+  "version": "edgar_v7",
+  "date": "2026-09-28",
+  "statut": "PROPOSITION NON RELUE : règles écrites par l'assistant, à faire relire indépendamment (voir HANDOFF.md)",
+  "portee": "Faits companyfacts (SEC) en USD ; correspondance UN concept d'origine -> UN concept du projet, sans agrégation ni calcul. Aucune normalisation sans le document du dépôt.",
+  "regles": [
+    {
+      "id": "R0",
+      "source_concept": "us-gaap:Revenues",
+      "normalized_concept": "total_revenue",
+      "source_unit": "USD",
+      "period_type": "duration",
+      "justification": "Agrégat des revenus de l'entité (biens, services et autres activités, y compris les revenus hors contrats clients). Prioritaire pour total_revenue (revue n° 14)."
+    },
+    {
+      "id": "R0b",
+      "source_concept": "us-gaap:RegulatedAndUnregulatedOperatingRevenue",
+      "normalized_concept": "total_revenue",
+      "source_unit": "USD",
+      "period_type": "duration",
+      "justification": "Total des revenus d'exploitation réglementés et non réglementés reconnus sur la période (services publics). Candidat direct au total, exigé en première ligne d'un état financier (revue n° 15, cas Duke Energy).",
+      "preuve_position": {
+        "categorie": "Statement",
+        "parents": [
+          "us-gaap:GrossProfit",
+          "us-gaap:OperatingIncomeLoss"
+        ],
+        "explication": "Concept total par définition : enfant +1 de GrossProfit ou OperatingIncomeLoss dans un état financier, calcul vérifié pour la période ; d'autres contributeurs positifs sont admis (ex. gain de cession chez Duke Energy) SAUF s'ils évoquent un revenu (freres_revenus) : un autre revenu au même niveau montrerait que R0b n'est qu'une partie du total (revue n° 16).",
+        "freres_positifs_interdits": false,
+        "freres_revenus": {
+          "motifs": [
+            "Revenue",
+            "LeaseIncome",
+            "InterestAndDividendIncome",
+            "InterestIncomeOperating",
+            "PremiumsEarned",
+            "NoninterestIncome",
+            "Sales"
+          ],
+          "exclusions": [
+            "CostOf",
+            "Deferred",
+            "RemainingPerformanceObligation",
+            "ContractWithCustomerLiability",
+            "Receivable",
+            "Recognized",
+            "Payable",
+            "IncomeTax",
+            "TaxExpense",
+            "TaxBenefit",
+            "Unearned",
+            "Unbilled",
+            "PercentOf",
+            "IncreaseDecrease",
+            "ProceedsFrom",
+            "GainLoss",
+            "ProForma"
+          ]
+        }
+      }
+    },
+    {
+      "id": "R0c",
+      "source_concept": "us-gaap:RevenuesNetOfInterestExpense",
+      "normalized_concept": "revenues_net_of_interest_expense",
+      "source_unit": "USD",
+      "period_type": "duration",
+      "justification": "Banques : revenus nets des charges d'intérêts (revenus d'intérêts − charges d'intérêts + revenus hors intérêts), tels que déclarés par l'entité consolidée. Extraction typée : JAMAIS total_revenue, jamais un dénominateur religieux automatique (revue n° 17).",
+      "preuve_presence": {
+        "categorie": "Statement",
+        "explication": "Le concept doit figurer, comme total ou contributeur, dans les calculs résolus d'un rôle « Statement » (état principal)."
+      }
+    },
+    {
+      "id": "R1",
+      "source_concept": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+      "normalized_concept": "revenue_from_contracts_with_customers",
+      "source_unit": "USD",
+      "period_type": "duration",
+      "justification": "Revenus tirés des contrats avec les clients (ASC 606), hors taxes collectées : un COMPOSANT du revenu total, pas le total en général.",
+      "repli_total": {
+        "concept": "total_revenue",
+        "si_absents_du_document": [
+          "us-gaap:Revenues",
+          "us-gaap:RevenueNotFromContractWithCustomer"
+        ],
+        "explication": "Retenu comme total_revenue seulement si (1) PREUVE POSITIVE : première ligne de revenu dans les calculs d'un état financier du dépôt (preuve_position) ; et (2) le document ne déclare, pour l'entité entière, la même période exacte et une devise, ni Revenues, ni RevenueNotFromContractWithCustomer, ni aucun autre concept dont le nom évoque un revenu (bloqueur prudent). Marqué « REPLI : » avec la preuve.",
+        "autres_revenus": {
+          "motifs": [
+            "Revenue",
+            "LeaseIncome",
+            "InterestAndDividendIncome",
+            "InterestIncomeOperating",
+            "PremiumsEarned",
+            "NoninterestIncome",
+            "Sales"
+          ],
+          "exclusions": [
+            "CostOf",
+            "Deferred",
+            "RemainingPerformanceObligation",
+            "ContractWithCustomerLiability",
+            "Receivable",
+            "Recognized",
+            "Payable",
+            "IncomeTax",
+            "TaxExpense",
+            "TaxBenefit",
+            "Unearned",
+            "Unbilled",
+            "PercentOf",
+            "IncreaseDecrease",
+            "ProceedsFrom",
+            "GainLoss",
+            "ProForma"
+          ]
+        },
+        "preuve_position": {
+          "categorie": "Statement",
+          "parents": [
+            "us-gaap:GrossProfit",
+            "us-gaap:OperatingIncomeLoss"
+          ],
+          "explication": "Le concept doit être, dans les relations de calcul d'un rôle de catégorie EFM « Statement » du dépôt, un enfant de poids +1 de GrossProfit ou OperatingIncomeLoss, sans autre enfant de poids positif sous ce parent (première ligne de revenu de l'état).",
+          "freres_positifs_interdits": true
+        }
+      }
+    },
+    {
+      "id": "R1b",
+      "source_concept": "us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax",
+      "normalized_concept": "revenue_from_contracts_with_customers_including_assessed_tax",
+      "source_unit": "USD",
+      "period_type": "duration",
+      "justification": "Revenus des contrats clients (ASC 606), taxes collectées INCLUSES : composant distinct, jamais un total, jamais interchangeable avec R1 (revue n° 15)."
+    },
+    {
+      "id": "R2",
+      "source_concept": "us-gaap:Assets",
+      "normalized_concept": "total_assets",
+      "source_unit": "USD",
+      "period_type": "instant",
+      "justification": "Total des actifs comptabilisés à la date du bilan. Définition de la taxonomie recopiée depuis companyfacts (champ description)."
+    }
+  ],
+  "principes": {
+    "P1_deux_temps": "normalize ne fait que proposer ; reconcile-ixbrl normalise et rapproche à partir de la copie locale du document XBRL en ligne.",
+    "P2_dimensions": "« aucune dimension » n'est inscrit que si le document contient le fait dans un contexte sans segment ni scénario, pour la même entité et la même période exacte (D1 retirée : une valeur unique dans companyfacts ne le prouve pas).",
+    "P3_contexte": "le contexte est l'identifiant XBRL du document (X1 retirée).",
+    "T1_transformation": "aucune : valeur normalisée = valeur brute, unité « monnaie » + devise USD.",
+    "K1_conflit": "Conflit entre concepts visant le même concept du projet (R0 et R0b pour total_revenue) : valeurs différentes ⇒ aucun des deux.",
+    "P4_total_composant": "Revenues présent ⇒ total_revenue ; RevenueFromContractWithCustomer… reste un composant. Revenues absent ⇒ repli contrôlé (voir R1).",
+    "P5_repli_prudent": "Sonde sur 19 émetteurs (docs/SONDE_REVENUS.md) : American Express déclare des revenus d'intérêts et hors intérêts sans agrégat Revenues ; le repli y est désormais bloqué.",
+    "P6_preuve_positive": "Un composant ne devient total que par une preuve positive tirée des relations de calcul du dépôt (schéma .xsd et _cal.xml téléchargés avec le document, empreintes dans copies/<doc>/annexes.json) ; l'heuristique de noms reste un bloqueur supplémentaire, jamais une preuve.",
+    "P7_resolution": "Chaque concept d'une relation de calcul est résolu dans le schéma qui le déclare (xs:element désigné par l'identifiant du localisateur, puis nom et targetNamespace) : schéma du dépôt pour une extension, schéma officiel du cache local (collecte/taxonomies, empreintes) pour un concept standard. Schéma absent, identifiant absent ou ambigu ⇒ aucune preuve (revue n° 16).",
+    "P8_calcul_effectif": "La relation de calcul doit se vérifier sur les faits de l'entité entière pour la période : parent = Σ poids × contributeurs, à l'arrondi (decimals) près ; contributeur sans fait ⇒ aucune preuve.",
+    "P9_deux_verdicts": "calcul_XBRL_coherent (contributeurs présents, nil exclus, chevauchement d'intervalles au plus proche) et preuve_complete_pour_repli (tous les contributeurs présents) sont distincts ; seule une preuve complète autorise un total. La tolérance n'est pas une implémentation complète de Calculation 1.1.",
+    "P10_denominateur": "Les concepts du projet décrivent ce que l'entreprise a déclaré comptablement. Le choix du dénominateur du critère religieux (revenu total, revenus nets des charges d'intérêts pour une banque, etc.) est une décision distincte du référentiel, avec sa définition et sa source propres (revue n° 17)."
+  },
+  "non_normalises_volontairement": {
+    "us-gaap:SalesRevenueNet": "Concept retiré (2018) : non repris.",
+    "interest_bearing_debt": "Agrégat (LongTermDebt + CommercialPaper + autres ?) : périmètre à décider par le référentiel validé (locations, etc.).",
+    "cash_and_interest_bearing_investments": "Exige une qualification ligne à ligne dans les notes.",
+    "non_compliant_revenue": "Aucun concept direct ; NonoperatingIncomeExpense est un solde net.",
+    "market_cap": "Exige un cours non ajusté daté : source non établie.",
+    "dei:EntityCommonStockSharesOutstanding": "Catégorie d'actions non établissable automatiquement : C1 retirée (liste actuelle des tickers = information future ; catégories non cotées ignorées ; un ticker n'identifie pas le type de titre).",
+    "us-gaap:CommonStockSharesOutstanding": "Même raison : catégories d'actions ordinaires (cotées ou non) à établir sur le document, à la date du fait, par une personne.",
+    "us-gaap:PremiumsEarnedNet": "Assureurs : les primes ne sont pas le revenu total (ex. Travelers additionne primes, revenus de placements, commissions, cessions, autres) ; seul un total directement déclaré (Revenues) est retenu."
+  }
+}

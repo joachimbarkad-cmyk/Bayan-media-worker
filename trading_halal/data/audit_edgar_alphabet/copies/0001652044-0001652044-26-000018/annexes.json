@@ -1,0 +1,14 @@
+[
+ {
+  "fichier": "goog-20251231.xsd",
+  "sha256": "953aa49bd059b72b9d5b71a807924740f4643ecac525ee05fbd8779eacd0a8ed",
+  "url": "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000018/goog-20251231.xsd",
+  "obtenu": "téléchargé automatiquement depuis https://www.sec.gov/Archives/edgar/data/1652044/000165204426000018/goog-20251231.htm, le 2026-09-28T17:50:05+00:00"
+ },
+ {
+  "fichier": "goog-20251231_cal.xml",
+  "sha256": "c910154c1d8b0776592878ee869229a744d925192ad3dfccbbe3a96cf9b2bda6",
+  "url": "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000018/goog-20251231_cal.xml",
+  "obtenu": "téléchargé automatiquement depuis https://www.sec.gov/Archives/edgar/data/1652044/000165204426000018/goog-20251231.htm, le 2026-09-28T17:50:05+00:00"
+ }
+]

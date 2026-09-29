@@ -1,0 +1,14 @@
+[
+ {
+  "fichier": "aapl-20250927.xsd",
+  "sha256": "e697d106fae1543535c634bede6337b8f1ecd987e7655eb91c62913900ab6335",
+  "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.xsd",
+  "obtenu": "téléchargé automatiquement depuis https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm, le 2026-09-28T17:48:55+00:00"
+ },
+ {
+  "fichier": "aapl-20250927_cal.xml",
+  "sha256": "314091ba88cd58f392874866c19010ed9facdd643f34f0afbcf37137192c5f05",
+  "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927_cal.xml",
+  "obtenu": "téléchargé automatiquement depuis https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm, le 2026-09-28T17:48:55+00:00"
+ }
+]

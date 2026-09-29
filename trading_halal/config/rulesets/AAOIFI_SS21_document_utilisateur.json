@@ -1,0 +1,137 @@
+{
+  "id": "AAOIFI_SS21_SELON_DOCUMENT_UTILISATEUR_v1",
+  "validated": false,
+  "demo_only": false,
+  "warning": "Seuils AAOIFI SS 21 tels que CITÉS par le document de l'utilisateur, lui-même fondé sur des copies secondaires (copie de la Bourse des Philippines pour la norme 21). NON VALIDÉ : le document demande lui-même une validation par un sharia board nommé et une vérification sur l'édition imprimée. Le moteur refuse de l'appliquer à des données réelles tant que validated_by et validated_on sont vides.",
+  "reference_text": {
+    "name": "AAOIFI Shari'ah Standard No. 21, Financial Paper (Shares and Bonds), §3/4",
+    "version": "Émise en mai 2004 selon le document de l'utilisateur (§ 4, tableau) ; édition exacte non vérifiée",
+    "date": "2004-05",
+    "url_or_document": "Document fourni par l'utilisateur : « Actions, bourse et produits financiers en Islam : vérification et annotation de vos notes de cours » (PDF, 19 pages, reçu le 2026-09-28) — § 5.1 (extraits §3/4/1 à 3/4/5), § 5.2 (tableau comparatif), Réserves",
+    "pages_or_sections": "Document utilisateur, pages 5-6 (§ 5.1) ; norme citée §3/4/2, 3/4/3, 3/4/4, 3/4/5"
+  },
+  "validated_by": null,
+  "validated_on": null,
+  "activity_rules_source": "Document fourni par l'utilisateur : « Actions, bourse et produits financiers en Islam : vérification et annotation de vos notes de cours » (PDF, 19 pages, reçu le 2026-09-28) — Synthèse A.1 et § 3.1 (activité principale illicite : interdiction sans divergence)",
+  "divergence_notice": "Ce projet suit l'avis PERMISSIF sous conditions (AAOIFI SS 21), majoritaire dans la pratique. Les Académies de fiqh de l'OCI (rés. 63 (1/7), 1992) et de la Ligue islamique mondiale (Makka, 14e session, 1415 H) ainsi que la Lajna Dāʾima posent l'interdiction de principe des sociétés « mêlées ». Source : document de l'utilisateur, § 3.3 et Synthèse C.1.",
+  "allowed_instrument_types": [
+    "ACTION"
+  ],
+  "activity_rules": {
+    "SOFTWARE": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori : l'AAOIFI SS 21 §3/4/1 (cité § 5.1 du document) exclut seulement un objet social fondé sur le riba ou des biens interdits"
+    },
+    "HEALTHCARE": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori : l'AAOIFI SS 21 §3/4/1 (cité § 5.1 du document) exclut seulement un objet social fondé sur le riba ou des biens interdits"
+    },
+    "INDUSTRIALS": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori : l'AAOIFI SS 21 §3/4/1 (cité § 5.1 du document) exclut seulement un objet social fondé sur le riba ou des biens interdits"
+    },
+    "TRANSPORT": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori : l'AAOIFI SS 21 §3/4/1 (cité § 5.1 du document) exclut seulement un objet social fondé sur le riba ou des biens interdits"
+    },
+    "TELECOM": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori : l'AAOIFI SS 21 §3/4/1 (cité § 5.1 du document) exclut seulement un objet social fondé sur le riba ou des biens interdits"
+    },
+    "RETAIL": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori : l'AAOIFI SS 21 §3/4/1 (cité § 5.1 du document) exclut seulement un objet social fondé sur le riba ou des biens interdits"
+    },
+    "ENERGY": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori : l'AAOIFI SS 21 §3/4/1 (cité § 5.1 du document) exclut seulement un objet social fondé sur le riba ou des biens interdits"
+    },
+    "CHEMICALS": {
+      "status": "ADMISSIBLE",
+      "note": "Activité licite a priori : l'AAOIFI SS 21 §3/4/1 (cité § 5.1 du document) exclut seulement un objet social fondé sur le riba ou des biens interdits"
+    },
+    "CONVENTIONAL_BANKING": {
+      "status": "EXCLU",
+      "note": "Finance conventionnelle fondée sur l'intérêt (riba) — consensus selon le document (Synthèse A.1 ; § 3.1 : OCI 63 (1/7), Makka 1415 H, AAOIFI)"
+    },
+    "CONVENTIONAL_INSURANCE": {
+      "status": "EXCLU",
+      "note": "Assurance conventionnelle — consensus selon le document (Synthèse A.1 ; § 3.1 : OCI 63 (1/7), Makka 1415 H, AAOIFI)"
+    },
+    "ALCOHOL": {
+      "status": "EXCLU",
+      "note": "Production ou vente principale d'alcool — consensus selon le document (Synthèse A.1 ; § 3.1 : OCI 63 (1/7), Makka 1415 H, AAOIFI)"
+    },
+    "PORK": {
+      "status": "EXCLU",
+      "note": "Produits porcins — consensus selon le document (Synthèse A.1 ; § 3.1 : OCI 63 (1/7), Makka 1415 H, AAOIFI)"
+    },
+    "GAMBLING": {
+      "status": "EXCLU",
+      "note": "Jeux de hasard — consensus selon le document (Synthèse A.1 ; § 3.1 : OCI 63 (1/7), Makka 1415 H, AAOIFI)"
+    },
+    "ADULT_ENTERTAINMENT": {
+      "status": "EXCLU",
+      "note": "Divertissement pour adultes — consensus selon le document (Synthèse A.1 ; § 3.1 : OCI 63 (1/7), Makka 1415 H, AAOIFI)"
+    },
+    "TOBACCO": {
+      "status": "INCERTAIN",
+      "note": "Non traité par le document de l'utilisateur : à trancher par le sharia board"
+    },
+    "WEAPONS": {
+      "status": "INCERTAIN",
+      "note": "Non traité par le document de l'utilisateur : à trancher par le sharia board"
+    },
+    "MEDIA_ENTERTAINMENT": {
+      "status": "INCERTAIN",
+      "note": "Non traité par le document de l'utilisateur : à trancher par le sharia board"
+    },
+    "HOTELS_LEISURE": {
+      "status": "INCERTAIN",
+      "note": "Non traité par le document de l'utilisateur : à trancher par le sharia board"
+    }
+  },
+  "max_fundamentals_age_days": 200,
+  "max_fundamentals_age_days_source": "Choix technique du projet, PAS une règle de l'AAOIFI : la norme demande le « dernier bilan ou état financier vérifié » (§3/4/5, cité § 5.1).",
+  "financial_ratios": [
+    {
+      "id": "dette_a_interet",
+      "label": "Emprunts à intérêt / capitalisation boursière (AAOIFI 3/4/2)",
+      "numerator": "interest_bearing_debt",
+      "denominator": "market_cap",
+      "max": 0.3,
+      "calcul": "ponctuel_derniere_publication",
+      "source": "Document fourni par l'utilisateur : « Actions, bourse et produits financiers en Islam : vérification et annotation de vos notes de cours » (PDF, 19 pages, reçu le 2026-09-28) — § 5.1 citant AAOIFI SS 21 §3/4/2 : « does not exceed 30% of the market capitalization »"
+    },
+    {
+      "id": "liquidites_a_interet",
+      "label": "Dépôts à intérêt / capitalisation boursière (AAOIFI 3/4/3)",
+      "numerator": "cash_and_interest_bearing_investments",
+      "denominator": "market_cap",
+      "max": 0.3,
+      "calcul": "ponctuel_derniere_publication",
+      "source": "Document fourni par l'utilisateur : « Actions, bourse et produits financiers en Islam : vérification et annotation de vos notes de cours » (PDF, 19 pages, reçu le 2026-09-28) — § 5.1 citant AAOIFI SS 21 §3/4/3 : dépôts à intérêt ≤ 30 % de la capitalisation",
+      "field_note": "Le numérateur doit contenir les SEULS dépôts et placements rémunérés par intérêt, pas toute la trésorerie : à vérifier pour chaque donnée réelle."
+    },
+    {
+      "id": "revenus_non_conformes",
+      "label": "Revenus illicites / revenu total (AAOIFI 3/4/4)",
+      "numerator": "non_compliant_revenue",
+      "denominator": "total_revenue",
+      "max": 0.05,
+      "calcul": "ponctuel_derniere_publication",
+      "source": "Document fourni par l'utilisateur : « Actions, bourse et produits financiers en Islam : vérification et annotation de vos notes de cours » (PDF, 19 pages, reçu le 2026-09-28) — § 5.1 citant AAOIFI SS 21 §3/4/4 : revenus illicites ≤ 5 % du revenu total, intérêts perçus compris"
+    }
+  ],
+  "open_questions": [
+    "Validation par un sharia board nommé (document, Synthèse D) : obligatoire avant tout usage réel. Fiche à faire relire et signer : docs/FICHE_VALIDATION_SHARIA.md (décisions D01 à D17) ; le moteur exige ensuite validation_record (fiche signée, empreinte SHA-256, réponse à chaque décision).",
+    "Dénominateur du ratio de revenus illicites (3/4/4) — DÉCISION PROVISOIRE prise par l'assistant à la demande de l'utilisateur le 2026-09-29, à valider par le sharia board : « revenu total » tel que déclaré par la société, toutes sources confondues (document, lignes 270-271 : « 5 % du revenu total, quelle que soit leur source ») ; donc us-gaap:Revenues d'abord, les seuls revenus de contrats clients uniquement par repli prouvé ; pas de total établi ⇒ INCERTAIN ; jamais les revenus nets des charges d'intérêts (banques et assurances conventionnelles déjà EXCLU par l'activité).",
+    "§3/4/5 : « dernier état financier VÉRIFIÉ » ; le logiciel ne distingue pas encore états audités et non audités.",
+    "Date de la capitalisation boursière retenue (fin de période, date de publication, moyenne ?) : non précisée par le document.",
+    "Filtre mālikite des actifs monétaires (liquidités + créances ≤ ⅔, soit actifs réels ≥ ⅓, ou > 50 %) : à valider par un mufti mālikite (document § 7) ; non codé.",
+    "Tabac, armement, médias, hôtellerie : non traités par le document.",
+    "Délai de cession d'un titre devenu non conforme (document, Synthèse D).",
+    "Purification : méthode AAOIFI 3/4/6/4 (revenus illicites / nombre d'actions × actions détenues), détenteur en fin de période (3/4/6/1) ou prorata FCNA ; plus-values (divergence). Non codée.",
+    "Revente avant règlement-livraison (zone grise, document § 9)."
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "version": "edgar_v3",
+  "date": "2026-09-28",
+  "statut": "RETIRÉE (sonde du 28/09/2026) : le repli R1 -> total ne vérifiait que deux concepts ; American Express (10-K 2025) aurait reçu ses seuls revenus de contrats clients comme total. Remplacée par edgar_v4.",
+  "portee": "Faits companyfacts (SEC) en USD ; correspondance UN concept d'origine -> UN concept du projet, sans agrégation ni calcul. Aucune normalisation sans le document du dépôt.",
+  "regles": [
+    {
+      "id": "R0",
+      "source_concept": "us-gaap:Revenues",
+      "normalized_concept": "total_revenue",
+      "source_unit": "USD",
+      "period_type": "duration",
+      "justification": "Agrégat des revenus de l'entité (biens, services et autres activités, y compris les revenus hors contrats clients). Prioritaire pour total_revenue (revue n° 14)."
+    },
+    {
+      "id": "R1",
+      "source_concept": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+      "normalized_concept": "revenue_from_contracts_with_customers",
+      "source_unit": "USD",
+      "period_type": "duration",
+      "justification": "Revenus tirés des contrats avec les clients (ASC 606), hors taxes collectées : un COMPOSANT du revenu total, pas le total en général.",
+      "repli_total": {
+        "concept": "total_revenue",
+        "si_absents_du_document": [
+          "us-gaap:Revenues",
+          "us-gaap:RevenueNotFromContractWithCustomer"
+        ],
+        "explication": "Retenu comme total_revenue seulement si le document ne déclare, pour l'entité entière et la même période exacte, ni l'agrégat Revenues ni de revenus hors contrats clients ; marqué « REPLI : » dans le fait."
+      }
+    },
+    {
+      "id": "R2",
+      "source_concept": "us-gaap:Assets",
+      "normalized_concept": "total_assets",
+      "source_unit": "USD",
+      "period_type": "instant",
+      "justification": "Total des actifs comptabilisés à la date du bilan. Définition de la taxonomie recopiée depuis companyfacts (champ description)."
+    }
+  ],
+  "principes": {
+    "P1_deux_temps": "normalize ne fait que proposer ; reconcile-ixbrl normalise et rapproche à partir de la copie locale du document XBRL en ligne.",
+    "P2_dimensions": "« aucune dimension » n'est inscrit que si le document contient le fait dans un contexte sans segment ni scénario, pour la même entité et la même période exacte (D1 retirée : une valeur unique dans companyfacts ne le prouve pas).",
+    "P3_contexte": "le contexte est l'identifiant XBRL du document (X1 retirée).",
+    "T1_transformation": "aucune : valeur normalisée = valeur brute, unité « monnaie » + devise USD.",
+    "K1_conflit": "Conflit seulement entre concepts d'origine proposés vers le MÊME concept du projet (équivalents) ; un agrégat (R0) et son composant (R1) visent des concepts différents et ne sont jamais en conflit.",
+    "P4_total_composant": "Revenues présent ⇒ total_revenue ; RevenueFromContractWithCustomer… reste un composant. Revenues absent ⇒ repli contrôlé (voir R1)."
+  },
+  "non_normalises_volontairement": {
+    "us-gaap:SalesRevenueNet": "Concept retiré (2018) : non repris.",
+    "interest_bearing_debt": "Agrégat (LongTermDebt + CommercialPaper + autres ?) : périmètre à décider par le référentiel validé (locations, etc.).",
+    "cash_and_interest_bearing_investments": "Exige une qualification ligne à ligne dans les notes.",
+    "non_compliant_revenue": "Aucun concept direct ; NonoperatingIncomeExpense est un solde net.",
+    "market_cap": "Exige un cours non ajusté daté : source non établie.",
+    "dei:EntityCommonStockSharesOutstanding": "Catégorie d'actions non établissable automatiquement : C1 retirée (liste actuelle des tickers = information future ; catégories non cotées ignorées ; un ticker n'identifie pas le type de titre).",
+    "us-gaap:CommonStockSharesOutstanding": "Même raison : catégories d'actions ordinaires (cotées ou non) à établir sur le document, à la date du fait, par une personne."
+  }
+}

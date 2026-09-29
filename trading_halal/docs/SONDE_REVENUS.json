@@ -1,0 +1,597 @@
+[
+ {
+  "cik": "0000320193",
+  "nom": "Apple Inc.",
+  "accn": "0000320193-25-000079",
+  "exercice": "2024-09-29 → 2025-09-27",
+  "decision": "repli R1 bloqué (aucune preuve positive : schémas officiels non disponibles)",
+  "autres": {},
+  "r1": [
+   "416,161",
+   "6"
+  ],
+  "revenues": null,
+  "r0b": null,
+  "preuve": "",
+  "motif": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0000789019",
+  "nom": "MICROSOFT CORP",
+  "accn": "0001193125-26-323660",
+  "exercice": "2025-07-01 → 2026-06-30",
+  "decision": "repli R1 bloqué (aucune preuve positive : schémas officiels non disponibles)",
+  "autres": {},
+  "r1": [
+   "331,839",
+   "6"
+  ],
+  "revenues": null,
+  "r0b": null,
+  "preuve": "",
+  "motif": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0001652044",
+  "nom": "Alphabet Inc.",
+  "accn": "0001652044-26-000018",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "Revenues -> total",
+  "autres": {},
+  "r1": null,
+  "revenues": [
+   "402,836",
+   "6"
+  ],
+  "r0b": null,
+  "preuve": "",
+  "motif": "",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0001130464",
+  "nom": "BLACK HILLS CORP /SD/",
+  "accn": "0001193125-26-046028",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "Revenues -> total",
+  "autres": {},
+  "r1": [
+   "2,286.2",
+   "6"
+  ],
+  "revenues": [
+   "2,310.0",
+   "6"
+  ],
+  "r0b": null,
+  "preuve": "",
+  "motif": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0000726728",
+  "nom": "REALTY INCOME CORP",
+  "accn": "0000726728-26-000011",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "Revenues -> total",
+  "autres": {
+   "us-gaap:LeaseIncome": [
+    "5,437,332",
+    "3"
+   ],
+   "us-gaap:OperatingLeaseVariableLeaseIncome": [
+    "18.2",
+    "6"
+   ]
+  },
+  "r1": null,
+  "revenues": [
+   "5,749,377",
+   "3"
+  ],
+  "r0b": null,
+  "preuve": "",
+  "motif": "",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0001063761",
+  "nom": "SIMON PROPERTY GROUP INC.",
+  "accn": "0001104659-26-019419",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "Revenues -> total",
+  "autres": {
+   "us-gaap:LeaseIncome": [
+    "5,839,160",
+    "3"
+   ],
+   "us-gaap:OperatingLeaseLeaseIncome": [
+    "5,839,160",
+    "3"
+   ],
+   "us-gaap:OperatingLeaseLeaseIncomeLeasePayments": [
+    "4,727,341",
+    "3"
+   ],
+   "us-gaap:VariableLeaseIncome": [
+    "1,111,819",
+    "3"
+   ],
+   "{http://www.simon.com/20251231}ManagementFeesAndOtherRevenues": [
+    "144,426",
+    "3"
+   ]
+  },
+  "r1": null,
+  "revenues": [
+   "6,364,505",
+   "3"
+  ],
+  "r0b": null,
+  "preuve": "",
+  "motif": "",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0001045609",
+  "nom": "Prologis, Inc.",
+  "accn": "0001193125-26-051453",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "Revenues -> total",
+  "autres": {
+   "{http://www.prologis.com/20251231}ManagementFeesRevenue": [
+    "592,353",
+    "3"
+   ],
+   "{http://www.prologis.com/20251231}OtherRealEstateRevenue": [
+    "38,870",
+    "3"
+   ],
+   "{http://www.prologis.com/20251231}RentalRevenue": [
+    "8,158,904",
+    "3"
+   ]
+  },
+  "r1": null,
+  "revenues": [
+   "8,790,127",
+   "3"
+  ],
+  "r0b": null,
+  "preuve": "",
+  "motif": "",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0000019617",
+  "nom": "JPMORGAN CHASE & CO",
+  "accn": "0001628280-26-008131",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "Revenues -> total",
+  "autres": {
+   "us-gaap:BrokerageCommissionsRevenue": [
+    "3,726",
+    "6"
+   ],
+   "us-gaap:FairValueNetDerivativeAssetLiabilityMeasuredOnRecurringBasisUnobservableInputsReconciliationSales": [
+    "3,674",
+    "6"
+   ],
+   "us-gaap:InterestIncomeOperating": [
+    "193,341",
+    "6"
+   ],
+   "us-gaap:InvestmentBankingRevenue": [
+    "9,615",
+    "6"
+   ],
+   "us-gaap:NoninterestIncome": [
+    "87,004",
+    "6"
+   ],
+   "us-gaap:NoninterestIncomeOther": [
+    "6,174",
+    "6"
+   ],
+   "us-gaap:OperatingLeaseLeaseIncome": [
+    "3,803",
+    "6"
+   ],
+   "us-gaap:PrincipalTransactionsRevenue": [
+    "27,212",
+    "6"
+   ],
+   "us-gaap:RevenuesNetOfInterestExpense": [
+    "182,447",
+    "6"
+   ],
+   "{http://www.jpmorganchase.com/20251231}AdministrativeServicesRevenue1": [
+    "2,764",
+    "6"
+   ],
+   "{http://www.jpmorganchase.com/20251231}InvestmentBankingAdvisoryFeeRevenue": [
+    "3,503",
+    "6"
+   ]
+  },
+  "r1": null,
+  "revenues": [
+   "182,447",
+   "6"
+  ],
+  "r0b": null,
+  "preuve": "",
+  "motif": "",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/srt/2025/elts/srt-2025.xsd",
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0000070858",
+  "nom": "BANK OF AMERICA CORP /DE/",
+  "accn": "0000070858-26-000157",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "Revenues -> total",
+  "autres": {
+   "us-gaap:FairValueNetDerivativeAssetLiabilityMeasuredOnRecurringBasisUnobservableInputsReconciliationSales": [
+    "1,859",
+    "6"
+   ],
+   "us-gaap:InterestAndDividendIncomeOperating": [
+    "138,566",
+    "6"
+   ],
+   "us-gaap:LeaseIncome": [
+    "2,187",
+    "6"
+   ],
+   "us-gaap:NoninterestIncome": [
+    "53,001",
+    "6"
+   ],
+   "us-gaap:NoninterestIncomeOtherOperatingIncome": [
+    "1,585",
+    "6"
+   ],
+   "us-gaap:OperatingLeaseLeaseIncome": [
+    "942",
+    "6"
+   ],
+   "{http://www.bankofamerica.com/20251231}RevenuesNetOfInterestExpenseFullTaxEquivalentBasis": [
+    "113,706",
+    "6"
+   ],
+   "{http://www.bankofamerica.com/20251231}SalesTypeAndDirectFinancingLeasesLeaseIncome": [
+    "1,245",
+    "6"
+   ]
+  },
+  "r1": null,
+  "revenues": [
+   "113,097",
+   "6"
+  ],
+  "r0b": null,
+  "preuve": "",
+  "motif": "",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0001326160",
+  "nom": "Duke Energy CORP",
+  "accn": "0001326160-26-000014",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "R0b non prouvé (schémas officiels non disponibles)",
+  "autres": {
+   "us-gaap:RegulatedOperatingRevenueElectricNonNuclear": [
+    "29,060",
+    "6"
+   ],
+   "us-gaap:RegulatedOperatingRevenueGas": [
+    "2,870",
+    "6"
+   ],
+   "us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax": [
+    "31,741",
+    "6"
+   ],
+   "us-gaap:UnregulatedOperatingRevenue": [
+    "307",
+    "6"
+   ]
+  },
+  "r1": null,
+  "revenues": null,
+  "r0b": [
+   "32,237",
+   "6"
+  ],
+  "preuve": "",
+  "motif": "us-gaap:RegulatedAndUnregulatedOperatingRevenue n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0000732717",
+  "nom": "AT&T INC.",
+  "accn": "0000732717-26-000120",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "Revenues -> total",
+  "autres": {},
+  "r1": null,
+  "revenues": [
+   "125,648",
+   "6"
+  ],
+  "r0b": null,
+  "preuve": "",
+  "motif": "",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0000104169",
+  "nom": "Walmart Inc.",
+  "accn": "0000104169-26-000055",
+  "exercice": "2025-02-01 → 2026-01-31",
+  "decision": "Revenues -> total",
+  "autres": {},
+  "r1": [
+   "706,413",
+   "6"
+  ],
+  "revenues": [
+   "713,163",
+   "6"
+  ],
+  "r0b": null,
+  "preuve": "",
+  "motif": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0000034088",
+  "nom": "EXXON MOBIL CORP",
+  "accn": "0000034088-26-000045",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "Revenues -> total",
+  "autres": {
+   "{http://www.exxonmobil.com/20251231}AssetRetirementObligationReductionDueToPropertySales": [
+    "927",
+    "6"
+   ],
+   "{http://www.exxonmobil.com/20251231}TotalIncomeSalesBasedAndOtherTaxes": [
+    "40,434",
+    "6"
+   ]
+  },
+  "r1": null,
+  "revenues": [
+   "332,238",
+   "6"
+  ],
+  "r0b": null,
+  "preuve": "",
+  "motif": "",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0000731766",
+  "nom": "UNITEDHEALTH GROUP INC",
+  "accn": "0000731766-26-000062",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "Revenues -> total",
+  "autres": {
+   "us-gaap:PremiumsEarnedNet": [
+    "352,229",
+    "6"
+   ]
+  },
+  "r1": null,
+  "revenues": [
+   "447,567",
+   "6"
+  ],
+  "r0b": null,
+  "preuve": "",
+  "motif": "",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0001403161",
+  "nom": "VISA INC.",
+  "accn": "0001403161-25-000089",
+  "exercice": "2024-10-01 → 2025-09-30",
+  "decision": "repli R1 bloqué (aucune preuve positive : schémas officiels non disponibles)",
+  "autres": {},
+  "r1": [
+   "40,000",
+   "6"
+  ],
+  "revenues": null,
+  "r0b": null,
+  "preuve": "",
+  "motif": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0000037996",
+  "nom": "FORD MOTOR CO",
+  "accn": "0000037996-26-000015",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "repli R1 bloqué (aucune preuve positive : schémas officiels non disponibles)",
+  "autres": {},
+  "r1": [
+   "187,267",
+   "6"
+  ],
+  "revenues": null,
+  "r0b": null,
+  "preuve": "",
+  "motif": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0000018230",
+  "nom": "CATERPILLAR INC",
+  "accn": "0000018230-26-000008",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "Revenues -> total",
+  "autres": {
+   "us-gaap:LeaseIncome": [
+    "1,689",
+    "6"
+   ],
+   "us-gaap:OperatingLeaseLeaseIncome": [
+    "1,216",
+    "6"
+   ],
+   "us-gaap:SalesTypeLeaseRevenue": [
+    "473",
+    "6"
+   ]
+  },
+  "r1": null,
+  "revenues": [
+   "67,589",
+   "6"
+  ],
+  "r0b": null,
+  "preuve": "",
+  "motif": "",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0000012927",
+  "nom": "BOEING CO",
+  "accn": "0001628280-26-004357",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "Revenues -> total",
+  "autres": {
+   "us-gaap:OperatingLeaseLeaseIncome": [
+    "47",
+    "6"
+   ],
+   "us-gaap:SalesTypeAndDirectFinancingLeasesProfitLoss": [
+    "0",
+    "6"
+   ],
+   "{http://www.boeing.com/20251231}SalesTypeandDirectFinancingLeasesLeaseIncome": [
+    "6",
+    "6"
+   ]
+  },
+  "r1": null,
+  "revenues": [
+   "89,463",
+   "6"
+  ],
+  "r0b": null,
+  "preuve": "",
+  "motif": "",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0000021344",
+  "nom": "COCA COLA CO",
+  "accn": "0001628280-26-010047",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "Revenues -> total",
+  "autres": {
+   "{http://www.thecocacolacompany.com/20251231}IntersegmentRevenue": [
+    "—",
+    "6"
+   ],
+   "{http://www.thecocacolacompany.com/20251231}RevenueForReportableSegments": [
+    "47,941",
+    "6"
+   ]
+  },
+  "r1": null,
+  "revenues": [
+   "47,941",
+   "6"
+  ],
+  "r0b": null,
+  "preuve": "",
+  "motif": "",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ },
+ {
+  "cik": "0000004962",
+  "nom": "AMERICAN EXPRESS CO",
+  "accn": "0000004962-26-000080",
+  "exercice": "2025-01-01 → 2025-12-31",
+  "decision": "repli R1 bloqué (autres revenus)",
+  "autres": {
+   "us-gaap:InterestAndDividendIncomeOperating": [
+    "25,598",
+    "6"
+   ],
+   "us-gaap:InterestAndDividendIncomeSecurities": [
+    "63",
+    "6"
+   ],
+   "us-gaap:NoninterestIncome": [
+    "54,865",
+    "6"
+   ],
+   "us-gaap:RevenuesNetOfInterestExpense": [
+    "72,229",
+    "6"
+   ],
+   "{http://americanexpress.com/20251231}TotalRevenuesNetOfInterestExpenseAfterProvisionsForLosses": [
+    "66,973",
+    "6"
+   ]
+  },
+  "r1": [
+   "41,304",
+   "6"
+  ],
+  "revenues": null,
+  "r0b": null,
+  "preuve": "",
+  "motif": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement",
+  "schemas_absents": [
+   "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"
+  ]
+ }
+]
