@@ -139,3 +139,19 @@ date de la capitalisation retenue ; filtre mālikite des actifs monétaires (liq
 mufti mālikite, § 7) ; tabac, armement, médias, hôtellerie (non traités) ; délai de cession d'un titre devenu non
 conforme ; purification (méthode AAOIFI 3/4/6/4, détenteur en fin de période ou prorata FCNA, plus-values) ; revente
 avant règlement-livraison ; zakāt (mudīr / muḥtakir). La liste complète figure dans `open_questions` du référentiel.
+
+## 10. Décision provisoire : dénominateur du ratio de revenus illicites (29/09/2026)
+
+À la demande de l'utilisateur (« tranche à ma place »), l'assistant a fixé une position **provisoire**, fondée sur le
+document de l'utilisateur et non sur sa mémoire, à faire valider par un sharia board nommé :
+
+- **Dénominateur** : le **revenu total** déclaré par la société, toutes sources confondues. Source : document de
+  l'utilisateur, lignes 270-271 (AAOIFI SS 21 §3/4/4) : « les revenus issus d'un élément interdit ne doivent pas
+  dépasser 5 % du revenu total, quelle que soit leur source ».
+- En pratique : `us-gaap:Revenues` d'abord ; les seuls revenus de contrats clients (ASC 606) seulement par repli
+  **prouvé** par les calculs du dépôt ; **aucun total établi ⇒ INCERTAIN** (jamais un substitut).
+- **Jamais** les revenus nets des charges d'intérêts (`revenues_net_of_interest_expense`) : les banques et assurances
+  conventionnelles sont déjà **EXCLU** par le filtre d'activité, avant tout ratio. Le catalogue des ratios n'admet que
+  `total_revenue` comme dénominateur (verrouillé par un test).
+- Le référentiel reste **non validé** : la simulation sur données réelles reste refusée. Aucun résultat n'est une
+  certification « 100 % halal ».

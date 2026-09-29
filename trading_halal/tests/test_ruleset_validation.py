@@ -132,3 +132,23 @@ class HoldingPolicyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DenominatorDecisionTests(unittest.TestCase):
+    """Décision du 29/09/2026 (provisoire, à valider par un sharia board) : le dénominateur du ratio de revenus
+    illicites est le REVENU TOTAL déclaré (document de l'utilisateur, AAOIFI SS 21 §3/4/4) ; jamais les revenus nets
+    des charges d'intérêts ni les seuls revenus de contrats clients."""
+
+    def test_only_total_revenue_is_an_allowed_denominator(self):
+        from halal_sim.screening import RATIO_CATALOG
+        self.assertEqual(RATIO_CATALOG["revenus_non_conformes"]["denominators"], {"total_revenue"})
+
+    def test_user_ruleset_uses_total_revenue_and_excludes_conventional_finance(self):
+        import json
+        from helpers import ROOT
+        r = json.loads((ROOT / "config" / "rulesets" / "AAOIFI_SS21_document_utilisateur.json").read_text(encoding="utf-8"))
+        ratio = next(x for x in r["financial_ratios"] if x["id"] == "revenus_non_conformes")
+        self.assertEqual(ratio["denominator"], "total_revenue")
+        self.assertEqual((r["activity_rules"]["CONVENTIONAL_BANKING"]["status"],
+                          r["activity_rules"]["CONVENTIONAL_INSURANCE"]["status"]), ("EXCLU", "EXCLU"))
+        self.assertFalse(r["validated"])

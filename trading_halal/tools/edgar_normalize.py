@@ -685,9 +685,12 @@ def position_proof(concept: str, roles: dict, arcs: list, spec: dict,
     return None, why
 
 
-def statement_presence(concept: str, roles: dict, arcs: list, spec: dict) -> tuple[str | None, str]:
+def statement_presence(concept: str, roles: dict, arcs: list, spec: dict,
+                       values: dict | None = None) -> tuple[str | None, str]:
     """Présence d'un concept (résolu) dans les calculs d'un rôle de catégorie `spec["categorie"]` (état principal),
-    comme total ou contributeur, avec tous les concepts de ce calcul résolus. Extraction typée directe, sans repli."""
+    comme total ou contributeur, avec tous les concepts de ce calcul résolus ; et, si `values` est fourni, ce calcul
+    doit être cohérent ET complet pour la période (mêmes exigences que le repli). Extraction typée, sans repli."""
+    why = f"{concept} absent des calculs résolus de tout rôle {spec['categorie']}"
     for role, parent, child, w in arcs:
         if concept not in (parent, child):
             continue
@@ -697,9 +700,18 @@ def statement_presence(concept: str, roles: dict, arcs: list, spec: dict) -> tup
         group = [a for a in arcs if a[0] == role and a[1] == parent]
         if any(c is None for _, _, c, _ in group) or parent is None:
             continue
-        return (f"rôle « {cat} - {title} » : {parent} = "
-                + " ".join(f"{'+' if w2 > 0 else '−'} {c}" for _, _, c, w2 in group)), ""
-    return None, f"{concept} absent des calculs résolus de tout rôle {spec['categorie']}"
+        text = (f"rôle « {cat} - {title} » : {parent} = "
+                + " ".join(f"{'+' if w2 > 0 else '−'} {c}" for _, _, c, w2 in group))
+        if values is not None:
+            coherent, complete, detail = calculation_verdicts(parent, [(c, w2) for _, _, c, w2 in group], values)
+            verdicts = (f"calcul_XBRL_coherent={'oui' if coherent else 'non' if coherent is False else 'non évaluable'}"
+                        f" ; preuve_complete={'oui' if complete else 'non'}")
+            if not (coherent and complete):
+                why = f"rôle « {title} » : {verdicts} ({detail})"
+                continue
+            text += f" ; {verdicts} ; {detail}"
+        return text, ""
+    return None, why
 
 
 def _annexes(folder: Path) -> list[Path]:
@@ -870,7 +882,7 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path, taxon
         position = None
         pvals = period_values(prop["period_start"], prop["period_end"], prop["source_unit"])
         if reason is None and rule.get("preuve_presence"):
-            position, why = statement_presence(rule["source_concept"], roles, arcs, rule["preuve_presence"])
+            position, why = statement_presence(rule["source_concept"], roles, arcs, rule["preuve_presence"], pvals)
             if position is None:
                 reason = f"présence dans un état principal non prouvée ({annex_note}) : {why}"
         if reason is None and rule.get("preuve_position"):

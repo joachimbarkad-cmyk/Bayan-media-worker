@@ -125,6 +125,7 @@
   ],
   "open_questions": [
     "Validation par un sharia board nommé (document, Synthèse D) : obligatoire avant tout usage réel.",
+    "Dénominateur du ratio de revenus illicites (3/4/4) — DÉCISION PROVISOIRE prise par l'assistant à la demande de l'utilisateur le 2026-09-29, à valider par le sharia board : « revenu total » tel que déclaré par la société, toutes sources confondues (document, lignes 270-271 : « 5 % du revenu total, quelle que soit leur source ») ; donc us-gaap:Revenues d'abord, les seuls revenus de contrats clients uniquement par repli prouvé ; pas de total établi ⇒ INCERTAIN ; jamais les revenus nets des charges d'intérêts (banques et assurances conventionnelles déjà EXCLU par l'activité).",
     "§3/4/5 : « dernier état financier VÉRIFIÉ » ; le logiciel ne distingue pas encore états audités et non audités.",
     "Date de la capitalisation boursière retenue (fin de période, date de publication, moyenne ?) : non précisée par le document.",
     "Filtre mālikite des actifs monétaires (liquidités + créances ≤ ⅔, soit actifs réels ≥ ⅓, ou > 50 %) : à valider par un mufti mālikite (document § 7) ; non codé.",

@@ -493,6 +493,12 @@ class TotalAndComponentTests(Base):
         self.assertFalse(en.within_precision(Decimal("700400000"), "-6"))
         self.assertTrue(en.within_precision(Decimal("700400000"), "INF"))
 
+    def test_not_evaluable_is_distinct_from_incoherent(self):
+        vals = {"a": (Decimal(60), "0")}
+        self.assertIsNone(en.calculation_verdicts("T", [("a", 1.0)], vals)[0])          # total absent
+        self.assertIsNone(en.calculation_verdicts("T", [("x", 1.0)], {"T": (Decimal(1), "0")})[0])  # aucun contributeur
+        self.assertIs(en.calculation_verdicts("T", [("a", 1.0)], {"T": (Decimal(1), "0"), **vals})[0], False)
+
     def test_calculation_verdicts_unit(self):
         vals = {"T": (Decimal(100), "0"), "a": (Decimal(60), "0"), "b": (Decimal(40), "0")}
         self.assertEqual(en.calculation_verdicts("T", [("a", 1.0), ("b", 1.0)], vals)[:2], (True, True))
@@ -515,7 +521,9 @@ class TotalAndComponentTests(Base):
         rules["regles"].append({"id": "R0c", "source_concept": RN, "normalized_concept": "revenues_net_of_interest_expense",
                                 "source_unit": "USD", "period_type": "duration", "justification": "banque",
                                 "preuve_presence": {"categorie": "Statement"}})
-        doc = [(RN, "c-1", "usd", "900", "6", "-6", False)]
+        doc = [(RN, "c-1", "usd", "900", "6", "-6", False),
+               ("us-gaap:InterestIncomeExpenseNet", "c-1", "usd", "500", "6", "-6", False),
+               ("us-gaap:NoninterestIncome", "c-1", "usd", "400", "6", "-6", False)]
         kids = (("us-gaap:InterestIncomeExpenseNet", 1.0), ("us-gaap:NoninterestIncome", 1.0))
         for role_def, expected in ((STATEMENT, "revenues_net_of_interest_expense"),
                                    ("0000040 - Disclosure - Revenus", None), (None, None)):
@@ -534,6 +542,21 @@ class TotalAndComponentTests(Base):
                 f = next(r for r in self.facts().values() if r["source_concept"] == RN)
                 self.assertEqual(f["normalized_concept"] or None, expected)
                 self.assertNotEqual(f["normalized_concept"], "total_revenue")
+        # décision revue n° 17 (b) : le calcul de l'état doit aussi être cohérent et complet pour la période
+        for label, facts in (("contributeur absent", doc[:2]),
+                             ("incohérent", [doc[0], doc[1], ("us-gaap:NoninterestIncome", "c-1", "usd", "450", "6",
+                                                               "-6", False)])):
+            with self.subTest(label):
+                self.mutate_raw(cf)
+                shutil.rmtree(self.out)
+                ec.convert(self.raw, self.out, {"10-K", "10-Q"})
+                d = self.tmp / "annexes"
+                shutil.rmtree(d, ignore_errors=True)
+                d.mkdir()
+                rep = self.reconcile(ixbrl(facts), calc_annexes(d, parent=RN, children=kids))
+                self.assertEqual(next(r for r in self.facts().values() if r["source_concept"] == RN)
+                                 ["normalized_concept"], "")
+                self.assertTrue(any("preuve_complete=non" in e for e in rep["echecs"]))
         # un contributeur non résolu dans le calcul : pas de présence prouvée
         self.mutate_raw(cf)
         shutil.rmtree(self.out)
