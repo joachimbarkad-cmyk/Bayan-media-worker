@@ -89,6 +89,21 @@ Le service Railway n’a pas pu être appelé depuis l’environnement de test :
 
 **Vérification locale** (uid 10001, 2 threads, même vidéo, 2 exports) : 2 × OK en ~180 s, 97,8 Mo, 1920×1080, 180,0 s ; pic mémoire FFmpeg **533 Mo** ; sous-titre 32 incrusté à 1:34. La production doit être redéployée avec ce correctif puis le test relancé.
 
+### Rendu plus rapide et journaux
+
+Le débit étant plafonné, le preset x264 change surtout la vitesse et la mémoire, pas la taille. Mesures sur 60 s de la même source, 2 threads :
+
+| Preset | Temps | Taille | Mémoire FFmpeg | SSIM (30 s, sans sous-titres) |
+|---|---|---|---|---|
+| medium (avant) | 59 s | 32,8 Mo | 518 Mo | 0,9924 |
+| **faster (nouveau défaut)** | **37 s** | 32,8 Mo | **378 Mo** | 0,9920 |
+| veryfast | 25 s | 32,8 Mo | 310 Mo | 0,9915 |
+
+- `BAYAN_X264_PRESET=faster` par défaut (réglable).
+- Le service écrit une ligne par étape de traitement (démarré, terminé avec durée et taille, bloqué, échoué avec le motif) : les échecs apparaissent désormais dans les journaux Railway. Aucun jeton, aucune URL, aucun texte de sous-titre n’y figure.
+
+Parcours complet rejoué (uid 10001, 2 threads, 2 exports) : **117–120 s par export au lieu de 177–180 s**, 97,7 Mo, pic mémoire FFmpeg **393 Mo** (au lieu de 533 Mo).
+
 ## Refaire le test
 
 ```sh

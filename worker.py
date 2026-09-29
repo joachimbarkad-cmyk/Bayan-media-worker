@@ -290,6 +290,8 @@ def cpu_quota(root=Path('/sys/fs/cgroup')):
 
 # FFmpeg starts decoder and x264 threads per visible core; on a many-core host that exceeds the memory limit (1 GB on Railway).
 FFMPEG_THREADS=int(os.environ.get('BAYAN_FFMPEG_THREADS','0')) or min(4,cpu_quota())
+# 'faster' vs 'medium' at the capped bitrate: 1.6x quicker, -27 % memory, SSIM 0.9920 vs 0.9924 (docs/test-parcours-3min.md).
+X264_PRESET=os.environ.get('BAYAN_X264_PRESET','faster')
 
 def drop_superseded_exports(id,asset):
     """A new render of the same media replaces older MP4s; they can be regenerated from the studio."""
@@ -312,7 +314,7 @@ def render_video(id,source,ass,quality,folder):
     if quality in ('720','1080'):filters.append(f"scale=w=-2:h='min(ih,{quality})'")
     filters.append("ass=filename='captions.ass'")
     threads=str(FFMPEG_THREADS)
-    args=['ffmpeg','-nostdin','-y','-v','error','-threads',threads,'-i',str(source),'-filter_threads',threads,'-vf',','.join(filters),'-map','0:v:0','-map','0:a:0?','-c:v','libx264','-preset','medium','-crf','20','-threads',threads,'-maxrate',str(rate),'-bufsize',str(rate*2),'-pix_fmt','yuv420p','-c:a','aac','-b:a',str(AUDIO_BPS),'-movflags','+faststart','-progress','pipe:1','-nostats',str(output)]
+    args=['ffmpeg','-nostdin','-y','-v','error','-threads',threads,'-i',str(source),'-filter_threads',threads,'-vf',','.join(filters),'-map','0:v:0','-map','0:a:0?','-c:v','libx264','-preset',X264_PRESET,'-crf','20','-threads',threads,'-maxrate',str(rate),'-bufsize',str(rate*2),'-pix_fmt','yuv420p','-c:a','aac','-b:a',str(AUDIO_BPS),'-movflags','+faststart','-progress','pipe:1','-nostats',str(output)]
     log=folder/'ffmpeg-error.log';update(id,stage='Incrustation des sous-titres — H.264 / AAC',progress=0)
     with log.open('w') as errors:
         process=subprocess.Popen(args,cwd=folder,stdout=subprocess.PIPE,stderr=errors,text=True)
@@ -339,8 +341,13 @@ def render_video(id,source,ass,quality,folder):
     if abs(rendered['duration']-meta['duration'])>2:raise RuntimeError('La durée du fichier exporté ne correspond pas à l’original.')
     return {'file':'export.mp4','size':output.stat().st_size,'duration':rendered['duration'],'width':rendered['width'],'height':rendered['height']}
 
+def log(message):
+    # Job lifecycle only: never tokens, URLs or subtitle text.
+    print(time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),message,flush=True)
+
 def process_job(id,payload):
-    folder=ROOT/id;folder.mkdir(exist_ok=True)
+    folder=ROOT/id;folder.mkdir(exist_ok=True);started=time.time();kind=payload.get('kind')
+    log(f'job {id} {kind} démarré')
     try:
         update(id,status='running',stage='Préparation',progress=None)
         p=payload['project'];kind=payload['kind'];source=None
@@ -374,8 +381,11 @@ def process_job(id,payload):
             if not paid_enabled(payload):raise NeedsConfiguration('Utilisez Traduire avec ChatGPT dans le studio. Les appels à une API payante sont désactivés.')
             result={'segments':translate(id,p['segments'],p,payload.get('glossary',''),payload.get('instruction',''),payload.get('ids'))}
         update(id,status='complete',stage='Traitement terminé',progress=100,result=result)
-    except NeedsConfiguration as e:update(id,status='blocked',error=str(e),progress=None)
-    except Exception as e:update(id,status='failed',error=str(e)[:800],progress=None)
+        log(f'job {id} {kind} terminé en {time.time()-started:.0f} s'+(f" ({result['size']/1e6:.1f} Mo)" if kind=='export' else ''))
+    except NeedsConfiguration as e:
+        update(id,status='blocked',error=str(e),progress=None);log(f'job {id} {kind} bloqué : {e}')
+    except Exception as e:
+        update(id,status='failed',error=str(e)[:800],progress=None);log(f'job {id} {kind} échoué après {time.time()-started:.0f} s : {str(e)[:800]}')
     finally:
         for pattern in ('source.*','audio-*.wav'):
             for temporary in folder.glob(pattern):temporary.unlink(missing_ok=True)
@@ -458,4 +468,5 @@ if __name__=='__main__':
     init_db();threading.Thread(target=worker_loop,daemon=True).start()
     server=ThreadingHTTPServer((os.environ.get('HOST','0.0.0.0'),int(os.environ.get('PORT','8080'))),Handler)
     server.daemon_threads=True
+    log(f'Bayān prêt : FFmpeg {FFMPEG_THREADS} threads, preset {X264_PRESET}, {MAX_BYTES//1024**2} Mo max')
     server.serve_forever()
