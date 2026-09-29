@@ -61,6 +61,11 @@ class MediaTest(unittest.TestCase):
         first=w.new_job(payload);w.process_job(first['id'],payload);self.assertTrue((w.ROOT/first['id']/'export.mp4').exists())
         second=w.new_job(payload);w.process_job(second['id'],payload);self.assertEqual(w.job_state(second['id'])['status'],'complete')
         self.assertFalse((w.ROOT/first['id']/'export.mp4').exists());self.assertTrue((w.ROOT/second['id']/'export.mp4').exists())
+    def test_12_ffmpeg_threads_follow_cpu_quota(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=pathlib.Path(d);(root/'cpu.max').write_text('200000 100000\n');self.assertEqual(w.cpu_quota(root),2)
+            (root/'cpu.max').write_text('max 100000\n');self.assertEqual(w.cpu_quota(root),os.cpu_count())
+        self.assertLessEqual(w.FFMPEG_THREADS,4)
     def test_11_youtube_bot_check_is_actionable(self):
         class DownloadError(Exception):pass
         class FakeYDL:

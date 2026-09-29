@@ -276,6 +276,21 @@ def video_bitrate(meta,height):
     budget=int(MAX_BYTES*2*8*.9/max(1,meta['duration']))-AUDIO_BPS
     return max(300_000,min(cap,budget))
 
+def cpu_quota(root=Path('/sys/fs/cgroup')):
+    """CPUs actually granted to the container: os.cpu_count() sees every core of the host."""
+    try:
+        quota,period=(root/'cpu.max').read_text().split()[:2]
+        if quota!='max':return max(1,math.ceil(int(quota)/int(period)))
+    except (OSError,ValueError):pass
+    try:
+        quota=int((root/'cpu'/'cpu.cfs_quota_us').read_text());period=int((root/'cpu'/'cpu.cfs_period_us').read_text())
+        if quota>0:return max(1,math.ceil(quota/period))
+    except (OSError,ValueError):pass
+    return os.cpu_count() or 1
+
+# FFmpeg starts decoder and x264 threads per visible core; on a many-core host that exceeds the memory limit (1 GB on Railway).
+FFMPEG_THREADS=int(os.environ.get('BAYAN_FFMPEG_THREADS','0')) or min(4,cpu_quota())
+
 def drop_superseded_exports(id,asset):
     """A new render of the same media replaces older MP4s; they can be regenerated from the studio."""
     with database() as db:
@@ -296,7 +311,8 @@ def render_video(id,source,ass,quality,folder):
     filters=[]
     if quality in ('720','1080'):filters.append(f"scale=w=-2:h='min(ih,{quality})'")
     filters.append("ass=filename='captions.ass'")
-    args=['ffmpeg','-nostdin','-y','-v','error','-i',str(source),'-vf',','.join(filters),'-map','0:v:0','-map','0:a:0?','-c:v','libx264','-preset','medium','-crf','20','-maxrate',str(rate),'-bufsize',str(rate*2),'-pix_fmt','yuv420p','-c:a','aac','-b:a',str(AUDIO_BPS),'-movflags','+faststart','-progress','pipe:1','-nostats',str(output)]
+    threads=str(FFMPEG_THREADS)
+    args=['ffmpeg','-nostdin','-y','-v','error','-threads',threads,'-i',str(source),'-filter_threads',threads,'-vf',','.join(filters),'-map','0:v:0','-map','0:a:0?','-c:v','libx264','-preset','medium','-crf','20','-threads',threads,'-maxrate',str(rate),'-bufsize',str(rate*2),'-pix_fmt','yuv420p','-c:a','aac','-b:a',str(AUDIO_BPS),'-movflags','+faststart','-progress','pipe:1','-nostats',str(output)]
     log=folder/'ffmpeg-error.log';update(id,stage='Incrustation des sous-titres — H.264 / AAC',progress=0)
     with log.open('w') as errors:
         process=subprocess.Popen(args,cwd=folder,stdout=subprocess.PIPE,stderr=errors,text=True)
@@ -313,7 +329,12 @@ def render_video(id,source,ass,quality,folder):
                 except ValueError:pass
         status=process.wait(timeout=30)
         process.stdout.close()
-    if status!=0 or not output.exists():raise RuntimeError('Échec FFmpeg : '+log.read_text()[-600:])
+    if status<0:
+        output.unlink(missing_ok=True)
+        raise RuntimeError('Le rendu a été interrompu par le système (mémoire insuffisante probable). Relancez l’export en 720p ou augmentez la mémoire du service.')
+    if status!=0 or not output.exists():
+        details='\n'.join(l for l in log.read_text().splitlines() if not l.startswith('Fontconfig error'))
+        raise RuntimeError('Échec FFmpeg : '+(details[-600:] or f'code {status}'))
     rendered=probe(output)
     if abs(rendered['duration']-meta['duration'])>2:raise RuntimeError('La durée du fichier exporté ne correspond pas à l’original.')
     return {'file':'export.mp4','size':output.stat().st_size,'duration':rendered['duration'],'width':rendered['width'],'height':rendered['height']}
