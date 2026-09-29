@@ -111,7 +111,7 @@ une contre-vérification humaine indépendante restent nécessaires.
 - Un fait dont le concept est mappé mais qui n'est pas normalisé doit porter une justification
   « NON NORMALISÉ : motif » (exclusion explicite) ; sinon, erreur bloquante.
 - Outil : `tools/edgar_normalize.py` (`normalize`, `import-filing`, `reconcile-ixbrl`), règles
-  `config/normalisation/edgar_v6.json` (v1 à v5 retirées), exemples `docs/EXEMPLE_NORMALISATION.md`.
+  `config/normalisation/edgar_v7.json` (v1 à v6 retirées), exemples `docs/EXEMPLE_NORMALISATION.md`.
 
 ## Conformité aux règles (V1.14)
 
@@ -148,6 +148,18 @@ déclare : schéma du dépôt (annexe) pour une extension ; schéma officiel du 
 heure dans `taxonomies.json`, vérifiées à chaque lecture) pour un concept standard. Le préfixe textuel de l'identifiant
 n'est jamais utilisé. Schéma absent, identifiant absent ou ambigu, pointeur non « shorthand » ⇒ aucune preuve. La
 relation doit aussi se vérifier sur les faits de l'entité entière pour la période (parent = Σ poids × contributeurs,
-tolérance d'intervalle selon `decimals`, comme XBRL Calculation 1.1). Cache : `fetch-taxonomies` (réseau,
+tolérance par chevauchement d'intervalles, arrondi au plus proche, un fait par concept — inspirée de XBRL Calculation 1.1 sans en être une implémentation complète). Cache : `fetch-taxonomies` (réseau,
 `xbrl.fasb.org` et `xbrl.sec.gov` seulement) ou `import-taxonomy` (fichier téléchargé à la main, heure déclarée). Chaque
 rapprochement écrit `copies/<doc>/rapport_rapprochement.json` ; un repli refusé est motivé dans le fait.
+
+## Deux verdicts de calcul et extraction typée (revue n° 17)
+
+- `calcul_XBRL_coherent` : avec le total et les contributeurs **présents** (un fait `nil` ne participe pas),
+  |total − Σ poids × contributeurs| ≤ somme des demi-précisions (chevauchement d'intervalles, arrondi au plus proche,
+  un fait par concept). Ce n'est **pas** une implémentation complète de Calculation 1.1 : troncature, bornes ouvertes
+  et intersection de doublons compatibles ne sont pas traitées (de tels faits sont exclus, donc absents).
+- `preuve_complete_pour_repli` : cohérent **et** chaque contributeur présent ; un absent n'est jamais supposé nul.
+  Seul ce verdict autorise un total ; les deux sont écrits dans la justification ou le motif d'échec.
+- Un fait portant des chiffres au-delà de sa précision déclarée (`decimals`) est refusé pour le calcul.
+- `revenues_net_of_interest_expense` (banques) : extraction typée d'un total déclaré, exigé dans les calculs résolus
+  d'un état principal ; jamais `total_revenue`, jamais un dénominateur automatique.

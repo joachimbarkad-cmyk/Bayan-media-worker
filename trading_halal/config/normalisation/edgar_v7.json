@@ -1,7 +1,7 @@
 {
-  "version": "edgar_v6",
+  "version": "edgar_v7",
   "date": "2026-09-28",
-  "statut": "RETIRÉE (revue n° 17) : un seul verdict de calcul et pas d'extraction typée bancaire ; remplacée par edgar_v7",
+  "statut": "PROPOSITION NON RELUE : règles écrites par l'assistant, à faire relire indépendamment (voir HANDOFF.md)",
   "portee": "Faits companyfacts (SEC) en USD ; correspondance UN concept d'origine -> UN concept du projet, sans agrégation ni calcul. Aucune normalisation sans le document du dépôt.",
   "regles": [
     {
@@ -57,6 +57,18 @@
             "ProForma"
           ]
         }
+      }
+    },
+    {
+      "id": "R0c",
+      "source_concept": "us-gaap:RevenuesNetOfInterestExpense",
+      "normalized_concept": "revenues_net_of_interest_expense",
+      "source_unit": "USD",
+      "period_type": "duration",
+      "justification": "Banques : revenus nets des charges d'intérêts (revenus d'intérêts − charges d'intérêts + revenus hors intérêts), tels que déclarés par l'entité consolidée. Extraction typée : JAMAIS total_revenue, jamais un dénominateur religieux automatique (revue n° 17).",
+      "preuve_presence": {
+        "categorie": "Statement",
+        "explication": "Le concept doit figurer, comme total ou contributeur, dans les calculs résolus d'un rôle « Statement » (état principal)."
       }
     },
     {
@@ -141,7 +153,9 @@
     "P5_repli_prudent": "Sonde sur 19 émetteurs (docs/SONDE_REVENUS.md) : American Express déclare des revenus d'intérêts et hors intérêts sans agrégat Revenues ; le repli y est désormais bloqué.",
     "P6_preuve_positive": "Un composant ne devient total que par une preuve positive tirée des relations de calcul du dépôt (schéma .xsd et _cal.xml téléchargés avec le document, empreintes dans copies/<doc>/annexes.json) ; l'heuristique de noms reste un bloqueur supplémentaire, jamais une preuve.",
     "P7_resolution": "Chaque concept d'une relation de calcul est résolu dans le schéma qui le déclare (xs:element désigné par l'identifiant du localisateur, puis nom et targetNamespace) : schéma du dépôt pour une extension, schéma officiel du cache local (collecte/taxonomies, empreintes) pour un concept standard. Schéma absent, identifiant absent ou ambigu ⇒ aucune preuve (revue n° 16).",
-    "P8_calcul_effectif": "La relation de calcul doit se vérifier sur les faits de l'entité entière pour la période : parent = Σ poids × contributeurs, à l'arrondi (decimals) près ; contributeur sans fait ⇒ aucune preuve."
+    "P8_calcul_effectif": "La relation de calcul doit se vérifier sur les faits de l'entité entière pour la période : parent = Σ poids × contributeurs, à l'arrondi (decimals) près ; contributeur sans fait ⇒ aucune preuve.",
+    "P9_deux_verdicts": "calcul_XBRL_coherent (contributeurs présents, nil exclus, chevauchement d'intervalles au plus proche) et preuve_complete_pour_repli (tous les contributeurs présents) sont distincts ; seule une preuve complète autorise un total. La tolérance n'est pas une implémentation complète de Calculation 1.1.",
+    "P10_denominateur": "Les concepts du projet décrivent ce que l'entreprise a déclaré comptablement. Le choix du dénominateur du critère religieux (revenu total, revenus nets des charges d'intérêts pour une banque, etc.) est une décision distincte du référentiel, avec sa définition et sa source propres (revue n° 17)."
   },
   "non_normalises_volontairement": {
     "us-gaap:SalesRevenueNet": "Concept retiré (2018) : non repris.",
@@ -150,6 +164,7 @@
     "non_compliant_revenue": "Aucun concept direct ; NonoperatingIncomeExpense est un solde net.",
     "market_cap": "Exige un cours non ajusté daté : source non établie.",
     "dei:EntityCommonStockSharesOutstanding": "Catégorie d'actions non établissable automatiquement : C1 retirée (liste actuelle des tickers = information future ; catégories non cotées ignorées ; un ticker n'identifie pas le type de titre).",
-    "us-gaap:CommonStockSharesOutstanding": "Même raison : catégories d'actions ordinaires (cotées ou non) à établir sur le document, à la date du fait, par une personne."
+    "us-gaap:CommonStockSharesOutstanding": "Même raison : catégories d'actions ordinaires (cotées ou non) à établir sur le document, à la date du fait, par une personne.",
+    "us-gaap:PremiumsEarnedNet": "Assureurs : les primes ne sont pas le revenu total (ex. Travelers additionne primes, revenus de placements, commissions, cessions, autres) ; seul un total directement déclaré (Revenues) est retenu."
   }
 }

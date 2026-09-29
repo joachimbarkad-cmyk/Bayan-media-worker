@@ -143,6 +143,10 @@ def _sha(path: Path) -> str:
 def _rules(rules_path: Path) -> dict:
     rules = json.loads(rules_path.read_text(encoding="utf-8"))
     for r in rules["regles"]:
+        if r.get("preuve_presence") is not None and (r["preuve_presence"].get("categorie") != "Statement"
+                                                     or r["normalized_concept"] == "total_revenue"):
+            raise NormalizeError(f"règle {r['id']} : une extraction par présence exige categorie Statement et ne peut "
+                                 "pas produire total_revenue (revue n° 17)")
         fb = r.get("repli_total")
         if fb is not None and (fb.get("concept") != "total_revenue" or not fb.get("si_absents_du_document")
                                or not (fb.get("autres_revenus") or {}).get("motifs")):
@@ -607,9 +611,37 @@ def parse_calculations(files: list[Path], resolver: SchemaResolver) -> tuple[dic
     return roles, arcs
 
 
+def within_precision(value: Decimal, decimals: str) -> bool:
+    """Un fait ne doit pas porter de chiffres au-delà de sa précision déclarée (decimals) ; INF ou vide : admis."""
+    if not re.fullmatch(r"-?\d+", decimals or ""):
+        return True
+    return value % (Decimal(10) ** (-int(decimals))) == 0
+
+
 def _tolerance(decimals: list[str]) -> Decimal:
     return sum((Decimal(5) * Decimal(10) ** (-int(d) - 1) for d in decimals if re.fullmatch(r"-?\d+", d)),
                Decimal(0))
+
+
+def calculation_verdicts(parent: str, contributors: list[tuple], values: dict) -> tuple[bool | None, bool, str]:
+    """Deux verdicts distincts (revue n° 17) sur les faits d'une période (valeurs non nil, cohérentes avec leur
+    précision ; un fait nil ou absent ne participe pas) :
+    - calcul_XBRL_coherent : avec le total et les contributeurs PRÉSENTS, |total − Σ poids × contributeurs| ≤ somme
+      des demi-précisions (chevauchement d'intervalles, arrondi au plus proche, un fait par concept) ; None si le total
+      ou tous les contributeurs manquent. Ce n'est pas une implémentation complète de Calculation 1.1 (troncature,
+      bornes ouvertes, intersection de doublons compatibles non traitées : de tels faits sont exclus, donc absents).
+    - preuve_complete_pour_repli : cohérent ET chaque contributeur présent (un absent n'est pas prouvé nul)."""
+    present = [(c, w) for c, w in contributors if c in values]
+    absent = [c for c, _ in contributors if c not in values]
+    if parent not in values or not present:
+        return None, False, f"total ou contributeurs sans fait pour la période ; absents : {absent or [parent]}"
+    total = sum(Decimal(str(w)) * values[c][0] for c, w in present)
+    tol = _tolerance([values[parent][1]] + [values[c][1] for c, _ in present])
+    coherent = abs(values[parent][0] - total) <= tol
+    detail = f"{parent} = {values[parent][0]}, somme pondérée des présents = {total}, tolérance {tol}"
+    if absent:
+        detail += f" ; contributeurs absents ou nil : {absent}"
+    return coherent, coherent and not absent, detail
 
 
 def position_proof(concept: str, roles: dict, arcs: list, spec: dict,
@@ -642,20 +674,32 @@ def position_proof(concept: str, roles: dict, arcs: list, spec: dict,
         text = (f"rôle « {cat} - {title} » : {parent} = {concept} (+1)"
                 + "".join(f" {'+' if w2 > 0 else '−'} {c}" for c, w2 in siblings))
         if values is not None:
-            needed = [parent, concept] + [c for c, _ in siblings]
-            absent = [c for c in needed if c not in values]
-            if absent:
-                why = f"rôle « {title} » : faits absents ou ambigus pour la période : {absent}"
+            coherent, complete, detail = calculation_verdicts(parent, [(concept, 1.0)] + siblings, values)
+            verdicts = (f"calcul_XBRL_coherent={'oui' if coherent else 'non' if coherent is False else 'non évaluable'}"
+                        f" ; preuve_complete_pour_repli={'oui' if complete else 'non'}")
+            if not (coherent and complete):
+                why = f"rôle « {title} » : {verdicts} ({detail})"
                 continue
-            total = values[concept][0] + sum(Decimal(str(w2)) * values[c][0] for c, w2 in siblings)
-            tol = _tolerance([values[c][1] for c in needed])
-            if abs(values[parent][0] - total) > tol:
-                why = (f"rôle « {title} » : calcul non vérifié pour la période ({parent} = {values[parent][0]}, "
-                       f"somme pondérée = {total})")
-                continue
-            text += f" ; calcul vérifié pour la période : {values[parent][0]} = {total}"
+            text += f" ; {verdicts} ; {detail}"
         return text, ""
     return None, why
+
+
+def statement_presence(concept: str, roles: dict, arcs: list, spec: dict) -> tuple[str | None, str]:
+    """Présence d'un concept (résolu) dans les calculs d'un rôle de catégorie `spec["categorie"]` (état principal),
+    comme total ou contributeur, avec tous les concepts de ce calcul résolus. Extraction typée directe, sans repli."""
+    for role, parent, child, w in arcs:
+        if concept not in (parent, child):
+            continue
+        cat, title = roles.get(role, ("", ""))
+        if cat != spec["categorie"]:
+            continue
+        group = [a for a in arcs if a[0] == role and a[1] == parent]
+        if any(c is None for _, _, c, _ in group) or parent is None:
+            continue
+        return (f"rôle « {cat} - {title} » : {parent} = "
+                + " ".join(f"{'+' if w2 > 0 else '−'} {c}" for _, _, c, w2 in group)), ""
+    return None, f"{concept} absent des calculs résolus de tout rôle {spec['categorie']}"
 
 
 def _annexes(folder: Path) -> list[Path]:
@@ -780,10 +824,17 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path, taxon
                 continue
             if (ctx["start"], ctx["end"]) != (start, end):
                 continue
+            if f["el"].get(XSI_NIL) == "true":
+                continue  # un fait nil ne participe pas au calcul
             try:
-                seen[f["name"]].add((_ix_value(f["el"]), f["decimals"]))
+                v = _ix_value(f["el"])
             except ValueError:
                 seen[f["name"]].add((None, ""))
+                continue
+            if not within_precision(v, f["decimals"]):
+                seen[f["name"]].add((None, ""))  # chiffres au-delà de la précision déclarée : incohérent
+                continue
+            seen[f["name"]].add((v, f["decimals"]))
         return {n: next(iter(v)) for n, v in seen.items() if len({x for x, _ in v}) == 1 and None not in
                 {x for x, _ in v} and len(v) == 1}
     report = {"rapproches": 0, "echecs": []}
@@ -818,6 +869,10 @@ def reconcile_ixbrl(audit: Path, doc_id: str, raw: Path, rules_path: Path, taxon
         rule = by_rule[prop["regle"]]
         position = None
         pvals = period_values(prop["period_start"], prop["period_end"], prop["source_unit"])
+        if reason is None and rule.get("preuve_presence"):
+            position, why = statement_presence(rule["source_concept"], roles, arcs, rule["preuve_presence"])
+            if position is None:
+                reason = f"présence dans un état principal non prouvée ({annex_note}) : {why}"
         if reason is None and rule.get("preuve_position"):
             position, why = position_proof(rule["source_concept"], roles, arcs, rule["preuve_position"], pvals)
             if position is None:

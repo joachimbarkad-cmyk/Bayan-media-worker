@@ -1,12 +1,12 @@
-# Exemples vérifiables : normalisation de faits réels (règles edgar_v6)
+# Exemples vérifiables : normalisation de faits réels (règles edgar_v7)
 
-**Statut (V1.21).** Huit documents ont été téléchargés de `www.sec.gov` (heure exacte et empreinte dans `documents.csv`
+**Statut (V1.22).** Huit documents ont été téléchargés de `www.sec.gov` (heure exacte et empreinte dans `documents.csv`
 et `journal_saisies.csv` ; schéma et calculs du dépôt dans `copies/<doc>/annexes.json`). Leurs faits proposés ont été
 **normalisés et rapprochés automatiquement** : même entité (schéma CIK de la SEC), même période exacte, même unité
 (devise ISO 4217), concept résolu par espace de noms, contexte sans segment ni scénario, valeur affichée égale à la
 valeur companyfacts. Rapprochement automatique = concordance des chiffres ; le choix des règles reste à relire.
 
-**Revenu total (edgar_v6).** `us-gaap:Revenues` : total direct. `RegulatedAndUnregulatedOperatingRevenue` et le repli
+**Revenu total (edgar_v7).** `us-gaap:Revenues` : total direct. `RegulatedAndUnregulatedOperatingRevenue` et le repli
 `RevenueFromContractWithCustomer…ExcludingAssessedTax` → total exigent une **preuve positive** tirée des calculs du
 dépôt, où **chaque concept est résolu dans le schéma qui le déclare** (revue n° 16) et où le calcul doit se vérifier sur
 les faits de la période. Les schémas officiels us-gaap (`xbrl.fasb.org`) étant **inaccessibles depuis
@@ -20,7 +20,7 @@ composants restent normalisés. Sonde : `docs/SONDE_REVENUS.md`.
 cd trading_halal
 python3 tools/edgar_collect.py verify-trace --raw collecte/apple --audit data/audit_edgar_apple
 python3 tools/edgar_normalize.py verify-normalisation --raw collecte/apple --audit data/audit_edgar_apple \
-    --regles config/normalisation/edgar_v6.json
+    --regles config/normalisation/edgar_v7.json
 python3 -m halal_sim audit-docs data/audit_edgar_apple
 python3 tools/exemple_normalisation.py --audit data/audit_edgar_apple --accn 0000320193-25-000079
 ```
@@ -63,7 +63,7 @@ Dépôt 10-K 0001652044-26-000018, accepté le 2026-02-05T02:56:03.000+00:00 ; d
 | total_revenue | us-gaap:Revenues | 2024-01-01 → 2024-12-31 | 350 018 000 000 USD | normalisé, rapproché (auto), contexte c-28, decimals -6 | `facts/us-gaap/Revenues/units/USD/65` |
 | total_revenue | us-gaap:Revenues | 2025-01-01 → 2025-12-31 | 402 836 000 000 USD | normalisé, rapproché (auto), contexte c-1, decimals -6 | `facts/us-gaap/Revenues/units/USD/73` |
 
-## American Express — 10-K 2025 : repli bloqué par les autres revenus (V1.19)
+## American Express — 10-K 2025 : repli bloqué par les autres revenus (V1.19) ; revenus nets des charges d'intérêts en attente des schémas (V1.22)
 
 Dépôt 10-K 0000004962-26-000080, accepté le 2026-02-06T17:31:47.000+00:00 ; document : https://www.sec.gov/Archives/edgar/data/4962/000000496226000080/axp-20251231.htm
 
@@ -72,6 +72,9 @@ Dépôt 10-K 0000004962-26-000080, accepté le 2026-02-06T17:31:47.000+00:00 ; d
 | revenue_from_contracts_with_customers | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2023-01-01 → 2023-12-31 | 37 218 000 000 USD | normalisé, rapproché (auto), contexte c-16, decimals -6 | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/82` |
 | revenue_from_contracts_with_customers | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2024-01-01 → 2024-12-31 | 38 825 000 000 USD | normalisé, rapproché (auto), contexte c-15, decimals -6 | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/94` |
 | revenue_from_contracts_with_customers | us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax | 2025-01-01 → 2025-12-31 | 41 304 000 000 USD | normalisé, rapproché (auto), contexte c-1, decimals -6 | `facts/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/units/USD/103` |
+| revenues_net_of_interest_expense | us-gaap:RevenuesNetOfInterestExpense | 2023-01-01 → 2023-12-31 | 60 515 000 000 USD | proposé (document non lu) | `facts/us-gaap/RevenuesNetOfInterestExpense/units/USD/118` |
+| revenues_net_of_interest_expense | us-gaap:RevenuesNetOfInterestExpense | 2024-01-01 → 2024-12-31 | 65 949 000 000 USD | proposé (document non lu) | `facts/us-gaap/RevenuesNetOfInterestExpense/units/USD/130` |
+| revenues_net_of_interest_expense | us-gaap:RevenuesNetOfInterestExpense | 2025-01-01 → 2025-12-31 | 72 229 000 000 USD | proposé (document non lu) | `facts/us-gaap/RevenuesNetOfInterestExpense/units/USD/139` |
 | total_assets | us-gaap:Assets | au 2023-12-31 | 261 108 000 000 USD | normalisé, rapproché (auto), contexte c-40, decimals -6 | `facts/us-gaap/Assets/units/USD/158` |
 | total_assets | us-gaap:Assets | au 2024-12-31 | 271 461 000 000 USD | normalisé, rapproché (auto), contexte c-29, decimals -6 | `facts/us-gaap/Assets/units/USD/169` |
 | total_assets | us-gaap:Assets | au 2025-12-31 | 300 052 000 000 USD | normalisé, rapproché (auto), contexte c-28, decimals -6 | `facts/us-gaap/Assets/units/USD/175` |
@@ -152,4 +155,4 @@ Dépôt 10-K 0001326160-26-000014, accepté le 2026-02-26T18:07:42.000+00:00 ; d
 
 - Nombres d'actions : catégories d'actions ordinaires (cotées ou non) à établir sur le document, à la date du fait.
 - Agrégats et postes à qualifier (dette à intérêt, placements à intérêt, revenus illicites) et capitalisation : voir
-  `config/normalisation/edgar_v6.json` (`non_normalises_volontairement`).
+  `config/normalisation/edgar_v7.json` (`non_normalises_volontairement`).

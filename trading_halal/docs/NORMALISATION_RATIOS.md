@@ -1,6 +1,8 @@
 # Normalisation des faits pour les trois ratios : ordre de travail (Apple, exercice clos le 27/09/2025)
 
-> V1.21 : règles `edgar_v6`. total_revenue vient de `us-gaap:Revenues` en priorité ; `RevenueFromContractWithCustomer…`
+> V1.22 : règles `edgar_v7`. **Les concepts du projet décrivent ce que l'entreprise a déclaré ; le choix du
+> dénominateur du critère religieux (revenu total, ou revenus nets des charges d'intérêts pour une banque…) est une
+> décision distincte du référentiel, avec sa définition et sa source propres (revue n° 17).** total_revenue vient de `us-gaap:Revenues` en priorité ; `RevenueFromContractWithCustomer…`
 > est un composant, retenu comme total seulement par repli explicite (« REPLI : ») avec preuve positive tirée des calculs du dépôt, et si aucun autre revenu n'est déclaré. Faits normalisés et rapprochés pour
 > les documents téléchargés : voir `docs/EXEMPLE_NORMALISATION.md`. shares_outstanding n'est pas proposé.
 

@@ -1,4 +1,4 @@
-# HANDOFF — simulateur de trading halal, V1.21 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.22 (pour relecture par ChatGPT / DeepSeek)
 
 Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
@@ -6,6 +6,36 @@ Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier
 **Merci de relire de façon critique** : lectures d'information future, ADMISSIBLE erronés, contrôles d'audit
 contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
 au document de fiqh fourni par l'utilisateur**.
+
+## V1.22 — Revue n° 17 : deux verdicts de calcul, précision déclarée, extraction bancaire typée
+
+1. **Tolérance** : décrite pour ce qu'elle est — chevauchement d'intervalles (arrondi au plus proche, un fait par
+   concept), **pas** une implémentation complète de Calculation 1.1 (troncature, bornes ouvertes, doublons
+   compatibles non traités : exclus, donc absents). Ajout : un fait dont les chiffres dépassent sa précision déclarée
+   est refusé pour le calcul (`within_precision`).
+2. **Deux verdicts distincts** (`calculation_verdicts`) : `calcul_XBRL_coherent` (contributeurs présents, `nil`
+   ignorés ; « non évaluable » sans total ni contributeur) et `preuve_complete_pour_repli` (cohérent et tous les
+   contributeurs présents ; un absent n'est jamais supposé nul). Seul le second autorise un total ; les deux sont
+   écrits dans la justification ou le motif d'échec.
+3. **Banques** : règle R0c `RevenuesNetOfInterestExpense` → nouveau concept `revenues_net_of_interest_expense`,
+   extraction typée d'un total déclaré, exigée dans les calculs résolus d'un rôle « Statement » ; l'outil refuse
+   qu'une telle règle produise `total_revenue`. **Assureurs** : pas de règle sur les primes (`PremiumsEarnedNet`
+   listé comme non normalisé : les primes ne sont pas le total) ; seul un `Revenues` déclaré sert.
+4. **Principe** : les concepts du projet décrivent ce que l'entreprise a déclaré comptablement ; le **dénominateur du
+   critère religieux** est une décision distincte, à définir et sourcer dans le référentiel.
+
+Règles `config/normalisation/edgar_v7.json` (v6 retirée). Dossiers réels régénérés (mêmes documents, heures
+d'origine), tous contrôles à 0. American Express : 107 propositions `revenues_net_of_interest_expense`, **non
+normalisées** tant que les schémas officiels manquent (présence dans un état principal non prouvable). Aucun
+changement pour les autres émetteurs.
+
+Tests : 8 nouveaux (cohérent mais incomplet ; contributeur `nil` ; doublon `nil` + valeur, seule la valeur compte ;
+chiffres au-delà de la précision ; verdicts unitaires dont la tolérance d'arrondi ; extraction bancaire en état
+principal, en rôle Disclosure, sans calculs, avec contributeur non résolu ; règle bancaire vers `total_revenue`
+refusée). Mutations ciblées : 8, toutes détectées (deux après ajout de tests ; un de mes tests chargeait d'abord les
+mauvaises règles et échouait aussi sans mutation — corrigé avant de conclure). **257 tests.**
+
+`xbrl.fasb.org` reste bloqué : aucune preuve positive ni présence prouvée pour les concepts standard (fail-closed).
 
 ## V1.21 — Revue n° 16 : concepts de calcul résolus dans leur schéma, calcul vérifié, fail-closed
 
@@ -479,9 +509,9 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 
 - Simulation de bout en bout (12 contrôles), avec `--ruleset` pour choisir le référentiel et `--db` pour la base.
 - `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE.
-- **251 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+- **257 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
   test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
-  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 72, test_ruleset_validation 10, test_screening 11.
+  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 78, test_ruleset_validation 10, test_screening 11.
 
 ## Limites connues (générales)
 

@@ -9,6 +9,7 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 from helpers import ROOT
@@ -27,6 +28,7 @@ RULES_V3 = ROOT / "config" / "normalisation" / "edgar_v3.json"
 RULES_V4 = ROOT / "config" / "normalisation" / "edgar_v4.json"
 RULES_V5 = ROOT / "config" / "normalisation" / "edgar_v5.json"
 RULES_V6 = ROOT / "config" / "normalisation" / "edgar_v6.json"
+RULES_V7 = ROOT / "config" / "normalisation" / "edgar_v7.json"
 R1C = "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"
 K10 = "0000000123-0000000123-25-000004"
 Q10 = "0000000123-0000000123-24-000030"
@@ -113,7 +115,7 @@ def calc_annexes(folder: Path, parent="us-gaap:GrossProfit",
 
 
 US_GAAP_2024 = "https://xbrl.fasb.org/us-gaap/2024/elts/us-gaap-2024.xsd"
-TAXO_ELEMENTS = ["GrossProfit", "OperatingIncomeLoss", "NetIncomeLoss", "CostOfRevenue", "OtherIncome",
+TAXO_ELEMENTS = ["RevenuesNetOfInterestExpense", "InterestIncomeExpenseNet", "NoninterestIncome", "GrossProfit", "OperatingIncomeLoss", "NetIncomeLoss", "CostOfRevenue", "OtherIncome",
                  "RevenueFromContractWithCustomerExcludingAssessedTax", "RegulatedAndUnregulatedOperatingRevenue",
                  "GainLossOnDispositionOfAssets1", "CostsAndExpenses", "Revenues", "OtherOperatingRevenue",
                  "OperatingExpenses"]
@@ -427,14 +429,125 @@ class TotalAndComponentTests(Base):
                                          ("us-gaap:GrossProfit", "c-1", "usd", "555", "6", "-6", False)])
         # (551 serait admis : trois arrondis au million, tolérance d'intervalle de 1,5 M$, comme XBRL Calculation 1.1)
         self.assertEqual(f["normalized_concept"], "revenue_from_contracts_with_customers")
-        self.assertTrue(any("calcul non vérifié" in b for b in rep["replis_bloques"]))
+        self.assertTrue(any("calcul_XBRL_coherent=non" in b for b in rep["replis_bloques"]))
         rep, f = self._proof_case(facts=[(R1C, "c-1", "usd", "1,250", "6", "-6", False),
                                          ("us-gaap:GrossProfit", "c-1", "usd", "550", "6", "-6", False)])
         self.assertEqual(f["normalized_concept"], "revenue_from_contracts_with_customers")
-        self.assertTrue(any("faits absents" in b for b in rep["replis_bloques"]))
+        self.assertTrue(any("calcul_XBRL_coherent=non évaluable" in b or "preuve_complete_pour_repli=non" in b
+                            for b in rep["replis_bloques"]))
         rep, f = self._proof_case()
-        self.assertIn("calcul vérifié pour la période", f["normalization_justification"])
+        self.assertIn("calcul_XBRL_coherent=oui ; preuve_complete_pour_repli=oui", f["normalization_justification"])
         self.assertIn(US_GAAP_2024, f["normalization_justification"])
+
+    def test_review_17_coherent_but_incomplete_is_not_a_proof(self):
+        kids = ((R1C, 1.0), ("us-gaap:CostOfRevenue", -1.0), ("us-gaap:OperatingExpenses", -1.0))
+        base = [(R1C, "c-1", "usd", "1,250", "6", "-6", False),
+                ("us-gaap:CostOfRevenue", "c-1", "usd", "700", "6", "-6", False),
+                ("us-gaap:GrossProfit", "c-1", "usd", "550", "6", "-6", False)]
+        rep, f = self._proof_case(children=kids, facts=base)            # OperatingExpenses absent
+        self.assertEqual(f["normalized_concept"], "revenue_from_contracts_with_customers")
+        self.assertTrue(any("calcul_XBRL_coherent=oui ; preuve_complete_pour_repli=non" in b
+                            for b in rep["replis_bloques"]))
+
+    def test_review_17_nil_contributor_does_not_participate(self):
+        kids = ((R1C, 1.0), ("us-gaap:CostOfRevenue", -1.0), ("us-gaap:OperatingExpenses", -1.0))
+        facts = [(R1C, "c-1", "usd", "1,250", "6", "-6", False),
+                 ("us-gaap:CostOfRevenue", "c-1", "usd", "700", "6", "-6", False),
+                 ("us-gaap:GrossProfit", "c-1", "usd", "550", "6", "-6", False)]
+        rep, f = self._proof_case(children=kids, facts=facts, doc_extra=[])
+        # même fait, mais déclaré nil dans le document
+        doc = ixbrl(facts + [("us-gaap:OperatingExpenses", "c-1", "usd", "0", "6", "-6", False)]).replace(
+            'name="us-gaap:OperatingExpenses"', 'name="us-gaap:OperatingExpenses" xsi:nil="true"').replace(
+            "<html ", '<html xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ', 1)
+        self.mutate_raw(_add_r1(1250000000, drop_revenues=True))
+        shutil.rmtree(self.out)
+        ec.convert(self.raw, self.out, {"10-K", "10-Q"})
+        d = self.tmp / "annexes"
+        shutil.rmtree(d, ignore_errors=True)
+        d.mkdir()
+        rep = self.reconcile(doc, calc_annexes(d, children=kids))
+        self.assertTrue(any("preuve_complete_pour_repli=non" in b for b in rep["replis_bloques"]))
+
+    def test_review_17_nil_duplicate_is_ignored_and_value_counts(self):
+        facts = with_gross_profit([(R1C, "c-1", "usd", "1,250", "6", "-6", False)])
+        doc = ixbrl(facts + [("us-gaap:CostOfRevenue", "c-1", "usd", "0", "6", "-6", False)]).replace(
+            'id="f-3" name="us-gaap:CostOfRevenue"', 'id="f-3" name="us-gaap:CostOfRevenue" xsi:nil="true"').replace(
+            "<html ", '<html xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ', 1)
+        self.assertIn('xsi:nil="true"', doc)
+        self.mutate_raw(_add_r1(1250000000, drop_revenues=True))
+        shutil.rmtree(self.out)
+        ec.convert(self.raw, self.out, {"10-K", "10-Q"})
+        self.rules = _rules_v3_like(self.tmp)
+        d = self.tmp / "annexes"
+        shutil.rmtree(d, ignore_errors=True)
+        d.mkdir()
+        self.reconcile(doc, calc_annexes(d))
+        self.assertEqual(self.facts_by(R1C)["normalized_concept"], "total_revenue")
+
+    def test_review_17_digits_beyond_declared_precision_are_refused(self):
+        rep, f = self._proof_case(facts=[(R1C, "c-1", "usd", "1,250", "6", "-6", False),
+                                         ("us-gaap:CostOfRevenue", "c-1", "usd", "700.4", "6", "-6", False),
+                                         ("us-gaap:GrossProfit", "c-1", "usd", "550", "6", "-6", False)])
+        self.assertEqual(f["normalized_concept"], "revenue_from_contracts_with_customers")
+        self.assertTrue(en.within_precision(Decimal("700000000"), "-6"))
+        self.assertFalse(en.within_precision(Decimal("700400000"), "-6"))
+        self.assertTrue(en.within_precision(Decimal("700400000"), "INF"))
+
+    def test_calculation_verdicts_unit(self):
+        vals = {"T": (Decimal(100), "0"), "a": (Decimal(60), "0"), "b": (Decimal(40), "0")}
+        self.assertEqual(en.calculation_verdicts("T", [("a", 1.0), ("b", 1.0)], vals)[:2], (True, True))
+        self.assertEqual(en.calculation_verdicts("T", [("a", 1.0), ("c", 1.0)], vals)[:2], (False, False))
+        self.assertEqual(en.calculation_verdicts("T", [("a", 1.0), ("b", 1.0), ("c", 1.0)], vals)[:2], (True, False))
+        self.assertEqual(en.calculation_verdicts("X", [("a", 1.0)], vals)[:2], (None, False))
+        # tolérance : trois montants au million près ⇒ 1,5 M
+        m = {"T": (Decimal(551_000_000), "-6"), "a": (Decimal(1_250_000_000), "-6"), "b": (Decimal(700_000_000), "-6")}
+        self.assertTrue(en.calculation_verdicts("T", [("a", 1.0), ("b", -1.0)], m)[0])
+
+    def test_review_17_bank_revenue_is_typed_and_never_total(self):
+        RN = "us-gaap:RevenuesNetOfInterestExpense"
+        def cf(data):
+            data["facts"]["us-gaap"]["RevenuesNetOfInterestExpense"] = {
+                "label": "RN", "description": "d", "units": {"USD": [
+                    {"start": "2024-01-01", "end": "2024-12-31", "val": 900000000, "accn": "0000000123-25-000004",
+                     "form": "10-K", "filed": "2025-02-20"}]}}
+            del data["facts"]["us-gaap"]["Revenues"]
+        rules = json.loads(_rules_v3_like(self.tmp).read_text(encoding="utf-8"))
+        rules["regles"].append({"id": "R0c", "source_concept": RN, "normalized_concept": "revenues_net_of_interest_expense",
+                                "source_unit": "USD", "period_type": "duration", "justification": "banque",
+                                "preuve_presence": {"categorie": "Statement"}})
+        doc = [(RN, "c-1", "usd", "900", "6", "-6", False)]
+        kids = (("us-gaap:InterestIncomeExpenseNet", 1.0), ("us-gaap:NoninterestIncome", 1.0))
+        for role_def, expected in ((STATEMENT, "revenues_net_of_interest_expense"),
+                                   ("0000040 - Disclosure - Revenus", None), (None, None)):
+            with self.subTest(role_def):
+                self.mutate_raw(cf)
+                shutil.rmtree(self.out)
+                ec.convert(self.raw, self.out, {"10-K", "10-Q"})
+                p = self.tmp / "banque.json"
+                p.write_text(json.dumps(rules), encoding="utf-8")
+                self.rules = p
+                d = self.tmp / "annexes"
+                shutil.rmtree(d, ignore_errors=True)
+                d.mkdir()
+                ann = calc_annexes(d, parent=RN, children=kids, role_def=role_def) if role_def else None
+                self.reconcile(ixbrl(doc), ann)
+                f = next(r for r in self.facts().values() if r["source_concept"] == RN)
+                self.assertEqual(f["normalized_concept"] or None, expected)
+                self.assertNotEqual(f["normalized_concept"], "total_revenue")
+        # un contributeur non résolu dans le calcul : pas de présence prouvée
+        self.mutate_raw(cf)
+        shutil.rmtree(self.out)
+        ec.convert(self.raw, self.out, {"10-K", "10-Q"})
+        d = self.tmp / "annexes"
+        shutil.rmtree(d, ignore_errors=True)
+        d.mkdir()
+        self.reconcile(ixbrl(doc), calc_annexes(d, parent=RN, children=kids + (("us-gaap:Inconnu", 1.0),)))
+        self.assertEqual(next(r for r in self.facts().values() if r["source_concept"] == RN)["normalized_concept"], "")
+        bad = dict(rules)
+        bad["regles"] = rules["regles"][:-1] + [dict(rules["regles"][-1], normalized_concept="total_revenue")]
+        p.write_text(json.dumps(bad), encoding="utf-8")
+        with self.assertRaisesRegex(en.NormalizeError, "total_revenue"):
+            en.normalize(self.raw, self.out, p)
 
     def test_calculation_1_1_arcrole_is_accepted(self):
         rep, f = self._proof_case(arcrole="https://xbrl.org/2023/arcrole/summation-item")
@@ -882,7 +995,7 @@ REAL = {"apple": ("0000320193", {"total_assets": 88, "total_revenue": 11,
                                     "total_revenue": 17}, 5),
         "black_hills": ("0001130464", {"revenue_from_contracts_with_customers": 102, "total_assets": 91,
                                        "total_revenue": 120}, 10),
-        "american_express": ("0000004962", {"revenue_from_contracts_with_customers": 91, "total_assets": 84}, 6),
+        "american_express": ("0000004962", {'revenue_from_contracts_with_customers': 91, 'revenues_net_of_interest_expense': 107, 'total_assets': 84}, 6),
         "duke_energy": ("0001326160", None, 6),
         "ford": ("0000037996", None, 6)}
 REVENUE = "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"
@@ -911,14 +1024,14 @@ class RealIssuersTests(unittest.TestCase):
                 if counts is not None:
                     self.assertEqual(rep["propositions"], counts)
                 self.assertEqual(rep["conflits"], [])
-                self.assertEqual(rep["regles_sha256"], en._sha(RULES_V6))
+                self.assertEqual(rep["regles_sha256"], en._sha(RULES_V7))
                 docs, facts = load_audit(audit)
                 norm = [f for f in facts if f["normalized_concept"]]
                 self.assertEqual(len(norm), normalized)
                 self.assertTrue(all(f["reconciled"] == "auto" and f["source_dimensions"] == "" and
                                     docs[f["doc_id"]]["local_copy"] for f in norm))
                 self.assertEqual(ec.verify_trace(raw, audit), [])
-                self.assertEqual(en.verify_normalisation(raw, audit, RULES_V6), ([], []))
+                self.assertEqual(en.verify_normalisation(raw, audit, RULES_V7), ([], []))
                 res = audit_folder(audit)
                 self.assertEqual((res.errors, res.reconciled_auto, res.to_reconcile), ([], normalized, normalized))
                 self.assertIn("RAPPROCHEMENT AUTOMATIQUE", res.verdict)
