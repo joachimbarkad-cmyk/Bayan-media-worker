@@ -104,6 +104,21 @@ Le débit étant plafonné, le preset x264 change surtout la vitesse et la mémo
 
 Parcours complet rejoué (uid 10001, 2 threads, 2 exports) : **117–120 s par export au lieu de 177–180 s**, 97,7 Mo, pic mémoire FFmpeg **393 Mo** (au lieu de 533 Mo).
 
+### « Espace vidéo insuffisant » vu dans le studio (29/09/2026)
+
+Deux rendus MP4 lancés depuis le studio (02:20 et 04:10) échouent avec « Espace vidéo insuffisant ». Les médias et MP4 restaient 24 h sur le volume de 500 Mo, y compris ceux du test en production de 01:54 (89 Mo). Un rendu demande pourtant 250 à 350 Mo libres, réserve de 150 Mo comprise.
+
+Reproduit en local : volume de 500 Mo contenant 3 médias de 89 Mo vieux de 2 h, puis envoi d’un nouveau média et export.
+
+| Version | Résultat |
+|---|---|
+| `main` (`f2a1c16`) | Envoi OK, puis **ÉCHEC export 1** : « Espace vidéo insuffisant… », même message que dans le studio |
+| Correctif | Les 2 médias les plus anciens sont supprimés automatiquement. 2 exports OK (111 s et 114 s, 97,7 Mo) |
+
+**Correction :** `ensure_space()` libère d’abord de la place avant de refuser. Il supprime les médias et MP4 inutilisés, du plus ancien au plus récent. Il ne touche jamais au média d’un traitement en attente ou en cours, ni à un fichier utilisé il y a moins de 15 minutes. Quand le refus reste nécessaire, le message explique pourquoi. Test : `test_13_low_space_evicts_unused_media_oldest_first`.
+
+Les erreurs anglaises « Sign in to confirm you’re not a bot » visibles dans le même écran datent d’avant le déploiement du 28/09 à 17:35. La version actuelle bloque ces cas avec un message en français. YouTube refuse toujours les serveurs Railway : pour le MP4, il faut importer le fichier vidéo original dans le projet.
+
 ## Refaire le test
 
 ```sh

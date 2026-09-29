@@ -25,10 +25,29 @@ def paid_enabled(payload=None):
 def local_transcription_available():
     return TRANSCRIPTION_BACKEND=='local' and importlib.util.find_spec('faster_whisper') is not None
 
+EVICTION_GRACE_SECONDS=15*60
+
+def evictable_files():
+    """Media and MP4s nobody is using, oldest first. Both can be regenerated: the studio re-sends media and re-runs exports."""
+    with database() as db:
+        rows=db.execute("SELECT id,status,payload FROM jobs").fetchall()
+    active={r['id'] for r in rows if r['status'] in ('queued','running')}
+    protected={str(json.loads(r['payload']).get('asset','')) for r in rows if r['id'] in active}
+    recent=time.time()-EVICTION_GRACE_SECONDS
+    files=[p for p in (ROOT/'assets').glob('*') if re.fullmatch(r'[a-f0-9-]{36}',p.name) and p.name not in protected]
+    files+=[ROOT/r['id']/'export.mp4' for r in rows if r['id'] not in active]
+    files=[(p.stat().st_mtime,p) for p in files if p.is_file()]
+    return [p for mtime,p in sorted(files,key=lambda x:x[0]) if mtime<recent]
+
 def ensure_space(required):
     ROOT.mkdir(parents=True,exist_ok=True)
     if shutil.disk_usage(ROOT).free<required+RESERVE_BYTES:
-        raise ValueError('Espace vidéo insuffisant. Attendez le nettoyage des fichiers temporaires ou importez une vidéo plus courte (100 Mo maximum par défaut).')
+        with STORAGE_LOCK:
+            for file in evictable_files():
+                if shutil.disk_usage(ROOT).free>=required+RESERVE_BYTES:break
+                file.unlink(missing_ok=True)
+    if shutil.disk_usage(ROOT).free<required+RESERVE_BYTES:
+        raise ValueError('Espace vidéo insuffisant : l’espace restant est occupé par des traitements en cours ou lancés il y a moins de 15 minutes. Réessayez dans quelques minutes, ou importez une vidéo plus courte (100 Mo maximum par défaut).')
 
 def cleanup_expired():
     with STORAGE_LOCK:

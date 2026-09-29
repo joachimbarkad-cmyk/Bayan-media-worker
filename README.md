@@ -35,6 +35,7 @@ Cette variante installe `faster-whisper`. Prévoir de la mémoire et du disque p
 - Maximum 100 Mo par upload, marge disque de 150 Mo, vérification de capacité avant téléchargement/rendu.
 - Le débit du MP4 est plafonné (≈ débit de la source, 8 Mbit/s max en 1080p) : un export reste proche de la taille de l’upload. Un nouvel export du même média remplace le MP4 précédent. Test du parcours complet : `docs/test-parcours-3min.md` et `tests/e2e_parcours.py`.
 - Le rendu utilise au plus 4 threads FFmpeg, selon le quota CPU du conteneur (`BAYAN_FFMPEG_THREADS` pour forcer), et le preset x264 `faster` (`BAYAN_X264_PRESET`). Sur Railway (2 vCPU, 1 Go), une vidéo 1080p de 3 min s’exporte en ~2 min avec ~400 Mo de mémoire.
+- Quand l’espace manque, le service supprime d’abord les médias et MP4 inutilisés, du plus ancien au plus récent : rien n’est supprimé s’il sert à un traitement en cours ou a été utilisé il y a moins de 15 minutes. Le studio renvoie la vidéo ou relance l’export si besoin.
 - Chaque traitement écrit une ligne dans les journaux du service (début, fin, blocage ou échec avec le motif), sans jeton ni URL.
 - Les copies YouTube téléchargées et les fragments audio sont supprimés après traitement. Les MP4 temporaires et les médias inutilisés de plus de 24 h sont supprimés lors des nouvelles tâches ou des nouveaux uploads ; les jobs actifs sont protégés.
 - Les projets et leurs sous-titres restent dans le studio. Les vidéos sont renvoyées au service depuis le studio si nécessaire.
