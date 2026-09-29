@@ -55,6 +55,14 @@ recalculées sur les vrais schémas ; rien ne garantit d'avance qu'elles passero
 Points nécessitant une revue indépendante : tolérance d'arrondi retenue ; banques et assureurs volontairement sans total
 automatique ; exigence de faits pour tous les contributeurs (peut bloquer des présentations valides).
 
+**Diagnostic complémentaire (29/09/2026, pas une preuve)** — pour la question « exiger un fait pour chaque contributeur
+bloque-t-il des cas réels ? » : en identifiant provisoirement les concepts standard par l'ancienne convention
+« préfixe_Nom » (uniquement pour ce diagnostic), le calcul effectif se vérifie **exactement**, avec tous les
+contributeurs présents, sur les 12 exercices des 10-K téléchargés : Apple (marge brute 169 148 / 180 683 / 195 201 M$),
+Microsoft (171 008 / 193 893 / 225 465 M$), Ford (résultat d'exploitation 5 458 / 5 219 / −9 169 M$), Duke
+(7 070 / 7 926 / 8 626 M$). Le calcul effectif ne devrait donc pas bloquer ces cas une fois les schémas officiels
+disponibles ; seule la résolution réelle le confirmera. `xbrl.fasb.org` et `xbrl.sec.gov` restent bloqués (revérifié).
+
 ## V1.20 — Revue n° 15 : un composant ne devient total que par une preuve positive
 
 Le relecteur a jugé l'heuristique de noms (V1.19) insuffisante comme **preuve** : elle peut rater des revenus
