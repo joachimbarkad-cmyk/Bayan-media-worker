@@ -8,5 +8,5 @@
   "0001130464-0001193125-26-337444-us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax-USD-2026-04-01-2026-06-30 : ['us-gaap:Revenues']"
  ],
  "regles": "règles edgar_v7 sha256:10b5c23c53bba18f",
- "annexes": "bkh-20260630.xsd (sha256 ec6bd71b14f47d5f…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2026/elts/us-gaap-2026.xsd']"
+ "annexes": "bkh-20260630.xsd (sha256 ec6bd71b14f47d5f…) ; schémas officiels : https://xbrl.fasb.org/us-gaap/2026/elts/us-gaap-2026.xsd (sha256 5df2d5054b8a37ef…)"
 }

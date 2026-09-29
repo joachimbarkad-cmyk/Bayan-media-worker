@@ -1018,8 +1018,8 @@ REAL = {"apple": ("0000320193", {"total_assets": 88, "total_revenue": 11,
                                     "total_revenue": 17}, 5),
         "black_hills": ("0001130464", {"revenue_from_contracts_with_customers": 102, "total_assets": 91,
                                        "total_revenue": 120}, 10),
-        "american_express": ("0000004962", {'revenue_from_contracts_with_customers': 91, 'revenues_net_of_interest_expense': 107, 'total_assets': 84}, 6),
-        "duke_energy": ("0001326160", None, 6),
+        "american_express": ("0000004962", {'revenue_from_contracts_with_customers': 91, 'revenues_net_of_interest_expense': 107, 'total_assets': 84}, 9),
+        "duke_energy": ("0001326160", None, 9),
         "ford": ("0000037996", None, 6)}
 REVENUE = "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax"
 
@@ -1062,12 +1062,12 @@ class RealIssuersTests(unittest.TestCase):
     def test_apple_fiscal_2025_revenue_is_usable_from_its_document(self):
         audit, _ = self.paths("apple")
         docs, facts = load_audit(audit)
-        s = select_fact(docs, facts, "0000320193", "revenue_from_contracts_with_customers", "monnaie", "2024-09-29",
+        s = select_fact(docs, facts, "0000320193", "total_revenue", "monnaie", "2024-09-29",
                         "2025-09-27", date(2025, 11, 1), concept_field="normalized_concept", currency="USD")
         self.assertEqual((s.fact["value"], s.usable, s.reconciliation), ("416161000000", True, "auto"))
         self.assertEqual((s.fact["source_context"], s.fact["decimals"]), ("c-1", "-6"))
         self.assertIn("« 416,161 »", s.fact["reconciled_note"])
-        q = select_fact(docs, facts, "0000320193", "revenue_from_contracts_with_customers", "monnaie", "2025-03-30",
+        q = select_fact(docs, facts, "0000320193", "total_revenue", "monnaie", "2025-03-30",
                         "2025-06-28", date(2025, 8, 2), concept_field="normalized_concept", currency="USD")
         self.assertEqual((q.fact["value"], q.usable), ("94036000000", True))
 
@@ -1128,9 +1128,8 @@ class RealIssuersTests(unittest.TestCase):
         c = select_fact(docs, facts, "0001326160", "revenue_from_contracts_with_customers_including_assessed_tax",
                         *args, concept_field="normalized_concept", currency="USD")
         self.assertEqual(c.fact["value"], "31741000000")
-        for concept in ("revenue_from_contracts_with_customers", "total_revenue"):
-            self.assertIsNone(select_fact(docs, facts, "0001326160", concept, *args,
-                                          concept_field="normalized_concept", currency="USD").fact)
+        self.assertIsNone(select_fact(docs, facts, "0001326160", "revenue_from_contracts_with_customers", *args,
+                                      concept_field="normalized_concept", currency="USD").fact)
 
     def test_alphabet_2025_total_comes_from_revenues(self):
         audit, _ = self.paths("alphabet")
@@ -1139,22 +1138,49 @@ class RealIssuersTests(unittest.TestCase):
                         date(2026, 3, 1), concept_field="normalized_concept", currency="USD")
         self.assertEqual((s.fact["value"], s.fact["source_concept"]), ("402836000000", "us-gaap:Revenues"))
 
-    def test_review_16_no_proof_without_official_schemas(self):
-        """Schémas us-gaap inaccessibles d'ici : Apple, Microsoft, Ford n'ont plus de total (fail-closed), et la raison
-        est écrite dans le fait ; Duke n'a pas de total direct, raison dans le rapport de rapprochement."""
-        for name in ("apple", "microsoft", "ford"):
+    def test_proofs_pass_with_official_schemas(self):
+        """Schémas us-gaap officiels dans collecte/taxonomies : repli prouvé (Apple, Microsoft, Ford), total direct
+        réglementé (Duke), extraction bancaire typée (American Express) ; chaque preuve cite les schémas officiels."""
+        cases = {"apple": ("0000320193", "2024-09-29", "2025-09-27", "416161000000", R1C),
+                 "microsoft": ("0000789019", "2024-07-01", "2025-06-30", "281724000000", R1C),
+                 "ford": ("0000037996", "2025-01-01", "2025-12-31", "187267000000", R1C),
+                 "duke_energy": ("0001326160", "2025-01-01", "2025-12-31", "32237000000",
+                                 "us-gaap:RegulatedAndUnregulatedOperatingRevenue")}
+        for name, (cik, start, end, value, concept) in cases.items():
             with self.subTest(name):
                 audit, _ = self.paths(name)
-                _, facts = load_audit(audit)
-                self.assertFalse(any(f["normalized_concept"] == "total_revenue" for f in facts))
-                comp = [f for f in facts if f["normalized_concept"] == "revenue_from_contracts_with_customers"]
-                self.assertTrue(comp)
-                self.assertTrue(all("Repli vers total_revenue non retenu" in f["normalization_justification"]
-                                    and "schémas non disponibles" in f["normalization_justification"] for f in comp))
-        audit, _ = self.paths("duke_energy")
-        rep = json.loads(next(audit.rglob(en.RECONCILE_REPORT)).read_text(encoding="utf-8"))
-        self.assertTrue(rep["echecs"])
-        self.assertTrue(all("schémas non disponibles" in e for e in rep["echecs"]))
+                docs, facts = load_audit(audit)
+                s = select_fact(docs, facts, cik, "total_revenue", "monnaie", start, end, date(2026, 9, 1),
+                                concept_field="normalized_concept", currency="USD")
+                self.assertEqual((s.fact["value"], s.fact["source_concept"], s.usable), (value, concept, True))
+                j = s.fact["normalization_justification"]
+                self.assertIn("calcul_XBRL_coherent=oui ; preuve_complete_pour_repli=oui", j)
+                self.assertIn("schémas officiels : https://xbrl.fasb.org/us-gaap/", j)
+                if concept == R1C:
+                    self.assertTrue(j.startswith("REPLI : preuve positive"))
+        audit, _ = self.paths("american_express")
+        docs, facts = load_audit(audit)
+        b = select_fact(docs, facts, "0000004962", "revenues_net_of_interest_expense", "monnaie", "2025-01-01",
+                        "2025-12-31", date(2026, 3, 1), concept_field="normalized_concept", currency="USD")
+        self.assertEqual(b.fact["value"], "72229000000")
+        self.assertFalse(any(f["normalized_concept"] == "total_revenue" for f in facts))
+
+    def test_without_official_schemas_the_proofs_fail_closed(self):
+        audit, raw = self.paths("ford")
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        cp = tmp / "cp"
+        ec.convert(raw, cp, {"10-K", "10-Q"})
+        en.normalize(raw, cp, RULES_V7)
+        with open(audit / "documents.csv", newline="", encoding="utf-8") as f:
+            doc = next(r for r in csv.DictReader(f) if r["local_copy"])
+        src = audit / doc["local_copy"]
+        en.import_filing(cp, doc["doc_id"], src, "2026-09-28T00:00:00+00:00", raw, annexes=en._annexes(src.parent))
+        (tmp / "cache_vide").mkdir()
+        en.reconcile_ixbrl(cp, doc["doc_id"], raw, RULES_V7, tmp / "cache_vide")
+        _, facts = load_audit(cp)
+        self.assertFalse(any(f["normalized_concept"] == "total_revenue" for f in facts))
+        self.assertTrue(any("schémas non disponibles" in f["normalization_justification"] for f in facts))
 
     def test_later_comparative_never_replaces_the_filing_available_at_the_decision(self):
         docs, before = self.sel("microsoft", "2024-07-01", "2025-06-30", "2025-12-01")

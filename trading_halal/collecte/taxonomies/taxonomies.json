@@ -1,0 +1,20 @@
+[
+ {
+  "url": "https://xbrl.fasb.org/us-gaap/2024/elts/us-gaap-2024.xsd",
+  "fichier": "xbrl.fasb.org/us-gaap/2024/elts/us-gaap-2024.xsd",
+  "sha256": "6a5daf96dc96edf69876ac9a34a3cb076f23eec3e2899e88ae92c1cecae0d70f",
+  "obtenu": "téléchargé automatiquement le 2026-09-29T13:30:31+00:00"
+ },
+ {
+  "url": "https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd",
+  "fichier": "xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd",
+  "sha256": "4639263ec38aaa5d531cb7d0afb33f9582c2d602fb4623d4921e47e365b6ac9f",
+  "obtenu": "téléchargé automatiquement le 2026-09-29T13:30:29+00:00"
+ },
+ {
+  "url": "https://xbrl.fasb.org/us-gaap/2026/elts/us-gaap-2026.xsd",
+  "fichier": "xbrl.fasb.org/us-gaap/2026/elts/us-gaap-2026.xsd",
+  "sha256": "5df2d5054b8a37ef1a00bbbad621317833e7c2cb65a421a283128efbd707da7e",
+  "obtenu": "téléchargé automatiquement le 2026-09-29T13:30:35+00:00"
+ }
+]

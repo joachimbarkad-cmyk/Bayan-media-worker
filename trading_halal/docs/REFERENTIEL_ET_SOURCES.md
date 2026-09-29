@@ -43,7 +43,8 @@ Liens de recherche ayant fourni les informations secondaires :
 1. Choisir **un** référentiel précis et en obtenir le texte officiel **daté** (version, pages ou sections).
 2. Copier `config/rulesets/TEMPLATE_a_valider.json` vers un nouveau fichier, renseigner `reference_text`,
    chaque `max` et chaque `source` (référence exacte au paragraphe), le dénominateur, et le statut des activités.
-3. Faire relire par une personne qualifiée (savant ou comité charia de votre choix) ; renseigner `validated_by` et `validated_on`,
+3. Faire relire **et signer** `docs/FICHE_VALIDATION_SHARIA.md` par une personne qualifiée (savant ou comité charia de
+   votre choix) ; enregistrer la fiche signée et son empreinte dans `validation_record` ; renseigner `validated_by` et `validated_on`,
    `activity_rules_source`, puis seulement `validated: true` et `demo_only: false`.
    Le logiciel vérifie tous ces champs (`real_data_problems()`) avant d'accepter des données réelles ; une source
    contenant « DEMO » ou « ARBITRAIRE » est refusée. Il ne peut évidemment pas vérifier que la validation a réellement eu lieu.

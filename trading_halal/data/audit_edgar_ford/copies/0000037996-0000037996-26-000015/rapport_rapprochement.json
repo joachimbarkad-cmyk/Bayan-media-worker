@@ -1,11 +1,6 @@
 {
  "rapproches": 6,
  "echecs": [],
- "replis_bloques": [
-  "0000037996-0000037996-26-000015-us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax-USD-2023-01-01-2023-12-31 : [\"aucune preuve positive dans les calculs du dépôt (f-20251231.xsd (sha256 ea0d8b94c7e1345b…), f-20251231_cal.xml (sha256 19e0a604942bf5c1…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd']) : us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement\"]",
-  "0000037996-0000037996-26-000015-us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax-USD-2024-01-01-2024-12-31 : [\"aucune preuve positive dans les calculs du dépôt (f-20251231.xsd (sha256 ea0d8b94c7e1345b…), f-20251231_cal.xml (sha256 19e0a604942bf5c1…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd']) : us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement\"]",
-  "0000037996-0000037996-26-000015-us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax-USD-2025-01-01-2025-12-31 : [\"aucune preuve positive dans les calculs du dépôt (f-20251231.xsd (sha256 ea0d8b94c7e1345b…), f-20251231_cal.xml (sha256 19e0a604942bf5c1…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd']) : us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement\"]"
- ],
  "regles": "règles edgar_v7 sha256:10b5c23c53bba18f",
- "annexes": "f-20251231.xsd (sha256 ea0d8b94c7e1345b…), f-20251231_cal.xml (sha256 19e0a604942bf5c1…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd']"
+ "annexes": "f-20251231.xsd (sha256 ea0d8b94c7e1345b…), f-20251231_cal.xml (sha256 19e0a604942bf5c1…) ; schémas officiels : https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd (sha256 4639263ec38aaa5d…)"
 }

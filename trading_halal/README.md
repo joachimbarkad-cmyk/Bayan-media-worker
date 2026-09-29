@@ -23,7 +23,7 @@ Depuis la racine du dépôt :
 cd trading_halal
 python3 -m halal_sim check-data                 # valide les fichiers de données de démonstration
 python3 -m halal_sim run                        # simulation complète + rapport + sensibilité au capital
-python3 -m unittest discover -s tests -v        # 260 vérifications automatiques
+python3 -m unittest discover -s tests -v        # 267 vérifications automatiques
 python3 -m halal_sim audit-docs                  # contrôle du dossier d'audit documentaire d'exemple (FICTIF)
 python3 -m halal_sim run --ruleset config/rulesets/AAOIFI_SS21_document_utilisateur.json --no-sensitivity   # référentiel tiré de votre document (non validé)
 python3 tools/edgar_collect.py collect --cik 320193 --dry-run --out collecte_brute   # collecte EDGAR (voir docs/AUDIT_DOCUMENTAIRE.md)
@@ -87,8 +87,9 @@ Un document publié le jour J n'est utilisé qu'à partir de la décision du jou
 Tous les titres doivent être dans la devise du portefeuille (pas encore de conversion).
 
 Le moteur refusera de tourner tant que le référentiel choisi n'est pas **complet** : texte source daté, chaque seuil
-renseigné et sourcé, source du classement des activités, nom et date de la validation, `validated: true` et
-`demo_only: false`. Basculer les booléens ne suffit pas (voir `docs/REFERENTIEL_ET_SOURCES.md`).
+renseigné et sourcé, source du classement des activités, nom et date de la validation, **fiche de validation signée**
+(`docs/FICHE_VALIDATION_SHARIA.md`, enregistrée avec son empreinte, chacune des 17 décisions validée ou modifiée),
+`validated: true` et `demo_only: false`. Basculer les booléens ne suffit pas (voir `docs/REFERENTIEL_ET_SOURCES.md`).
 
 ## Base SQLite d'une version antérieure
 

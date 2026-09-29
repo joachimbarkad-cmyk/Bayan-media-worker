@@ -1,11 +1,38 @@
-# HANDOFF — simulateur de trading halal, V1.23 (pour relecture par ChatGPT / DeepSeek)
+# HANDOFF — simulateur de trading halal, V1.24 (pour relecture par ChatGPT / DeepSeek)
 
-Date : 2026-09-28. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
+Date : 2026-09-29. Branche : `claude/halal-trading-portfolio-v1-lnd6i8`. Dossier : `trading_halal/`
 (le reste du dépôt est un projet sans rapport, le service vidéo Bayān, auquel je n'ai pas touché).
 
 **Merci de relire de façon critique** : lectures d'information future, ADMISSIBLE erronés, contrôles d'audit
 contournables, informations inventées ou perdues par la conversion, opérations destructives, **fidélité du référentiel
 au document de fiqh fourni par l'utilisateur**.
+
+## V1.24 — Schémas officiels obtenus, preuves positives réelles ; fiche de validation sharia
+
+1. **Accès ouvert à `xbrl.fasb.org`** : `fetch-taxonomies` a mis en cache us-gaap 2024, 2025 et 2026 dans
+   `collecte/taxonomies/` (URL, SHA-256, heure ; environ 15 Mo). Les 7 dossiers réels ont été régénérés avec
+   `edgar_v7` (mêmes documents, heures d'origine) ; verify-trace, verify-normalisation et audit-docs : 0 erreur.
+   - Repli **prouvé** (contrats clients retenus comme total) : Apple, Microsoft, Ford (2025 : 187 267 M$, Ford Credit
+     compris ; preuve : résultat d'exploitation = R1 − charges dans « CONSOLIDATED INCOME STATEMENTS »).
+   - Duke Energy : total direct `RegulatedAndUnregulatedOperatingRevenue` prouvé (32 237 M$).
+   - American Express : `revenues_net_of_interest_expense` = 72 229 M$, extraction typée, **jamais** un total.
+   - Alphabet, Black Hills : `Revenues` direct.
+   - Tests : preuve avec schémas officiels, et **fail-closed** conservé sans eux (test dédié).
+2. **Sharia board** : l'assistant ne peut ni être ni remplacer un sharia board. Solution livrée :
+   `docs/FICHE_VALIDATION_SHARIA.md`, 17 décisions (D01-D17) avec source, comportement actuel et cases
+   Validé / Modifié / Refusé, plus signature (nom, qualification, madhhab, date).
+3. **Verrou technique** (`validation_record_problems`) : sur données réelles, le moteur exige en plus
+   `validation_record` = fiche signée dans le projet (chemin relatif, sans « .. »), empreinte SHA-256 identique, une
+   réponse VALIDE ou MODIFIE pour chacune des 17 décisions, et le texte de chaque modification. Une décision refusée
+   ou manquante bloque. Le logiciel ne peut pas vérifier l'authenticité de la signature. 6 tests, dont un qui vérifie
+   que la fiche et le code listent les mêmes décisions ; 5 mutations, toutes détectées. **267 tests.**
+4. Référentiel toujours `validated: false`, `validated_by: null`.
+
+**Limite** : `tools/sonde_revenus.py` utilise encore la logique des règles v6, qui ont été retirées. La sonde n'a pas été
+relancée : `docs/SONDE_REVENUS.md` reste un diagnostic antérieur, pas une preuve.
+
+**À relire en priorité** : la fiche est-elle fidèle au document de l'utilisateur ? Manque-t-il une décision ?
+La formulation du point D15 (aucune revente avant règlement, puisque les décisions sont mensuelles) est-elle exacte ?
 
 ## V1.23 — Décisions tranchées par l'assistant à la demande de l'utilisateur (29/09/2026)
 
@@ -525,9 +552,9 @@ inventée), sans aucune requête ; `convert` et `audit-docs` s'appliquent ensuit
 
 - Simulation de bout en bout (12 contrôles), avec `--ruleset` pour choisir le référentiel et `--db` pour la base.
 - `audit-docs` sur l'exemple fictif : 0 erreur, verdict NON EXPLOITABLE.
-- **260 tests**, tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
+- **267 tests** (V1.24), tous au vert : test_audit 26, test_costs_and_data 9, test_edgar_tool 10, test_incertain_never_bought 5,
   test_lookahead 8, test_no_real_orders 8, test_review2 10, test_review3 12, test_review4 8, test_review5 9, test_review6 7,
-  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 79, test_ruleset_validation 12, test_screening 11.
+  test_review9 9, test_review10 15, test_review11 12, test_review12 11, test_normalisation 79, test_ruleset_validation 18, test_screening 11.
 
 ## Limites connues (générales)
 

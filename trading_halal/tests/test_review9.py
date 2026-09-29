@@ -39,7 +39,8 @@ class UserFiqhRulesetTests(unittest.TestCase):
     def test_not_usable_on_real_data_until_named_board_validates(self):
         self.assertFalse(self.rs["validated"])
         self.assertEqual(sorted(real_data_problems(self.rs)), sorted([
-            "validated n'est pas true", "validated_by non renseigné", "validated_on doit être une date AAAA-MM-JJ"]))
+            "validated n'est pas true", "validated_by non renseigné", "validated_on doit être une date AAAA-MM-JJ",
+            "validation_record absent (fiche de validation signée : docs/FICHE_VALIDATION_SHARIA.md)"]))
         ds = fresh_copy(demo_dataset())
         ds.manifest["nature"] = "REEL"
         with self.assertRaises(PolicyError):

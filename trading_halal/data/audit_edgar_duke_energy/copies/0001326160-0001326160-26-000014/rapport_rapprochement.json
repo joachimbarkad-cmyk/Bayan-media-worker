@@ -1,10 +1,6 @@
 {
- "rapproches": 6,
- "echecs": [
-  "0001326160-0001326160-26-000014-us-gaap:RegulatedAndUnregulatedOperatingRevenue-USD-2023-01-01-2023-12-31 : position non prouvée par les calculs du dépôt (duk-20251231.xsd (sha256 94b4f3d82195bc6f…), duk-20251231_cal.xml (sha256 d21f87fc9364a267…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd']) : us-gaap:RegulatedAndUnregulatedOperatingRevenue n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement",
-  "0001326160-0001326160-26-000014-us-gaap:RegulatedAndUnregulatedOperatingRevenue-USD-2024-01-01-2024-12-31 : position non prouvée par les calculs du dépôt (duk-20251231.xsd (sha256 94b4f3d82195bc6f…), duk-20251231_cal.xml (sha256 d21f87fc9364a267…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd']) : us-gaap:RegulatedAndUnregulatedOperatingRevenue n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement",
-  "0001326160-0001326160-26-000014-us-gaap:RegulatedAndUnregulatedOperatingRevenue-USD-2025-01-01-2025-12-31 : position non prouvée par les calculs du dépôt (duk-20251231.xsd (sha256 94b4f3d82195bc6f…), duk-20251231_cal.xml (sha256 d21f87fc9364a267…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd']) : us-gaap:RegulatedAndUnregulatedOperatingRevenue n'est l'enfant +1 d'aucun parent ['us-gaap:GrossProfit', 'us-gaap:OperatingIncomeLoss'] dans un rôle Statement"
- ],
+ "rapproches": 9,
+ "echecs": [],
  "regles": "règles edgar_v7 sha256:10b5c23c53bba18f",
- "annexes": "duk-20251231.xsd (sha256 94b4f3d82195bc6f…), duk-20251231_cal.xml (sha256 d21f87fc9364a267…) ; schémas non disponibles : ['https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd']"
+ "annexes": "duk-20251231.xsd (sha256 94b4f3d82195bc6f…), duk-20251231_cal.xml (sha256 d21f87fc9364a267…) ; schémas officiels : https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd (sha256 4639263ec38aaa5d…)"
 }

@@ -1,5 +1,6 @@
 """Garde-fous sur le référentiel religieux et le cadre de simulation (revue n° 1)."""
 import copy
+import hashlib
 import json
 import os
 import tempfile
@@ -8,7 +9,8 @@ import unittest
 from helpers import config, demo_dataset, demo_ruleset, fresh_copy, run, template_ruleset
 
 from halal_sim.backtest import PolicyError, check_run_allowed
-from halal_sim.screening import RulesetError, load_ruleset, real_data_problems
+from halal_sim import PROJECT_ROOT
+from halal_sim.screening import SHARIA_DECISIONS, RulesetError, load_ruleset, real_data_problems
 from halal_sim.strategy import BUY, PolicyConfigError, incertain_action
 
 
@@ -16,6 +18,8 @@ def real_ds():
     ds = fresh_copy(demo_dataset())
     ds.manifest["nature"] = "REEL"
     return ds
+
+SHEET = "docs/FICHE_VALIDATION_SHARIA.md"
 
 
 def complete_test_ruleset():
@@ -28,6 +32,9 @@ def complete_test_ruleset():
                               "url_or_document": "aucun", "pages_or_sections": "1"})
     for r in rs["financial_ratios"]:
         r["max"], r["source"] = 0.5, "Texte inventé pour test unitaire, section 2"
+    sheet = PROJECT_ROOT / SHEET
+    rs["validation_record"] = {"document": SHEET, "sha256": hashlib.sha256(sheet.read_bytes()).hexdigest(),
+                               "decisions": {k: {"reponse": "VALIDE"} for k in SHARIA_DECISIONS}}
     return rs
 
 
@@ -152,3 +159,52 @@ class DenominatorDecisionTests(unittest.TestCase):
         self.assertEqual((r["activity_rules"]["CONVENTIONAL_BANKING"]["status"],
                           r["activity_rules"]["CONVENTIONAL_INSURANCE"]["status"]), ("EXCLU", "EXCLU"))
         self.assertFalse(r["validated"])
+
+
+class SignedValidationSheetTests(unittest.TestCase):
+    """La validation renvoie à la fiche signée (empreinte) et reprend chaque décision (V1.24)."""
+
+    def problems_after(self, change):
+        rs = complete_test_ruleset()
+        change(rs["validation_record"])
+        return real_data_problems(rs)
+
+    def test_record_is_required(self):
+        rs = complete_test_ruleset()
+        del rs["validation_record"]
+        self.assertEqual(len(real_data_problems(rs)), 1)
+        self.assertIn("validation_record absent", real_data_problems(rs)[0])
+
+    def test_document_must_match_its_fingerprint(self):
+        got = self.problems_after(lambda r: r.update(sha256="0" * 64))
+        self.assertEqual(got, ["validation_record.sha256 ne correspond pas au document signé"])
+
+    def test_document_path_must_stay_in_the_project_and_exist(self):
+        for doc in ("/etc/hostname", "../README.md", "", "docs/absent.pdf"):
+            with self.subTest(doc=doc):
+                got = self.problems_after(lambda r: r.update(document=doc))
+                self.assertEqual(len(got), 1, got)
+                self.assertIn("validation_record.document", got[0])
+
+    def test_every_decision_must_be_answered_and_none_refused(self):
+        got = self.problems_after(lambda r: r["decisions"].pop("D03"))
+        self.assertEqual(len(got), 1)
+        self.assertIn("D03", got[0])
+        for bad in ("REFUSE", "valide", None):
+            with self.subTest(bad=bad):
+                got = self.problems_after(lambda r: r["decisions"]["D11"].update(reponse=bad))
+                self.assertEqual(len(got), 1)
+                self.assertIn("D11", got[0])
+
+    def test_a_modification_must_be_written_down(self):
+        got = self.problems_after(lambda r: r["decisions"]["D12"].update(reponse="MODIFIE"))
+        self.assertEqual(got, ["décision D12 modifiée sans texte de la modification"])
+        got = self.problems_after(lambda r: r["decisions"]["D12"].update(reponse="MODIFIE", modification="Méthode X"))
+        self.assertEqual(got, [])
+
+    def test_the_sheet_lists_every_decision_of_the_code(self):
+        text = (PROJECT_ROOT / SHEET).read_text(encoding="utf-8")
+        for key in SHARIA_DECISIONS:
+            self.assertIn(f"### {key}", text)
+        self.assertEqual(text.count("### D"), len(SHARIA_DECISIONS))
+

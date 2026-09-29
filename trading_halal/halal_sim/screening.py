@@ -9,6 +9,7 @@ Principes :
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from dataclasses import dataclass, field
@@ -130,6 +131,58 @@ def structural_problems(rs: dict) -> list[str]:
     return p
 
 
+# Décisions religieuses que la personne qualifiée doit trancher (fiche docs/FICHE_VALIDATION_SHARIA.md).
+SHARIA_DECISIONS = {
+    "D01": "Seuils 30 % / 30 % / 5 % de l'AAOIFI SS 21 §3/4/2 à 3/4/4",
+    "D02": "Dénominateur des deux premiers ratios : capitalisation boursière",
+    "D03": "Dénominateur du ratio de revenus illicites : revenu total déclaré, toutes sources",
+    "D04": "Périmètre des emprunts à intérêt (locations, billets de trésorerie…)",
+    "D05": "Périmètre des dépôts et placements à intérêt",
+    "D06": "Revenus illicites : intérêts perçus et autres sources à compter",
+    "D07": "Date de la capitalisation boursière",
+    "D08": "Classement des activités (EXCLU / ADMISSIBLE)",
+    "D09": "Tabac, armement, médias, hôtellerie (INCERTAIN aujourd'hui)",
+    "D10": "États financiers vérifiés et âge maximal de 200 jours",
+    "D11": "Titre détenu devenu EXCLU ou INCERTAIN : vente, délai de cession",
+    "D12": "Purification des dividendes et des plus-values",
+    "D13": "Filtre mālikite des actifs monétaires",
+    "D14": "Avis permissif (AAOIFI) retenu malgré l'interdiction des Académies de fiqh",
+    "D15": "Revente avant règlement-livraison",
+    "D16": "Fréquence du filtrage",
+    "D17": "Sociétés à dominante de liquidités (règles du ṣarf, AAOIFI 3/17)",
+}
+ACCEPTED_DECISIONS = {"VALIDE", "MODIFIE"}
+
+
+def validation_record_problems(rs: dict, root: Path | None = None) -> list[str]:
+    """La validation doit renvoyer à la fiche signée (fichier du dépôt, empreinte SHA-256) et reprendre la réponse
+    donnée à chaque décision. Le logiciel ne peut pas prouver que la signature est authentique : il garantit seulement
+    que le référentiel utilisé correspond à un document signé identifiable et que rien n'a été omis ni refusé."""
+    from . import PROJECT_ROOT
+    rec = rs.get("validation_record")
+    if not isinstance(rec, dict):
+        return ["validation_record absent (fiche de validation signée : docs/FICHE_VALIDATION_SHARIA.md)"]
+    p = []
+    doc, digest = str(rec.get("document") or ""), str(rec.get("sha256") or "").lower()
+    path = Path(doc)
+    if not doc or path.is_absolute() or ".." in path.parts:
+        p.append("validation_record.document doit être un chemin relatif au projet")
+    else:
+        f = (root or PROJECT_ROOT) / path
+        if not f.is_file():
+            p.append(f"validation_record.document introuvable : {doc}")
+        elif hashlib.sha256(f.read_bytes()).hexdigest() != digest:
+            p.append("validation_record.sha256 ne correspond pas au document signé")
+    decisions = rec.get("decisions") if isinstance(rec.get("decisions"), dict) else {}
+    for key in sorted(SHARIA_DECISIONS):
+        d = decisions.get(key)
+        if not isinstance(d, dict) or d.get("reponse") not in ACCEPTED_DECISIONS:
+            p.append(f"décision {key} non validée ({SHARIA_DECISIONS[key]})")
+        elif d["reponse"] == "MODIFIE" and not str(d.get("modification") or "").strip():
+            p.append(f"décision {key} modifiée sans texte de la modification")
+    return p
+
+
 def real_data_problems(rs: dict) -> list[str]:
     """Conditions supplémentaires pour appliquer un référentiel à des données RÉELLES.
     Un booléen `validated` ne suffit pas : on exige le texte source, les seuils sourcés et la validation nommée."""
@@ -150,6 +203,7 @@ def real_data_problems(rs: dict) -> list[str]:
         p.append("validated_on doit être une date AAAA-MM-JJ")
     if not str(rs.get("activity_rules_source") or "").strip():
         p.append("activity_rules_source non renseigné (source du classement des activités)")
+    p += validation_record_problems(rs)
     for r in rs.get("financial_ratios", []):
         if r.get("max") is None:
             p.append(f"ratio {r.get('id')} : seuil non défini")
