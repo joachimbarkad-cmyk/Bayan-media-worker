@@ -12,8 +12,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
 COPY server ./server
-COPY web/lib ./web/lib
-RUN mkdir -p /data && chown node:node /data
-USER node
+COPY start.sh ./
+RUN mkdir -p /data && chown node:node /data && command -v setpriv
 EXPOSE 8787
-CMD ["node", "server/index.ts"]
+CMD ["./start.sh"]

@@ -1,0 +1,10 @@
+# Service Railway « muraja » (répertoire racine du service : muraja/). Le service vidéo garde ../railway.toml.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/api/health"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
