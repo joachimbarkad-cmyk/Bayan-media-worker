@@ -1,0 +1,20 @@
+[
+  "python3",
+  "scripts/request_codex_review.py",
+  "--lot",
+  "Lot 2 IA connectee",
+  "--base",
+  "d29b8b7d8fba68b775425158138af0b66353b7e0",
+  "--head",
+  "484d2d1c5bb3afe29f03cb2b4fb3f78d9063a29f",
+  "--criteria-file",
+  "docs/lots/lot2-ia-connectee.md",
+  "--validation",
+  "cd muraja && npm test : 29/29 OK (OAuth complet, client MCP officiel, fausse clé rejetée par la vraie API Anthropic)",
+  "--validation",
+  "npm run typecheck : OK",
+  "--validation",
+  "npm run build && npm run e2e : 17 étapes OK (fournisseur IA simulé pour la génération)",
+  "--validation",
+  "Non vérifié : connexion réelle depuis claude.ai/ChatGPT (pas d'adresse HTTPS publique), génération réelle (aucune clé), OpenAI/Gemini"
+]
