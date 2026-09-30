@@ -1,0 +1,44 @@
+{
+  "name": "muraja",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Murāja'a — application de révision (cours, flashcards, quiz, FSRS, cartes mentales)",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "dev:server": "node --watch server/index.ts",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "node server/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test --test-concurrency=1 'server/test/*.test.ts'",
+    "e2e": "node e2e/run.ts",
+    "review": "python3 ../scripts/request_codex_review.py"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/multipart": "^10.1.2",
+    "@fastify/static": "^10.1.5",
+    "@fontsource/noto-naskh-arabic": "^5.3.0",
+    "fastify": "^5.12.5",
+    "papaparse": "^5.7.0",
+    "pdfjs-dist": "^6.3.289",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "ts-fsrs": "^5.4.2",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/papaparse": "^5.5.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "pdf-lib": "^1.17.1",
+    "playwright": "^1.63.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
+  }
+}
