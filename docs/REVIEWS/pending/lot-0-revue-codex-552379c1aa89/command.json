@@ -1,0 +1,14 @@
+[
+  "python3",
+  "scripts/request_codex_review.py",
+  "--lot",
+  "Lot 0 revue Codex",
+  "--base",
+  "f2a1c1632534a38c53db77481a43cce242cf1731",
+  "--head",
+  "552379c1aa89a9594f9107ee2372be9ac5aeec4d",
+  "--criteria-file",
+  "docs/lots/lot0-revue-codex.md",
+  "--validation",
+  "python3 -m unittest scripts/tests/test_request_codex_review.py : 11/11 OK"
+]

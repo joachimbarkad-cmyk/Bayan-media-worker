@@ -1,0 +1,33 @@
+{
+  "reviewed_sha": "96d11d942b62754a22f905efd8f58d2611fd2c91",
+  "base_sha": "552379c1aa89a9594f9107ee2372be9ac5aeec4d",
+  "lot": "Lot 1 parcours",
+  "requested_at": "2026-09-30T08:54:38Z",
+  "status": "BLOCKED",
+  "codex_status": null,
+  "blocked_reason": "Codex non authentifié (Not logged in). Lancer `codex login` sur la machine de développement.",
+  "summary": "",
+  "findings": [],
+  "checks_performed": [],
+  "checks_not_run": [
+    {
+      "check": "revue Codex",
+      "reason": "Codex non authentifié (Not logged in). Lancer `codex login` sur la machine de développement."
+    }
+  ],
+  "validation_errors": [],
+  "criteria": "# Lot 1 — Parcours vertical de révision (muraja/)\n\nCritères d'acceptation :\n1. Deux comptes distincts ; aucune route ne permet de lire, modifier, citer ou lier une donnée ou un fichier d'un autre compte (404).\n2. Bibliothèque matières → chapitres ; ajout d'un PDF (pages numérotées, pages illisibles signalées, PDF scanné expliqué) ou d'un texte.\n3. Fiches modifiables ; « Expliquer simplement » dit honnêtement que la génération n'est pas configurée.\n4. Flashcards (réponse masquée, révélée volontairement), QCM (positions mélangées, correction expliquée), questions ouvertes (réponse écrite puis comparaison).\n5. Révision du jour FSRS (ts-fsrs) persistante ; journée locale Indian/Reunion ; quota de nouvelles cartes ; QCM → FSRS défini ; double clic sans double enregistrement ; séance reprise après interruption.\n6. Carte mentale éditable (structure validée), nœuds avec explication et questions liées, vue liste, mode exercice.\n7. Import CSV générique (arabe, retours à la ligne, séparateurs, BOM, encodage) avec aperçu et correspondance ; import JSON `muraja.v1` validé ; sources « vérifiées » seulement si l'extrait est retrouvé.\n8. Export JSON des données du compte.\n9. Aucun contenu importé n'est interprété comme HTML ou code.",
+  "validations_declared": [
+    "cd muraja && npm test : 21/21 OK",
+    "npm run typecheck : OK",
+    "npm run build && npm run e2e : 14 étapes OK (Chromium bureau + mobile 412 px, deux comptes)",
+    "python3 -m unittest scripts/tests/test_request_codex_review.py : 11/11 OK",
+    "Non vérifié : image Docker (pas de démon), tests FFmpeg du service vidéo (FFmpeg absent)"
+  ],
+  "codex": {
+    "version": "codex-cli 0.159.2",
+    "exit_code": null,
+    "duration_s": 0,
+    "sandbox": "workspace-write"
+  }
+}

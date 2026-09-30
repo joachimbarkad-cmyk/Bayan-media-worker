@@ -1,0 +1,22 @@
+[
+  "python3",
+  "scripts/request_codex_review.py",
+  "--lot",
+  "Lot 1 parcours",
+  "--base",
+  "552379c1aa89a9594f9107ee2372be9ac5aeec4d",
+  "--head",
+  "96d11d942b62754a22f905efd8f58d2611fd2c91",
+  "--criteria-file",
+  "docs/lots/lot1-parcours.md",
+  "--validation",
+  "cd muraja && npm test : 21/21 OK",
+  "--validation",
+  "npm run typecheck : OK",
+  "--validation",
+  "npm run build && npm run e2e : 14 étapes OK (Chromium bureau + mobile 412 px, deux comptes)",
+  "--validation",
+  "python3 -m unittest scripts/tests/test_request_codex_review.py : 11/11 OK",
+  "--validation",
+  "Non vérifié : image Docker (pas de démon), tests FFmpeg du service vidéo (FFmpeg absent)"
+]
