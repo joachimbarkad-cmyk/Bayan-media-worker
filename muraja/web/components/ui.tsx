@@ -84,3 +84,11 @@ export function formatDue(ms?: number, state?: number) {
   if (diff < 86400_000) return `Aujourd'hui ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
   return `Le ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`;
 }
+
+/** Who produced a note or question, when it was not typed by the learner. */
+export function OriginBadge({ origin }: { origin: string }) {
+  if (origin.startsWith('ai:')) return <span className="badge warn" title="Généré par IA à partir du cours : à relire.">Généré par IA</span>;
+  if (origin.startsWith('assistant:')) return <span className="badge warn" title="Ajouté par votre assistant connecté : à relire.">Ajouté par {origin.slice(10)}</span>;
+  if (origin === 'import') return <span className="badge">Importé</span>;
+  return null;
+}

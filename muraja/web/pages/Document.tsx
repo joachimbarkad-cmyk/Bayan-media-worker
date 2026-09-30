@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, type DocumentInfo } from '../api.ts';
 import { useLoad, Loading, ErrorBox, Txt } from '../components/ui.tsx';
 import { ItemForm } from '../components/ItemForm.tsx';
+import { GeneratePanel } from '../components/GeneratePanel.tsx';
 
 interface DocView { document: DocumentInfo & { chapter_id: string }; pages: Array<{ page_number: number; text: string; readable: boolean }> }
 
@@ -28,6 +29,7 @@ export function DocumentPage({ id }: { id: string }) {
       {doc.kind !== 'text' && <a className="btn" href={fileUrl} target="_blank" rel="noopener">Ouvrir le fichier original</a>}
       {doc.kind === 'image' && <img src={fileUrl} alt={`Image : ${doc.title}`} style={{ maxWidth: '100%', borderRadius: 12, border: '1px solid var(--line)' }} />}
       {saved > 0 && <div className="notice ok" role="status">{saved} question(s) créée(s) depuis ce document.</div>}
+      {doc.kind !== 'image' && doc.extraction_status !== 'insufficient' && <GeneratePanel docId={doc.id} pageCount={Math.max(1, doc.page_count)} onSaved={(n) => setSaved(saved + n)} />}
       {doc.kind !== 'image' && (
         <>
           <p className="muted">Astuce : sélectionnez une phrase du cours puis « Créer une question » ; l'extrait et la page seront gardés comme source.</p>

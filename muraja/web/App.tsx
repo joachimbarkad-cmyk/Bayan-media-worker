@@ -13,6 +13,7 @@ import { Progress } from './pages/Progress.tsx';
 import { Settings } from './pages/Settings.tsx';
 import { Glossary } from './pages/Glossary.tsx';
 import { MindMapPage } from './pages/MindMap.tsx';
+import { Connect } from './pages/Connect.tsx';
 
 const icons: Record<string, ReactNode> = {
   home: <path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
@@ -53,6 +54,7 @@ export function App() {
     case 'settings': page = <Settings user={user} onUser={setUser} />; break;
     case 'glossary': page = <Glossary />; break;
     case 'mindmap': page = <MindMapPage id={id} />; break;
+    case 'connect': page = <Connect />; break;
     default: page = <p>Page introuvable. <a href="#/">Retour à l'accueil</a></p>;
   }
   const current = section === undefined ? 'home' : ['library', 'add', 'chapter', 'document', 'mindmap', 'glossary'].includes(section) ? 'library' : section;

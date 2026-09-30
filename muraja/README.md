@@ -15,7 +15,13 @@ npm start              # http://127.0.0.1:8787
 
 Développement : `npm run dev:server` et `npm run dev:web` (Vite, proxy vers l'API).
 
-Variables : `MURAJA_DATA` (dossier des données, défaut `muraja/data`), `PORT`, `HOST`, `MURAJA_INVITE_CODE` (exigé à l'inscription si défini — recommandé dès que le site est accessible depuis Internet), `MURAJA_SECURE_COOKIES=1` derrière HTTPS.
+Variables : `MURAJA_DATA` (dossier des données, défaut `muraja/data`), `PORT`, `HOST`, `MURAJA_INVITE_CODE` (exigé à l'inscription si défini — recommandé dès que le site est accessible depuis Internet), `MURAJA_SECURE_COOKIES=1` derrière HTTPS, `MURAJA_PUBLIC_URL` (adresse HTTPS publique, ex. `https://muraja.example.org`, utilisée pour la connexion Claude/ChatGPT), `MURAJA_SECRET_KEY` (≥ 32 caractères aléatoires ; active l'enregistrement chiffré des clés API personnelles ; la changer rend les clés enregistrées illisibles).
+
+## IA : trois façons, aucune facturée au site
+
+1. **Connecter son Claude ou son ChatGPT** (Réglages › Assistant IA). Le site expose un serveur MCP (`/mcp`) protégé par OAuth 2.1 (enregistrement dynamique, PKCE S256, rotation des jetons). L'assistant de la personne lit ses cours et y ajoute fiches, flashcards, QCM et cartes mentales, avec son propre abonnement. Exige une adresse HTTPS publique.
+2. **Clé API personnelle** (Anthropic, OpenAI ou Gemini), chiffrée côté serveur, pour les boutons intégrés « Expliquer simplement » et « Générer des questions ». Limite de 40 générations par jour et par compte ; résultats validés, enregistrés une fois, marqués « Généré par IA ».
+3. **Import** de supports préparés ailleurs (NotebookLM, etc.) : CSV ou JSON.
 
 Sauvegarde : copier le dossier `MURAJA_DATA` (base SQLite + fichiers). Chaque utilisateur peut aussi exporter ses données depuis Réglages.
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api, type ChapterView, type Note, type Item, type DocumentInfo } from '../api.ts';
 import { go } from '../router.ts';
-import { useLoad, Loading, ErrorBox, Empty, Txt, SourceBadge, TYPE_LABEL, SKILL_LABEL, formatDue, errorText } from '../components/ui.tsx';
+import { useLoad, Loading, ErrorBox, Empty, Txt, SourceBadge, OriginBadge, TYPE_LABEL, SKILL_LABEL, formatDue, errorText } from '../components/ui.tsx';
 import { ItemForm, SourceFields, sourceDraft, sourcePayload, type SourceDraft } from '../components/ItemForm.tsx';
 import { ImportCsv, ImportJson } from '../components/Importers.tsx';
 
@@ -96,14 +96,15 @@ function Notes({ v, reload, act }: { v: ChapterView; reload: () => void; act: Ac
         ? <NoteEditor key={n.id} note={n} docs={v.documents} onDone={() => { setEditing(null); reload(); }} />
         : (
           <article key={n.id} className="card">
-            <div className="spread"><h2 dir="auto">{n.title}</h2><SourceBadge status={n.source_status} pages={n.source_pages} /></div>
+            <div className="spread"><h2 dir="auto">{n.title}</h2><span className="row" style={{ gap: 6 }}><OriginBadge origin={n.origin} /><SourceBadge status={n.source_status} pages={n.source_pages} /></span></div>
             {n.body ? <Txt>{n.body}</Txt> : <p className="muted">Fiche vide.</p>}
             {n.source_excerpt && <blockquote className="muted text" dir="auto" style={{ borderInlineStart: '3px solid var(--line)', paddingInlineStart: 10, margin: '10px 0' }}>{n.source_excerpt}</blockquote>}
             {explain[n.id] && <div className="notice" role="status">{explain[n.id]}</div>}
             <div className="row end">
               <button className="small" onClick={() => act(async () => {
-                const r = await api.post<{ available: boolean; message: string }>(`/api/notes/${n.id}/explain`);
+                const r = await api.post<{ available: boolean; message: string }>(`/api/notes/${n.id}/explain`, {});
                 setExplain({ ...explain, [n.id]: r.message });
+                reload();
               })}>Expliquer simplement</button>
               <button className="small" onClick={() => setEditing(n.id)}>Modifier</button>
               <button className="small danger" onClick={() => { if (confirm('Supprimer cette fiche ?')) act(() => api.del(`/api/notes/${n.id}`)); }}>Supprimer</button>
@@ -164,6 +165,7 @@ function Questions({ v, reload, act }: { v: ChapterView; reload: () => void; act
                 <div className="row" style={{ gap: 6, marginBottom: 4 }}>
                   <span className="badge">{TYPE_LABEL[it.type]}</span>
                   {it.skill && <span className="badge">{SKILL_LABEL[it.skill]}</span>}
+                  <OriginBadge origin={it.origin} />
                   <SourceBadge status={it.source_status} pages={it.source_pages} />
                   <span className="badge">{it.suspended ? 'Suspendue' : formatDue(it.due, it.state)}</span>
                 </div>

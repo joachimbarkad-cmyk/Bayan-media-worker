@@ -9,6 +9,17 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { buildApp } from '../server/app.ts';
 import { tmpDir, makePdf } from '../server/test/helpers.ts';
+import { createHash, randomBytes } from 'node:crypto';
+import { Client as McpClient } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { JsonCaller } from '../server/generation.ts';
+
+// TEST DOUBLE: deterministic stand-in for a real AI provider (no network, no cost).
+const fakeAi: JsonCaller = async (_cfg, _prompt, _schema, name) => name === 'explanation'
+  ? { title: 'T', explanation: 'La purification (tahara) est une condition pour que la prière soit valide.', points_to_check: ['Vérifier les exceptions citées par le cours.'] }
+  : { flashcards: [{ question: 'Quelle eau permet les ablutions ?', answer: "L'eau pure et purifiante", skill: 'definition', pages: [3], excerpt: "L'eau pure et purifiante permet les ablutions." }],
+      mcq: [{ question: "Selon l'avis retenu, l'eau changée par une chose pure…", choices: [{ text: 'reste purifiante tant que son nom demeure', correct: true, why: 'Avis retenu.' }, { text: 'devient impure', correct: false, why: 'Non dit par le cours.' }], explanation: '', skill: 'distinction', pages: [3], excerpt: '' }],
+      open: [] };
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const shots = path.join(here, 'screenshots');
@@ -17,7 +28,7 @@ const dist = path.join(here, '..', 'dist');
 if (!existsSync(path.join(dist, 'index.html'))) throw new Error('Lancer `npm run build` avant `npm run e2e`.');
 
 const dataDir = tmpDir();
-const { app } = await buildApp({ dataDir, staticDir: dist });
+const { app } = await buildApp({ dataDir, staticDir: dist, secretKey: 'e2e-secret-'.padEnd(40, 'x'), callJson: fakeAi });
 await app.listen({ port: 0, host: '127.0.0.1' });
 const addr = app.server.address() as { port: number };
 const BASE = `http://127.0.0.1:${addr.port}`;
@@ -212,7 +223,7 @@ try {
   await a2.getByRole('heading', { name: 'Mes progrès' }).waitFor();
   await a2.screenshot({ path: path.join(shots, 'desktop-07-progres.png'), fullPage: true });
   const exp = await (await a2.request.get(`${BASE}/api/export`)).json();
-  assert.equal(exp.items.length, 6);
+  assert.equal(exp.items.length, 6); // before AI steps
   assert.ok(exp.review_logs.length >= 6);
   step(`Export JSON : ${exp.items.length} éléments, ${exp.review_logs.length} réponses`);
 
@@ -224,8 +235,64 @@ try {
   await a2.getByLabel('Contenu').fill('الطهارة شرط لصحة الصلاة.\nLa purification est une condition de validité.');
   await a2.getByRole('button', { name: 'Enregistrer' }).click();
   await a2.getByRole('button', { name: 'Expliquer simplement' }).click();
-  await a2.getByText("La génération automatique n'est pas activée").waitFor();
-  step('« Expliquer simplement » annonce honnêtement l’absence de génération');
+  await a2.getByText("Aucune IA n'est connectée à votre compte").waitFor();
+  step('« Expliquer simplement » sans IA connectée : message honnête, rien de simulé');
+
+  // ------------------------------------------------ AI: personal key (test double provider) + generation from pages
+  await a2.goto(`${BASE}/#/settings`);
+  await a2.getByLabel(/^Clé API/).fill('sk-ant-demo-key-0000');
+  await a2.getByRole('button', { name: 'Enregistrer', exact: true }).last().click();
+  await a2.getByText(/Connectée : Anthropic \(Claude\) · claude-opus-5-5 · clé …0000/).waitFor();
+  await a2.screenshot({ path: path.join(shots, 'desktop-08-reglages-ia.png'), fullPage: true });
+  await a2.goto(docUrl.replace(/^.*#/, `${BASE}/#`));
+  await a2.getByText("Générer des questions avec l'IA").click();
+  await a2.getByLabel('Pages').fill('1');
+  await a2.getByLabel('à', { exact: true }).fill('3');
+  await a2.getByRole('button', { name: 'Générer', exact: true }).click();
+  await a2.getByText('Pages ignorées (sans texte lisible) : 2.').waitFor();
+  await a2.screenshot({ path: path.join(shots, 'desktop-09-generation.png'), fullPage: true });
+  await a2.getByRole('button', { name: 'Enregistrer la sélection' }).click();
+  await a2.getByText(/2 question\(s\) ajoutée\(s\), dont 1 avec une source retrouvée/).waitFor();
+  step('IA intégrée (fournisseur simulé) : brouillon relu puis enregistré, page scannée ignorée, source vérifiée');
+  await a2.getByRole('link', { name: '← Retour au chapitre' }).click();
+  await a2.getByRole('link', { name: /Fiches/ }).click();
+  await a2.getByRole('button', { name: 'Expliquer simplement' }).first().click();
+  await a2.getByRole('heading', { name: /Explication simple — / }).waitFor();
+  await a2.getByText('Généré par IA').first().waitFor();
+  step('« Expliquer simplement » avec IA : explication enregistrée comme fiche marquée « Généré par IA »');
+
+  // ------------------------------------------------ connect "Claude" (OAuth consent in the browser, then MCP)
+  const reg = await (await a2.request.post(`${BASE}/oauth/register`, { data: { client_name: 'Claude', redirect_uris: ['https://claude.ai/api/mcp/auth_callback'] } })).json();
+  const verifier = randomBytes(32).toString('base64url');
+  const q = new URLSearchParams({ response_type: 'code', client_id: reg.client_id, redirect_uri: 'https://claude.ai/api/mcp/auth_callback', state: 'st',
+    code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', scope: 'muraja' });
+  let callback = '';
+  await a2.route(/^https:\/\/claude\.ai\//, (route) => { callback = route.request().url(); return route.fulfill({ status: 200, body: 'ok' }); });
+  await a2.goto(`${BASE}/oauth/authorize?${q}`);
+  await a2.getByRole('heading', { name: 'Autoriser « Claude » ?' }).waitFor();
+  await a2.screenshot({ path: path.join(shots, 'desktop-10-autorisation.png') });
+  await a2.getByRole('button', { name: 'Autoriser' }).click();
+  await a2.waitForURL(/^https:\/\/claude\.ai\//);
+  const back = new URL(callback || a2.url());
+  assert.equal(back.searchParams.get('state'), 'st');
+  const code = back.searchParams.get('code')!;
+  const tok = await (await a2.request.post(`${BASE}/oauth/token`, { form: { grant_type: 'authorization_code', code, code_verifier: verifier, client_id: reg.client_id, redirect_uri: 'https://claude.ai/api/mcp/auth_callback' } })).json();
+  const mcp = new McpClient({ name: 'e2e', version: '1' });
+  await mcp.connect(new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${tok.access_token}` } } }));
+  const courses = JSON.parse(((await mcp.callTool({ name: 'list_courses', arguments: {} })) as any).content[0].text);
+  const chId = courses.subjects[0].chapters[0].id;
+  const docId2 = courses.subjects[0].chapters[0].documents[0].id;
+  const pagesRead = JSON.parse(((await mcp.callTool({ name: 'read_course_pages', arguments: { document_id: docId2, from_page: 3, to_page: 3 } })) as any).content[0].text);
+  assert.match(pagesRead.pages[0].text, /eau pure/);
+  await mcp.callTool({ name: 'add_flashcards', arguments: { chapter_id: chId, document_id: docId2, cards: [{ question: 'Quand l’eau changée reste-t-elle purifiante ?', answer: 'Tant que son nom d’eau demeure (avis retenu, divergence)', pages: [3], excerpt: 'reste purifiante' }] } });
+  await mcp.close();
+  await a2.unroute(/^https:\/\/claude\.ai\//);
+  await a2.goto(`${BASE}/#/chapter/${chId}?tab=questions`);
+  await a2.getByText('Ajouté par Claude').first().waitFor();
+  await a2.goto(`${BASE}/#/settings`);
+  await a2.getByText('Applications connectées').waitFor();
+  await a2.getByRole('button', { name: 'Déconnecter', exact: true }).waitFor();
+  step('Connexion « Claude » : autorisation dans le navigateur, lecture du cours et ajout de flashcards via MCP, visibles dans le chapitre');
 
   // ------------------------------------------------ account B: isolation through the UI and the API
   const other = await browser.newContext({ viewport: { width: 1280, height: 860 }, locale: 'fr-FR' });

@@ -12,7 +12,10 @@ import { extractPdf, normalizeText, UserError } from './pdf.ts';
 import { resolveSource } from './sources.ts';
 import { SchedulerSettings, SchedulerPatch, emptyState, applyRating, Rating, State, type StateRow, type Grade } from './fsrs.ts';
 import { dayBounds, isValidTimeZone } from './time.ts';
-import { loadProvider } from './generation.ts';
+import { registerAi } from './ai.ts';
+import { registerOAuth } from './oauth.ts';
+import { registerMcp } from './mcp.ts';
+import type { JsonCaller } from './generation.ts';
 import { ImportV1, treeError, type MindNode } from './importSchema.ts';
 
 export interface AppOptions {
@@ -22,6 +25,12 @@ export interface AppOptions {
   secureCookies?: boolean;
   now?: () => number;
   env?: NodeJS.ProcessEnv;
+  /** Public HTTPS base URL (e.g. https://muraja.example.org), used by OAuth/MCP metadata. */
+  publicUrl?: string;
+  /** Secret used to encrypt personal API keys (else MURAJA_SECRET_KEY). */
+  secretKey?: string;
+  /** Test hook replacing real provider calls. */
+  callJson?: JsonCaller;
 }
 
 const COOKIE = 'muraja_session';
@@ -110,7 +119,6 @@ export async function buildApp(opts: AppOptions): Promise<{ app: FastifyInstance
   const db = openDb(opts.dataDir);
   const filesDir = path.join(opts.dataDir, 'files');
   mkdirSync(filesDir, { recursive: true });
-  const provider = loadProvider(env);
   const limiter = new AttemptLimiter();
   const app = Fastify({ logger: false, bodyLimit: 8 * 1024 * 1024, trustProxy: true });
 
@@ -245,7 +253,6 @@ export async function buildApp(opts: AppOptions): Promise<{ app: FastifyInstance
     return { user: publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(u.id) as unknown as User) };
   });
 
-  app.get('/api/generation/status', async (req) => { auth(req); return provider.status(); });
 
   // ------------------------------------------------------------------ library
   app.get('/api/library', async (req) => {
@@ -439,7 +446,7 @@ export async function buildApp(opts: AppOptions): Promise<{ app: FastifyInstance
     const u = auth(req);
     const n = owned('notes', (req.params as any).id, u.id);
     const body = parse(z.object({ title: Name.optional(), body: z.string().max(50000).optional(), source: SourceIn }), req.body);
-    const src = body.source !== undefined ? resolveSource(db, u.id, body.source, n.origin === 'import' ? 'import' : 'manual') : null;
+    const src = body.source !== undefined ? resolveSource(db, u.id, body.source, n.origin === 'manual' ? 'manual' : 'import') : null;
     db.prepare(`UPDATE notes SET title = ?, body = ?, source_document_id = ?, source_pages = ?, source_excerpt = ?, source_status = ?, updated_at = ? WHERE id = ?`)
       .run(body.title ?? n.title, body.body ?? n.body, src ? src.source_document_id : n.source_document_id, src ? src.source_pages : n.source_pages,
         src ? src.source_excerpt : n.source_excerpt, src ? src.source_status : n.source_status, now(), n.id);
@@ -451,19 +458,12 @@ export async function buildApp(opts: AppOptions): Promise<{ app: FastifyInstance
     db.prepare('DELETE FROM notes WHERE id = ?').run(n.id);
     return { ok: true };
   });
-  app.post('/api/notes/:id/explain', async (req) => {
-    const u = auth(req);
-    owned('notes', (req.params as any).id, u.id);
-    const st = provider.status();
-    if (!st.available) return { available: false, message: st.message };
-    throw new UserError('Génération indisponible.', 503);
-  });
 
   // ------------------------------------------------------------------ items
-  function insertItem(userId: string, chapterId: string, it: z.infer<typeof ItemIn>, origin: 'manual' | 'import') {
+  function insertItem(userId: string, chapterId: string, it: z.infer<typeof ItemIn>, origin: string) {
     checkItemShape(it);
     const id = randomUUID();
-    const src = resolveSource(db, userId, it.source, origin);
+    const src = resolveSource(db, userId, it.source, origin === 'manual' ? 'manual' : 'import');
     const t = now();
     db.prepare(`INSERT INTO items (id, user_id, chapter_id, type, prompt, answer, explanation, choices, skill, origin,
       source_document_id, source_pages, source_excerpt, source_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
@@ -491,7 +491,7 @@ export async function buildApp(opts: AppOptions): Promise<{ app: FastifyInstance
     const defined = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined));
     const merged = { ...cur, ...defined, type: cur.type };
     checkItemShape(merged);
-    const src = body.source !== undefined ? resolveSource(db, u.id, body.source, cur.origin === 'import' ? 'import' : 'manual') : null;
+    const src = body.source !== undefined ? resolveSource(db, u.id, body.source, cur.origin === 'manual' ? 'manual' : 'import') : null;
     db.prepare(`UPDATE items SET prompt = ?, answer = ?, explanation = ?, choices = ?, skill = ?, suspended = ?,
       source_document_id = ?, source_pages = ?, source_excerpt = ?, source_status = ?, updated_at = ? WHERE id = ?`)
       .run(merged.prompt, merged.type === 'mcq' ? '' : merged.answer, merged.explanation,
@@ -524,6 +524,48 @@ export async function buildApp(opts: AppOptions): Promise<{ app: FastifyInstance
     return null;
   }
 
+  /**
+   * Stores validated structured content (import JSON, in-app AI, assistant connector) in one chapter.
+   * Every source goes through resolveSource: "verified" only when the excerpt is found in the course.
+   * Must be called inside a transaction.
+   */
+  function saveContent(userId: string, chapterId: string, data: ImportV1, mapNodes: MindNode[] | null, docId: string | null, origin: string) {
+    const src = (s?: { pages?: number[]; excerpt?: string }) => (s ? { document_id: docId, pages: s.pages ?? null, excerpt: s.excerpt ?? null } : null);
+    let verified = 0;
+    const out = { notes: [] as string[], items: [] as Array<{ id: string; type: string; source_status: string }>, mindmap: null as string | null };
+    const t = now();
+    for (const n of data.notes) {
+      const s = resolveSource(db, userId, src(n.source), origin === 'manual' ? 'manual' : 'import');
+      if (s.source_status === 'verified') verified++;
+      const id = randomUUID();
+      db.prepare(`INSERT INTO notes (id, user_id, chapter_id, title, body, origin, source_document_id, source_pages, source_excerpt, source_status, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, userId, chapterId, n.title, n.body, origin, s.source_document_id, s.source_pages, s.source_excerpt, s.source_status, t, t);
+      out.notes.push(id);
+    }
+    const all: Array<z.infer<typeof ItemIn>> = [
+      ...data.flashcards.map((f) => ({ type: 'flashcard' as const, prompt: f.question, answer: f.answer, explanation: f.explanation ?? '', skill: f.skill, source: src(f.source) })),
+      ...data.mcq.map((q) => ({ type: 'mcq' as const, prompt: q.question, answer: '', explanation: q.explanation ?? '',
+        choices: q.choices.map((ch) => ({ text: ch.text, correct: ch.correct, why: ch.why ?? '' })), skill: q.skill, source: src(q.source) })),
+      ...data.open.map((o) => ({ type: 'open' as const, prompt: o.question, answer: o.answer, explanation: o.explanation ?? '', skill: o.skill, source: src(o.source) })),
+    ];
+    for (const it of all) {
+      const id = insertItem(userId, chapterId, it, origin);
+      const st = (db.prepare('SELECT source_status FROM items WHERE id = ?').get(id) as any).source_status as string;
+      if (st === 'verified') verified++;
+      out.items.push({ id, type: it.type, source_status: st });
+    }
+    if (data.mindmap && mapNodes) {
+      out.mindmap = randomUUID();
+      db.prepare(`INSERT INTO mindmaps (id, user_id, chapter_id, title, data, origin, source_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`)
+        .run(out.mindmap, userId, chapterId, data.mindmap.title, JSON.stringify({ nodes: mapNodes }), origin, 'to_verify', t, t);
+    }
+    for (const g of data.glossary) {
+      db.prepare('INSERT INTO glossary (id, user_id, term, arabic, definition, created_at) VALUES (?,?,?,?,?,?)')
+        .run(randomUUID(), userId, g.term, g.arabic ?? '', g.definition ?? '', t);
+    }
+    return { verified, ...out };
+  }
+
   app.post('/api/chapters/:id/import/json', async (req) => {
     const u = auth(req);
     const c = owned('chapters', (req.params as any).id, u.id);
@@ -548,35 +590,7 @@ export async function buildApp(opts: AppOptions): Promise<{ app: FastifyInstance
       without_source: [...data.notes, ...data.flashcards, ...data.mcq, ...data.open].filter((x) => !x.source || (!x.source.excerpt && !x.source.pages)).length,
     };
     if (body.dry_run) return { ok: true, dry_run: true, summary };
-    const src = (s?: { pages?: number[]; excerpt?: string }) => (s ? { document_id: docId, pages: s.pages ?? null, excerpt: s.excerpt ?? null } : null);
-    let verified = 0;
-    tx(db, () => {
-      const t = now();
-      for (const n of data.notes) {
-        const s = resolveSource(db, u.id, src(n.source), 'import');
-        if (s.source_status === 'verified') verified++;
-        db.prepare(`INSERT INTO notes (id, user_id, chapter_id, title, body, origin, source_document_id, source_pages, source_excerpt, source_status, created_at, updated_at)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(randomUUID(), u.id, c.id, n.title, n.body, 'import', s.source_document_id, s.source_pages, s.source_excerpt, s.source_status, t, t);
-      }
-      const all: Array<z.infer<typeof ItemIn>> = [
-        ...data.flashcards.map((f) => ({ type: 'flashcard' as const, prompt: f.question, answer: f.answer, explanation: f.explanation ?? '', skill: f.skill, source: src(f.source) })),
-        ...data.mcq.map((q) => ({ type: 'mcq' as const, prompt: q.question, answer: '', explanation: q.explanation ?? '',
-          choices: q.choices.map((ch) => ({ text: ch.text, correct: ch.correct, why: ch.why ?? '' })), skill: q.skill, source: src(q.source) })),
-        ...data.open.map((o) => ({ type: 'open' as const, prompt: o.question, answer: o.answer, explanation: o.explanation ?? '', skill: o.skill, source: src(o.source) })),
-      ];
-      for (const it of all) {
-        const id = insertItem(u.id, c.id, it, 'import');
-        if ((db.prepare('SELECT source_status FROM items WHERE id = ?').get(id) as any).source_status === 'verified') verified++;
-      }
-      if (data.mindmap && mapNodes) {
-        db.prepare(`INSERT INTO mindmaps (id, user_id, chapter_id, title, data, origin, source_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`)
-          .run(randomUUID(), u.id, c.id, data.mindmap.title, JSON.stringify({ nodes: mapNodes }), 'import', 'to_verify', t, t);
-      }
-      for (const g of data.glossary) {
-        db.prepare('INSERT INTO glossary (id, user_id, term, arabic, definition, created_at) VALUES (?,?,?,?,?,?)')
-          .run(randomUUID(), u.id, g.term, g.arabic ?? '', g.definition ?? '', t);
-      }
-    });
+    const { verified } = tx(db, () => saveContent(u.id, c.id, data, mapNodes, docId, 'import'));
     return { ok: true, dry_run: false, summary: { ...summary, verified_sources: verified } };
   });
 
@@ -906,6 +920,12 @@ export async function buildApp(opts: AppOptions): Promise<{ app: FastifyInstance
     reply.header('Content-Disposition', `attachment; filename="muraja-export-${dayBounds(u.timezone, now()).date}.json"`);
     return out;
   });
+
+  // ------------------------------------------------------------------ AI: personal key, OAuth, MCP connector
+  const ctx = { db, env, now, auth, currentUser, owned, saveContent, docForImport, userSettings, dayBounds, publicUrl: opts.publicUrl, callJson: opts.callJson, secret: opts.secretKey ?? env.MURAJA_SECRET_KEY };
+  registerAi(app, ctx);
+  registerOAuth(app, ctx);
+  await registerMcp(app, ctx);
 
   // ------------------------------------------------------------------ static web app
   if (opts.staticDir && existsSync(opts.staticDir)) {

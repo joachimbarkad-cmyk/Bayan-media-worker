@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, type User } from '../api.ts';
-import { useLoad, errorText } from '../components/ui.tsx';
+import { errorText } from '../components/ui.tsx';
+import { AiSettings } from '../components/AiSettings.tsx';
 
 const ZONES = ['Indian/Reunion', 'Europe/Paris', 'Indian/Mauritius', 'Indian/Mayotte', 'Africa/Casablanca', 'Africa/Algiers', 'Africa/Tunis', 'Africa/Cairo', 'Asia/Riyadh', 'America/Montreal', 'UTC'];
 
@@ -8,7 +9,6 @@ export function Settings({ user, onUser }: { user: User; onUser: (u: User | null
   const [tz, setTz] = useState(user.timezone);
   const [s, setS] = useState(user.settings);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'bad'; text: string } | null>(null);
-  const gen = useLoad(() => api.get<{ available: boolean; message: string }>('/api/generation/status'), []);
 
   async function save() {
     setMsg(null);
@@ -59,11 +59,7 @@ export function Settings({ user, onUser }: { user: User; onUser: (u: User | null
         {msg && <div className={`notice ${msg.kind}`} role="status" style={{ marginTop: 12 }}>{msg.text}</div>}
         <div className="row end" style={{ marginTop: 12 }}><button className="primary" onClick={save}>Enregistrer</button></div>
       </section>
-      <section className="card">
-        <h2>Génération automatique</h2>
-        <p>{gen.data ? gen.data.message : gen.error ?? '…'}</p>
-        <p className="muted">Pour préparer vos supports gratuitement : utilisez NotebookLM sur votre cours, téléchargez les flashcards (CSV) ou demandez le format JSON décrit dans le guide, puis importez-les dans le chapitre.</p>
-      </section>
+      <AiSettings />
     </div>
   );
 }

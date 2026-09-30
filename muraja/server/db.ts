@@ -149,6 +149,50 @@ const MIGRATIONS: string[] = [
   CREATE INDEX idx_logs_user ON review_logs(user_id, reviewed_at);
   CREATE INDEX idx_docs_user ON documents(user_id, chapter_id);
   `,
+  `
+  CREATE TABLE ai_settings (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL CHECK (provider IN ('anthropic','openai','gemini')),
+    model TEXT NOT NULL,
+    key_enc TEXT NOT NULL,
+    key_hint TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE ai_usage (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    day TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    PRIMARY KEY (user_id, day)
+  );
+  CREATE TABLE oauth_clients (
+    client_id TEXT PRIMARY KEY,
+    client_name TEXT NOT NULL,
+    redirect_uris TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE oauth_codes (
+    code_hash TEXT PRIMARY KEY,
+    client_id TEXT NOT NULL REFERENCES oauth_clients(client_id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    redirect_uri TEXT NOT NULL,
+    code_challenge TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE TABLE oauth_tokens (
+    token_hash TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('access','refresh')),
+    family_id TEXT NOT NULL,
+    client_id TEXT NOT NULL REFERENCES oauth_clients(client_id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    scope TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    revoked INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX idx_oauth_tokens_family ON oauth_tokens(family_id);
+  CREATE INDEX idx_oauth_tokens_user ON oauth_tokens(user_id);
+  `,
 ];
 
 export function openDb(dataDir: string): DB {
