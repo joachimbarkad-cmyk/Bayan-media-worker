@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CodexReview",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reviewed_sha", "status", "summary", "findings", "checks_performed", "checks_not_run"],
+  "properties": {
+    "reviewed_sha": {
+      "type": "string",
+      "description": "Full 40-character SHA of the commit actually examined."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["APPROVED", "CHANGES_REQUESTED", "BLOCKED"]
+    },
+    "summary": {
+      "type": "string",
+      "description": "Two or three sentences on the overall verdict."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "blocking", "file", "scenario", "expected", "observed", "proposed_fix"],
+        "properties": {
+          "severity": {"type": "string", "enum": ["critical", "high", "medium", "low"]},
+          "blocking": {"type": "boolean"},
+          "file": {"type": "string"},
+          "scenario": {"type": "string", "description": "Concrete reproduction steps."},
+          "expected": {"type": "string"},
+          "observed": {"type": "string"},
+          "proposed_fix": {"type": "string"}
+        }
+      }
+    },
+    "checks_performed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["check", "result"],
+        "properties": {
+          "check": {"type": "string"},
+          "result": {"type": "string"}
+        }
+      }
+    },
+    "checks_not_run": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["check", "reason"],
+        "properties": {
+          "check": {"type": "string"},
+          "reason": {"type": "string"}
+        }
+      }
+    }
+  }
+}
