@@ -45,7 +45,10 @@ def git(*args: str, cwd: Path = ROOT) -> str:
 
 
 def resolve_sha(ref: str) -> str:
-    sha = git("rev-parse", "--verify", f"{ref}^{{commit}}")
+    try:
+        sha = git("rev-parse", "--verify", f"{ref}^{{commit}}")
+    except subprocess.CalledProcessError:
+        raise SystemExit(f"Référence Git introuvable : {ref}")
     if not SHA_RE.match(sha):
         raise SystemExit(f"Référence invalide : {ref}")
     return sha
