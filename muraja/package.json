@@ -8,14 +8,15 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "dev:server": "node --watch server/index.ts",
+    "dev:server": "node --env-file-if-exists=.env --watch server/index.ts",
     "dev:web": "vite",
     "build": "vite build",
-    "start": "node server/index.ts",
+    "start": "node --env-file-if-exists=.env server/index.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test --test-concurrency=1 'server/test/*.test.ts'",
     "e2e": "node e2e/run.ts",
-    "review": "python3 ../scripts/request_codex_review.py"
+    "review": "python3 ../scripts/request_codex_review.py",
+    "setup": "node scripts/setup.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",

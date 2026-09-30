@@ -1,0 +1,17 @@
+# Auto-hébergement avec Docker : `npm run setup -- https://...ts.net` puis `docker compose up -d --build`.
+# Le port n'est ouvert que sur la boucle locale ; Tailscale Funnel le publie en HTTPS.
+services:
+  muraja:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8787"
+      MURAJA_DATA: /data
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - muraja-data:/data
+volumes:
+  muraja-data:

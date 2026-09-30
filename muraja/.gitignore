@@ -3,3 +3,4 @@ data/
 dist/
 test-results/
 e2e/screenshots/
+.env

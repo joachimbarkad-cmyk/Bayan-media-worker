@@ -25,6 +25,10 @@ Variables : `MURAJA_DATA` (dossier des données, défaut `muraja/data`), `PORT`,
 
 Sauvegarde : copier le dossier `MURAJA_DATA` (base SQLite + fichiers). Chaque utilisateur peut aussi exporter ses données depuis Réglages.
 
+## Héberger gratuitement (adresse publique HTTPS)
+
+Voir **`../docs/HEBERGEMENT_GRATUIT.md`** : ordinateur personnel + Tailscale Funnel, `npm run setup -- https://<machine>.ts.net`, puis `npm start` (lit `.env`). Le serveur refuse de démarrer avec une adresse publique sans code d'invitation.
+
 ## Docker
 
 ```sh

@@ -41,7 +41,7 @@ Relecture critique faite par Claude à défaut : deux défauts trouvés et corri
 ## Prochaines actions
 
 1. Dès que Codex est joignable : rejouer les revues des lots 0 et 1 ; corriger (2 cycles max) ; consigner.
-2. Publier le site en HTTPS sans coût, puis connecter un vrai compte Claude (gratuit : 1 connecteur) pour valider le parcours de bout en bout.
+2. **Action du propriétaire** : suivre `docs/HEBERGEMENT_GRATUIT.md` (Node 22 + Tailscale Funnel, `npm run setup -- https://<machine>.ts.net`, `npm start`), puis connecter un vrai compte Claude. Railway préparé (`muraja/railway.toml`) mais non activé : refus de dépense.
 3. Jalon 3 (suite) : mode Feynman (explication libre, puis comparaison guidée avec la fiche et les extraits), fiche générée depuis la sélection de pages, recherche dans la bibliothèque, « reformuler sans les choix » après un QCM réussi.
 4. Jalon 4 : choisir un hébergement sans coût (machine personnelle + tunnel gratuit, ou offre gratuite vérifiée) ; ne rien activer de payant.
 5. Tester l'import avec un vrai CSV NotebookLM et un vrai PDF arabe (texte, et scanné).
