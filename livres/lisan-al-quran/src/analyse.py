@@ -482,7 +482,7 @@ def notions_of(words, i):
             continue
         if 'PERF' in s.tags:
             add('accompli')
-        if 'IMPF' in s.tags:
+        if 'IMPF' in s.tags and s.pgn not in ('3FP', '2FP'):
             if s.mood == 'IND':
                 add('inaccompli')
             elif s.mood == 'SUBJ':
@@ -599,6 +599,8 @@ def describe(words, i):
             a = []
             if 'PERF' in s.tags:
                 a.append('accompli')
+            elif 'IMPF' in s.tags and s.pgn in ('3FP', '2FP'):
+                a.append('inaccompli (nūn du féminin pluriel, invariable)')
             elif 'IMPF' in s.tags:
                 a.append('inaccompli ' + MOOD.get(s.mood, ''))
             elif 'IMPV' in s.tags:

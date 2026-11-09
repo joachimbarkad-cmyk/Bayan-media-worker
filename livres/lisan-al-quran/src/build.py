@@ -322,7 +322,7 @@ class Planner:
             return 'new'
         if step - st[1] >= st[2]:
             st[1] = step
-            st[2] = min(st[2] * 2, 12)
+            st[2] = min(st[2] * 2, 8)
             self.history[key].append((place, step))
             return 'rev'
         return 'known'
@@ -475,8 +475,11 @@ def guided_text(step, place, ranges, notes=None, current_lesson=None):
     late = []
     if current_lesson:
         for nid, (les, lab) in NOTIONS.items():
-            st = PLAN.state.get(('n', nid))
-            if st and les < current_lesson and step - st[1] >= 8 and nid not in ('racine',):
+            if les >= min(current_lesson, step) or nid in ('racine',):
+                continue
+            seen_steps = [st_ for pl, st_ in NOTION_HISTORY[nid]]
+            last = max(seen_steps) if seen_steps else les
+            if step - max(last, les) >= 8:
                 late.append((les, lab))
     bil = (f'<div class="bilan"><span class="lab">Bilan de révision</span><br>'
            f'{stats["mots"]} mots ; vocabulaire déjà étudié : <b>{pct:.0f} %</b> des mots lexicaux'
@@ -519,17 +522,17 @@ def auto_items(kind, ranges, n):
                 qa = ('défini ou indéfini ? pourquoi ?', r)
             elif kind == 'genre_nombre' and st.pos == 'N' and st.pgn and not ({'PRON', 'REL', 'DEM', 'PN', 'INTG'} & st.tags):
                 g, nb = gender_of(st.pgn), number_of(st.pgn)
-                if not g or not nb:
+                if not g or not nb or (nb == 'P' and not ending_kind(st)):
                     continue
                 qa = ('genre et nombre ?', f"{'masculin' if g == 'M' else 'féminin'} {'singulier' if nb == 'S' else 'duel' if nb == 'D' else 'pluriel'}")
-            elif kind == 'racine' and st.root and st.pos in ('N', 'V') and len(st.root) in (3, 4):
+            elif kind == 'racine' and st.root and st.pos in ('N', 'V') and len(st.root) in (3, 4) and 'PN' not in st.tags:
                 qa = ('racine ?', ' '.join(st.root))
             elif kind == 'verbe' and st.pos == 'V':
                 t = 'accompli' if 'PERF' in st.tags else 'impératif' if 'IMPV' in st.tags else 'inaccompli'
                 qa = ('temps et personne ?', f"{t}{' passif' if 'PASS' in st.tags else ''}, {PERS.get(st.pgn, st.pgn)}")
             elif kind == 'forme' and st.vf and st.pos in ('V', 'N') and st.root:
                 qa = ('forme verbale ?', f"forme {ROMAN[st.vf]} (racine {' '.join(st.root)})")
-            elif kind == 'mode' and st.pos == 'V' and 'IMPF' in st.tags and st.mood:
+            elif kind == 'mode' and st.pos == 'V' and 'IMPF' in st.tags and st.mood and st.pgn not in ('3FP', '2FP'):
                 prev = [x for x in words[max(0, i - 2):i]]
                 why = ''
                 for pw in reversed(prev):
@@ -843,15 +846,15 @@ def build(pages=None, only=None):
                 if not only or ('T' in only or k in only.get('T', ())) if isinstance(only, dict) else not only:
                     body.append(hh)
     # annexes
-    body.append(f'<section class="annexe annexes" id="A"><h2>A. Aide-mémoire <span class="ar">مُذَكِّرَةٌ</span></h2>{markup(annexes.AIDE_MEMOIRE)}</section>')
-    body.append('<section class="annexe annexes fiches-recap" id="B"><h2>B. Recueil des fiches <span class="ar">بِطَاقَاتُ الْقَوَاعِدِ</span></h2>'
+    body.append(f'<section class="annexe annexes" id="A"><div class="tete"><h2>A. Aide-mémoire</h2><div class="ar-titre">مُذَكِّرَةٌ</div></div>{markup(annexes.AIDE_MEMOIRE)}</section>')
+    body.append('<section class="annexe annexes fiches-recap" id="B"><div class="tete"><h2>B. Recueil des fiches</h2><div class="ar-titre">بِطَاقَاتُ الْقَوَاعِدِ</div></div>'
                 + ''.join(FICHES[n] for n in sorted(FICHES)) + '</section>')
-    body.append(f'<section class="annexe annexes" id="C"><h2>C. Corrigés <span class="ar">الْأَجْوِبَةُ</span></h2>{corriges_html()}</section>')
-    body.append(f'<section class="annexe annexes" id="D"><h2>D. Lexique par racine <span class="ar">الْمُعْجَمُ</span></h2>'
+    body.append(f'<section class="annexe annexes" id="C"><div class="tete"><h2>C. Corrigés</h2><div class="ar-titre">الْأَجْوِبَةُ</div></div>{corriges_html()}</section>')
+    body.append(f'<section class="annexe annexes" id="D"><div class="tete"><h2>D. Lexique par racine</h2><div class="ar-titre">الْمُعْجَمُ</div></div>'
                 f'<p class="petit">Les {len(VOCAB_INTRO)} mots des listes de vocabulaire, classés par racine. Lx : leçon où le mot est appris ; ×N : occurrences dans le Coran.</p>{lexique_html()}</section>')
-    body.append(f'<section class="annexe annexes" id="E"><h2>E. Index des notions <span class="ar">فِهْرِسُ الْمَسَائِلِ</span></h2>'
+    body.append(f'<section class="annexe annexes" id="E"><div class="tete"><h2>E. Index des notions</h2><div class="ar-titre">فِهْرِسُ الْمَسَائِلِ</div></div>'
                 f'<p class="petit">Pour chaque notion : la leçon où elle est étudiée, puis les textes où la lecture l\'a fait réviser (L = leçon, T = lecture suivie).</p>{index_notions_html()}</section>')
-    body.append(f'<section class="annexe annexes" id="F"><h2>F. Index des passages <span class="ar">فِهْرِسُ الْآيَاتِ</span></h2>{index_passages_html()}</section>')
+    body.append(f'<section class="annexe annexes" id="F"><div class="tete"><h2>F. Index des passages</h2><div class="ar-titre">فِهْرِسُ الْآيَاتِ</div></div>{index_passages_html()}</section>')
     doc = ''.join(body).replace('@@TOC@@', toc_html(pages))
     css = open(os.path.join(HERE, 'style.css'), encoding='utf8').read()
     return ('<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Lisān al-Qurʾān</title>'
